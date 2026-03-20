@@ -9,7 +9,7 @@ const SocketClient = (() => {
   let _typingTimers = {};
   let reconnectTimer = null; // Added reconnectTimer
 
-  function connectSocket() {
+  function connect(uid) {
     const token = typeof API !== "undefined" ? API.getToken() : null; // Safely get token
     if (!token) {
       console.warn("SocketClient: No authentication token found. Cannot connect.");
@@ -17,7 +17,7 @@ const SocketClient = (() => {
       if (!reconnectTimer) {
         reconnectTimer = setTimeout(() => {
           reconnectTimer = null;
-          connectSocket(); // Retry connection
+          connect(uid); // Retry connection
         }, 5000); // Retry after 5 seconds
       }
       return;
@@ -33,8 +33,11 @@ const SocketClient = (() => {
     // If socket already exists and is connected, no need to re-initialize
     if (socket && socket.connected) {
       console.log("Socket already connected.");
+      socket.emit("join", uid);
       return;
     }
+    
+    userId = uid;
 
     // Clear any existing reconnect timer if we are attempting to connect now
     if (reconnectTimer) {
