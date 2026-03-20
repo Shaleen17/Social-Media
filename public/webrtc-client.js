@@ -63,12 +63,18 @@ const WebRTCClient = (() => {
       setTimeout(setupSocketListeners, 1000); // Retry if socket not ready
       return;
     }
+    
+    // Only bind once
+    if (socket.__webrtcBound) return;
+    socket.__webrtcBound = true;
 
     socket.on("callUser", handleIncomingCall);
     socket.on("callAccepted", handleCallAccepted);
     socket.on("iceCandidate", handleIceCandidate);
     socket.on("callRejected", handleCallRejected);
     socket.on("callEnded", handleCallEnded);
+    
+    console.log("WebRTC Client: Socket listeners attached successfully.");
   }
 
   // 1. Initializer: Start a call (from UI)
@@ -107,9 +113,13 @@ const WebRTCClient = (() => {
   // 2. Incoming Call Handler
   let pendingOffer = null;
   function handleIncomingCall(data) {
+    console.log("WebRTC: Received incoming call from", data.name);
+    // Add visual toast debug
+    if (typeof MC !== "undefined") MC.info("Signaling: Incoming call from " + (data.name || "Someone"));
+    
     // data: { signal, from, name, isVideo }
     if (isInCall) {
-      // Busy
+      console.log("WebRTC: Busy, rejecting call");
       SocketClient.getSocket().emit("rejectCall", { to: data.from });
       return;
     }
