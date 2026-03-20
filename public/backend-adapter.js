@@ -1094,14 +1094,15 @@
         isMe: false, // false for recipients
       }, recipients);
 
-      // Update conversation list
+      // Update conversation list data
       if (conv) {
         conv.lastMessage = txt;
         conv.lastMessageTime = "Just now";
       }
 
-      renderChatMessages(activeChatId);
-      renderChatsList();
+      // Fast DOM update instead of full render
+      appendChatMessageDOM(msg, activeChatId);
+      updateChatItemDOM(activeChatId, txt, "Just now", 0);
     } catch (err) {
       MC.error("Failed to send message: " + (err.message || ""));
       inp.value = txt; // Restore text on error
@@ -1157,8 +1158,9 @@
           conv.lastMessageTime = "Just now";
         }
 
-        renderChatMessages(activeChatId);
-        renderChatsList();
+        // Fast DOM updates
+        appendChatMessageDOM(msg, activeChatId);
+        updateChatItemDOM(activeChatId, "📷 Photo", "Just now", 0);
       } catch {
         MC.error("Failed to send image");
       }
@@ -1362,33 +1364,132 @@
       _conversationMessages[convId].push(msg);
     }
 
-    // If this conversation is currently open, re-render messages
+    // If this conversation is currently open, do fast append
     if (activeChatId === convId) {
-      renderChatMessages(convId);
+      appendChatMessageDOM(msg, convId);
       // Send read receipt
       SocketClient.emitMessageRead(convId);
     }
 
-    // Update conversation list
+    // Update conversation list data
     const conv = _cachedConversations.find(
       (c) => (c.id || c._id || "").toString() === convId
     );
     if (conv) {
       conv.lastMessage = msg.txt || "📷 Photo";
       conv.lastMessageTime = "Just now";
+      let unreadInc = 0;
       if (activeChatId !== convId) {
         conv.unreadCount = (conv.unreadCount || 0) + 1;
+        unreadInc = 1;
+      }
+      
+      if (curPage === "chats") {
+        updateChatItemDOM(convId, conv.lastMessage, conv.lastMessageTime, unreadInc);
       }
     } else {
       // New conversation — reload the list
       loadConversations().then(() => {
         if (curPage === "chats") renderChatsList();
       });
+    }
+  };
+
+  // High-performance DOM appending for chat messages
+  function appendChatMessageDOM(m, convId) {
+    const c = document.getElementById("chatWinMsgs");
+    if (!c || activeChatId !== convId) return;
+
+    // Remove empty state if present
+    const empty = document.getElementById("chatEmptyState");
+    if (empty) empty.style.display = "none";
+
+    // Remove typing indicator temporarily to append above it
+    const ti = document.getElementById("remoteTypingIndicator");
+    if (ti) ti.remove();
+
+    const isOut = m.isMe || (m.from && m.from.toString() === myId());
+    const sender = m.sender || {};
+    const senderName = sender.name || "Unknown";
+    
+    // Check previous message to see if we should show avatar
+    const msgs = _conversationMessages[convId] || [];
+    const prev = msgs.length > 1 ? msgs[msgs.length - 2] : null; // -2 because `m` is already in the array
+    
+    const isGroup = _cachedConversations.find(c => (c.id || c._id || "").toString() === convId)?.isGroup;
+    const showAv = !isOut && isGroup && (!prev || (prev.from?.toString() !== m.from?.toString()));
+    const ini = getIni(senderName);
+
+    const avHtml = `<div class="msg-av-small">${sender.avatar ? '<img src="' + sender.avatar + '">' : ini}</div>`;
+    const avOrSpacer = !isOut && isGroup ? (showAv ? avHtml : '<div class="msg-av-placeholder"></div>') : "";
+
+    const tickClass = m.read ? "tick-read" : "tick-sent";
+    const tickSvg = isOut ? `<svg class="msg-tick ${tickClass}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>` : "";
+    const timeStr = m.t || "Just now";
+
+    const msgHtml = `<div class="msg-row ${isOut ? "out" : "in"}">
+      ${avOrSpacer}
+      <div class="msg-bubble">
+        ${showAv ? '<div class="msg-sender-name">' + esc(senderName) + "</div>" : ""}
+        ${m.img ? '<img class="msg-bubble-img" src="' + m.img + '" alt="">' : ""}
+        ${m.txt ? esc(m.txt) : ""}
+        <div class="msg-meta">
+          <span class="msg-time">${timeStr}</span>
+          ${tickSvg}
+        </div>
+      </div>
+    </div>`;
+
+    c.insertAdjacentHTML("beforeend", msgHtml);
+
+    // Re-append typing indicator if it was there
+    if (ti && !isOut) c.appendChild(ti);
+
+    // Use smooth scrolling to prevent jank
+    c.scroll({ top: c.scrollHeight, behavior: 'smooth' });
+  }
+
+  // Fast update of the sidebar chat item position and text
+  function updateChatItemDOM(convId, lastMsg, lastTime, unreadInc) {
+    const item = document.getElementById("ci_" + convId);
+    if (!item) {
+      if (curPage === "chats") renderChatsList(); // fallback
       return;
     }
+    
+    const prevEl = item.querySelector(".chat-item-prev");
+    const timeEl = item.querySelector(".chat-item-time");
+    if (prevEl) prevEl.textContent = (lastMsg || "Media").substring(0, 55);
+    if (timeEl) timeEl.textContent = lastTime;
 
-    if (curPage === "chats") renderChatsList();
-  };
+    // Handle Unread badge
+    const bottomRow = item.querySelector(".chat-item-bottom");
+    if (bottomRow && unreadInc > 0) {
+      item.classList.add("unread-time");
+      if (prevEl) prevEl.classList.add("bold");
+      
+      let badge = item.querySelector(".chat-unread-badge");
+      if (!badge) {
+        bottomRow.insertAdjacentHTML("beforeend", '<span class="chat-unread-badge">1</span>');
+      } else {
+        const val = parseInt(badge.textContent) || 0;
+        badge.textContent = val + unreadInc > 9 ? "9+" : val + unreadInc;
+      }
+    } else if (unreadInc === 0 && activeChatId === convId) {
+      // If we are currently in the chat, remove unread styling
+      const badge = item.querySelector(".chat-unread-badge");
+      if (badge) badge.remove();
+      if (prevEl) prevEl.classList.remove("bold");
+      item.classList.remove("unread-time");
+    }
+
+    // Move to top of the list for fresh activity
+    const list = document.getElementById("chatsList");
+    if (list && list.firstChild !== item) {
+      list.prepend(item);
+      item.style.animation = "mIn 0.3s ease"; // small nice highlight
+    }
+  }
 
   // Handle remote user typing
   window.handleRemoteTyping = function (data) {

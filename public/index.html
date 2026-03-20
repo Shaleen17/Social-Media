@@ -2339,7 +2339,8 @@
                 >
                   <button
                     class="chats-icon-btn"
-                    onclick="MC.info('Voice call coming soon! 📞')"
+                    id="chatVoiceCallBtn"
+                    onclick="startWebrtcCall(false)"
                   >
                     <svg viewBox="0 0 24 24">
                       <path
@@ -2349,7 +2350,8 @@
                   </button>
                   <button
                     class="chats-icon-btn"
-                    onclick="MC.info('Video call coming soon! 📹')"
+                    id="chatVideoCallBtn"
+                    onclick="startWebrtcCall(true)"
                   >
                     <svg viewBox="0 0 24 24">
                       <polygon points="23 7 16 12 23 17 23 7" />
@@ -2768,6 +2770,43 @@
       </div>
     </nav>
 
+    <!-- WebRTC Call UI Overlay -->
+    <div class="call-overlay" id="callOverlay">
+      <!-- Media elements -->
+      <video id="remoteVideo" class="call-remote-video" autoplay playsinline></video>
+      <video id="localVideo" class="call-local-video" autoplay playsinline muted></video>
+      
+      <div class="call-overlay-bg"></div>
+      <div class="call-overlay-content">
+        <div class="call-av" id="callOverlayAv"></div>
+        <div class="call-name" id="callOverlayName">Unknown User</div>
+        <div class="call-status" id="callStatusText">Calling...</div>
+        
+        <!-- Controls for Call Setup / Incoming -->
+        <div class="call-controls" id="callIncomingControls">
+          <button class="call-btn btn-reject" id="callRejectBtn">
+            <svg viewBox="0 0 24 24" fill="none"><path d="M15 9l-6 6M9 9l6 6" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+          </button>
+          <button class="call-btn btn-accept" id="callAcceptBtn">
+            <svg viewBox="0 0 24 24" fill="none"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07A19.5 19.5 0 0 1 4.69 12 19.79 19.79 0 0 1 1.62 3.38 2 2 0 0 1 3.59 1h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L7.91 8.56a16 16 0 0 0 6.29 6.29l.96-.96a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 22 16.92z" stroke="currentColor" stroke-width="2"/></svg>
+          </button>
+        </div>
+        
+        <!-- Controls for Active Call -->
+        <div class="call-controls" id="callActiveControls" style="display:none;">
+          <button class="call-btn btn-action" id="callMuteBtn">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2M12 19v4M8 23h8"/></svg>
+          </button>
+          <button class="call-btn btn-action" id="callCamBtn">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2" ry="2"/></svg>
+          </button>
+          <button class="call-btn btn-end" id="callEndBtn">
+            <svg viewBox="0 0 24 24" fill="none"><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2" stroke="currentColor" stroke-width="2"/><path d="M15 2H9c-1.1 0-2 .9-2 2v2h10V4c0-1.1-.9-2-2-2z" stroke="currentColor" stroke-width="2"/><line x1="8" y1="12" x2="16" y2="12" stroke="currentColor" stroke-width="2"/></svg>
+          </button>
+        </div>
+      </div>
+    </div>
+
     <!-- ============================================================
      JAVASCRIPT
      ============================================================ -->
@@ -2777,6 +2816,27 @@
     <script src="config.js"></script>
     <script src="api.js"></script>
     <script src="socket-client.js"></script>
+    <script src="webrtc-client.js"></script>
     <script src="backend-adapter.js"></script>
+    <script>
+      function startWebrtcCall(isVideo) {
+        if (!typeof activeChatId !== "undefined" && !window.activeChatId) return MC?.error("No active chat.");
+        
+        // Find user details from active chat cache mapped in backend-adapter.js
+        const conv = (typeof _cachedConversations !== 'undefined' ? _cachedConversations : []).find(
+          (c) => (c.id || c._id || "").toString() === window.activeChatId
+        );
+        
+        if (!conv || !conv.uid) {
+           return MC?.error("Could not find user details.");
+        }
+        
+        const uid = conv.uid.toString();
+        const userName = conv.user ? conv.user.name : "User";
+        const avatar = conv.user ? conv.user.avatar : null;
+        
+        WebRTCClient.startCall(uid, userName, avatar, isVideo);
+      }
+    </script>
   </body>
 </html>

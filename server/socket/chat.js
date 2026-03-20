@@ -132,6 +132,47 @@ module.exports = function setupSocket(io) {
       }
     });
 
+    // ==========================================
+    // WebRTC Signaling Events (Voice/Video Calls)
+    // ==========================================
+
+    // Caller initiates a call
+    socket.on("callUser", (data) => {
+      // data: { userToCall, signalData, from, name, isVideo }
+      io.to(data.userToCall).emit("callUser", {
+        signal: data.signalData,
+        from: data.from,
+        name: data.name,
+        isVideo: data.isVideo,
+      });
+    });
+
+    // Callee answers the call
+    socket.on("answerCall", (data) => {
+      // data: { to, signal }
+      io.to(data.to).emit("callAccepted", data.signal);
+    });
+
+    // Relay ICE candidates between peers
+    socket.on("iceCandidate", (data) => {
+      // data: { to, candidate }
+      io.to(data.to).emit("iceCandidate", data.candidate);
+    });
+
+    // Callee rejects the call
+    socket.on("rejectCall", (data) => {
+      // data: { to }
+      io.to(data.to).emit("callRejected");
+    });
+
+    // End an active call
+    socket.on("endCall", (data) => {
+      // data: { to }
+      if (data.to) {
+        io.to(data.to).emit("callEnded");
+      }
+    });
+
     // Disconnect
     socket.on("disconnect", () => {
       const userId = socket.userId;
