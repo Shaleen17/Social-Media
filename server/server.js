@@ -93,6 +93,19 @@ if (!process.env.VERCEL) {
    App:      http://localhost:${PORT}
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
     `);
+
+    // KEEP-ALIVE PING: Prevent Render free tier from sleeping
+    // Render sleeps after 15 mins of inactivity. Ping it every 14 mins.
+    const RENDER_URL = process.env.RENDER_EXTERNAL_URL || "https://tirth-sutra-backend.onrender.com";
+    setInterval(() => {
+      try {
+        fetch(`${RENDER_URL}/api/health`)
+          .then(res => console.log(`[Keep-Alive] Ping status: ${res.status}`))
+          .catch(err => console.error(`[Keep-Alive] Ping network error:`, err.message));
+      } catch (err) {
+        console.error(`[Keep-Alive] Ping setup error:`, err.message);
+      }
+    }, 15 * 60 * 1000); // 15 minutes
   });
 }
 
