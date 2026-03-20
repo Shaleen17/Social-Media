@@ -1609,6 +1609,31 @@
     checkNotifications();
   };
 
+  // =============================================
+  // WebRTC Call Initiation
+  // =============================================
+  window.startWebrtcCall = function (isVideo) {
+    if (!activeChatId) return MC?.error("No active chat.");
+
+    const conv = _cachedConversations.find(
+      (c) => (c.id || c._id || "").toString() === activeChatId
+    );
+
+    if (!conv || !conv.uid) {
+      return MC?.error("Could not find user details to call.");
+    }
+
+    const uid = conv.uid.toString();
+    const userName = conv.user ? conv.user.name : "User";
+    const avatar = conv.user ? conv.user.avatar : null;
+
+    if (typeof WebRTCClient !== "undefined") {
+      WebRTCClient.startCall(uid, userName, avatar, isVideo);
+    } else {
+      MC?.error("Calling feature is not initialized.");
+    }
+  };
+
   // Remove the old DOMContentLoaded listener and re-fire init
   window.init();
 })();

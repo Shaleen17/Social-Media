@@ -4404,6 +4404,32 @@ video {
   }
 }
 
+@media (max-width: 640px) {
+  .chat-win-hdr {
+    padding: 8px 10px;
+    gap: 8px;
+  }
+  .chats-icon-btn {
+    width: 32px;
+    height: 32px;
+  }
+  .chats-icon-btn svg {
+    width: 15px;
+    height: 15px;
+  }
+  .chat-win-av {
+    width: 34px;
+    height: 34px;
+  }
+  .chat-win-name {
+    font-size: 14px;
+  }
+  .chat-window {
+    top: var(--topbar-h, 60px) !important;
+    height: calc(100vh - var(--topbar-h, 60px)) !important;
+  }
+}
+
 /* =========================================
    WEBRTC CALL OVERLAY
    ========================================= */

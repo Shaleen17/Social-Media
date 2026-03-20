@@ -2818,25 +2818,5 @@
     <script src="socket-client.js"></script>
     <script src="webrtc-client.js"></script>
     <script src="backend-adapter.js"></script>
-    <script>
-      function startWebrtcCall(isVideo) {
-        if (!typeof activeChatId !== "undefined" && !window.activeChatId) return MC?.error("No active chat.");
-        
-        // Find user details from active chat cache mapped in backend-adapter.js
-        const conv = (typeof _cachedConversations !== 'undefined' ? _cachedConversations : []).find(
-          (c) => (c.id || c._id || "").toString() === window.activeChatId
-        );
-        
-        if (!conv || !conv.uid) {
-           return MC?.error("Could not find user details.");
-        }
-        
-        const uid = conv.uid.toString();
-        const userName = conv.user ? conv.user.name : "User";
-        const avatar = conv.user ? conv.user.avatar : null;
-        
-        WebRTCClient.startCall(uid, userName, avatar, isVideo);
-      }
-    </script>
   </body>
 </html>
