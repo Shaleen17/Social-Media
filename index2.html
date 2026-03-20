@@ -1,0 +1,2776 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no"
+    />
+    <title>Tirth Sutra — Mandir Community</title>
+    <link rel="icon" type="image/png" href="Brand_Logo.jpg" />
+    <link href="Style.css" rel="stylesheet" type="text/css" />
+  </head>
+  <!-- Google tag (gtag.js) -->
+  <script
+    async
+    src="https://www.googletagmanager.com/gtag/js?id=G-BE8S0K4L9H"
+  ></script>
+  <script>
+    window.dataLayer = window.dataLayer || [];
+    function gtag() {
+      dataLayer.push(arguments);
+    }
+    gtag("js", new Date());
+
+    gtag("config", "G-BE8S0K4L9H");
+  </script>
+  <body>
+    <!-- ============================================================
+     MANDIR COMMUNITY TOAST CONTAINER
+     ============================================================ -->
+    <div id="toastContainer"></div>
+
+    <!-- PULL TO REFRESH INDICATOR -->
+    <div id="pullIndicator">
+      <div class="pull-inner">
+        <div class="pull-icon">
+          <svg viewBox="0 0 24 24">
+            <polyline points="23 4 23 10 17 10" />
+            <polyline points="1 20 1 14 7 14" />
+            <path
+              d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"
+            />
+          </svg>
+        </div>
+        <span id="pullText">Pull down to refresh</span>
+      </div>
+    </div>
+
+    <!-- ============================================================
+     STORY VIEWER
+     ============================================================ -->
+    <div id="sv">
+      <div class="sv-bars" id="svBars"></div>
+      <div class="sv-top">
+        <div class="av av36" id="svAv"></div>
+        <div>
+          <div class="sv-name" id="svName"></div>
+          <div class="sv-time" id="svTime"></div>
+        </div>
+        <button class="sv-close" onclick="closeSV()">
+          <svg viewBox="0 0 24 24">
+            <line x1="18" y1="6" x2="6" y2="18" />
+            <line x1="6" y1="6" x2="18" y2="18" />
+          </svg>
+        </button>
+      </div>
+      <div class="sv-content" id="svContent"></div>
+      <div class="sv-cap" id="svCap"></div>
+    </div>
+
+    <!-- REPOST SHEET -->
+    <div id="rpOvl" onclick="closeRP()"></div>
+    <div id="rpSheet">
+      <button class="rp-item" onclick="doRepost()">
+        <svg viewBox="0 0 24 24">
+          <polyline points="17 1 21 5 17 9" />
+          <path d="M3 11V9a4 4 0 0 1 4-4h14" />
+          <polyline points="7 23 3 19 7 15" />
+          <path d="M21 13v2a4 4 0 0 1-4 4H3" /></svg
+        >Repost
+      </button>
+      <button class="rp-item" onclick="doQuote()">
+        <svg viewBox="0 0 24 24">
+          <path
+            d="M3 21c3 0 7-1 7-8V5c0-1.25-.756-2.017-2-2H4c-1.25 0-2 .75-2 1.972V11c0 1.25.75 2 2 2 1 0 1 0 1 1v1c0 1-1 2-2 2s-1 .008-1 1.031V20c0 1 0 1 1 1z"
+          /></svg
+        >Quote Post
+      </button>
+      <button class="rp-item" style="color: #e53935" onclick="closeRP()">
+        <svg viewBox="0 0 24 24">
+          <line x1="18" y1="6" x2="6" y2="18" />
+          <line x1="6" y1="6" x2="18" y2="18" /></svg
+        >Cancel
+      </button>
+    </div>
+
+    <!-- SHARE SHEET -->
+    <div id="shareOvl" onclick="closeSH()"></div>
+    <div id="shareSheet">
+      <div
+        style="
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+        "
+      >
+        <span style="font-size: 16px; font-weight: 700">Share</span>
+        <button class="xbtn" onclick="closeSH()">
+          <svg viewBox="0 0 24 24">
+            <line x1="18" y1="6" x2="6" y2="18" />
+            <line x1="6" y1="6" x2="18" y2="18" />
+          </svg>
+        </button>
+      </div>
+      <div class="sh-grid">
+        <div class="sh-ico" onclick="shareAct('copy')">
+          <div class="sh-circle" style="background: var(--a)">🔗</div>
+          Copy Link
+        </div>
+        <div class="sh-ico" onclick="shareAct('dm')">
+          <div class="sh-circle" style="background: #e3f2fd">💬</div>
+          Send DM
+        </div>
+        <div class="sh-ico" onclick="shareAct('wa')">
+          <div class="sh-circle" style="background: #e8f5e9">📱</div>
+          WhatsApp
+        </div>
+        <div class="sh-ico" onclick="shareAct('bm')">
+          <div class="sh-circle" style="background: var(--a)">🔖</div>
+          Save
+        </div>
+      </div>
+    </div>
+
+    <!-- AUTH MODAL -->
+    <div class="ovl" id="authOvl">
+      <div class="modal" style="max-width: 400px">
+        <div class="mhdr">
+          <div>
+            <div
+              style="
+                display: flex;
+                align-items: center;
+                gap: 8px;
+                margin-bottom: 6px;
+              "
+            >
+              <div
+                style="
+                  width: 26px;
+                  height: 26px;
+                  background: var(--p);
+                  border-radius: 7px;
+                  display: flex;
+                  align-items: center;
+                  justify-content: center;
+                "
+              >
+                <svg
+                  style="
+                    width: 14px;
+                    height: 14px;
+                    stroke: #fff;
+                    fill: none;
+                    stroke-width: 2.2;
+                    stroke-linecap: round;
+                    stroke-linejoin: round;
+                  "
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    d="M12 2C8 2 4 5.5 4 9.5c0 5.5 6 10.5 8 12 2-1.5 8-6.5 8-12C20 5.5 16 2 12 2z"
+                  />
+                  <circle cx="12" cy="9.5" r="2.5" fill="white" stroke="none" />
+                </svg>
+              </div>
+              <span style="font-weight: 700; color: var(--p); font-size: 14px"
+                >Tirth Sutra</span
+              >
+            </div>
+            <h3 id="authTtl">Sign In</h3>
+          </div>
+        </div>
+        <div class="mpad">
+          <div id="loginForm">
+            <div class="fg">
+              <label class="fl">Email</label
+              ><input
+                class="fi"
+                type="email"
+                id="liEml"
+                placeholder="you@email.com"
+                autocomplete="email"
+              />
+            </div>
+            <div class="ferr" id="liEE">Valid email required</div>
+            <div class="fg">
+              <label class="fl">Password</label
+              ><input
+                class="fi"
+                type="password"
+                id="liPw"
+                placeholder="••••••••"
+                autocomplete="current-password"
+              />
+            </div>
+            <div class="ferr" id="liPE">Password required</div>
+            <div
+              class="ferr"
+              id="liErr"
+              style="margin-bottom: 10px; font-size: 13px"
+            ></div>
+            <button
+              class="btn btn-p"
+              style="width: 100%; justify-content: center"
+              id="loginBtn"
+            >
+              Sign In 🙏
+            </button>
+            <p style="text-align: center; margin-top: 14px; font-size: 13px">
+              No account?
+              <button
+                onclick="authToggle('signup')"
+                style="
+                  color: var(--p);
+                  font-weight: 600;
+                  background: none;
+                  border: none;
+                  cursor: pointer;
+                  font-size: 13px;
+                "
+              >
+                Create one
+              </button>
+            </p>
+          </div>
+          <div id="signupForm" class="hide">
+            <div class="fg">
+              <label class="fl">Full Name</label
+              ><input
+                class="fi"
+                type="text"
+                id="suNm"
+                placeholder="Your name"
+                autocomplete="name"
+              />
+            </div>
+            <div class="ferr" id="suNE">Name required</div>
+            <div class="fg">
+              <label class="fl">Email</label
+              ><input
+                class="fi"
+                type="email"
+                id="suEml"
+                placeholder="you@email.com"
+                autocomplete="email"
+              />
+            </div>
+            <div class="ferr" id="suEE">Valid email required</div>
+            <div class="fg">
+              <label class="fl">Username</label
+              ><input
+                class="fi"
+                type="text"
+                id="suHdl"
+                placeholder="username"
+                autocomplete="username"
+              />
+            </div>
+            <div class="ferr" id="suHE">Username required (min 3 chars)</div>
+            <div class="fg">
+              <label class="fl">Password</label
+              ><input
+                class="fi"
+                type="password"
+                id="suPw"
+                placeholder="Min 6 characters"
+                autocomplete="new-password"
+              />
+            </div>
+            <div class="ferr" id="suPE">Min 6 characters</div>
+            <div
+              class="ferr"
+              id="suErr"
+              style="margin-bottom: 10px; font-size: 13px"
+            ></div>
+            <button
+              class="btn btn-p"
+              style="width: 100%; justify-content: center"
+              id="signupBtn"
+            >
+              Create Account 🕉
+            </button>
+            <p style="text-align: center; margin-top: 14px; font-size: 13px">
+              Have account?
+              <button
+                onclick="authToggle('login')"
+                style="
+                  color: var(--p);
+                  font-weight: 600;
+                  background: none;
+                  border: none;
+                  cursor: pointer;
+                  font-size: 13px;
+                "
+              >
+                Sign in
+              </button>
+            </p>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- COMPOSE MODAL -->
+    <div class="ovl" id="compOvl">
+      <div class="modal">
+        <div class="mhdr">
+          <button class="xbtn" onclick="closeOvl('compOvl')">
+            <svg viewBox="0 0 24 24">
+              <line x1="18" y1="6" x2="6" y2="18" />
+              <line x1="6" y1="6" x2="18" y2="18" />
+            </svg>
+          </button>
+          <h3>New Post</h3>
+          <button class="btn btn-p btn-sm" onclick="submitPost()">Post</button>
+        </div>
+        <div class="mpad">
+          <div style="display: flex; gap: 10px">
+            <div class="av av40" id="compAv"></div>
+            <div style="flex: 1; min-width: 0">
+              <textarea
+                class="fi"
+                id="compTxt"
+                rows="4"
+                placeholder="Share your spiritual journey... 🕉"
+                style="
+                  border: none;
+                  background: none;
+                  padding: 0;
+                  font-size: 16px;
+                  resize: none;
+                  width: 100%;
+                "
+                oninput="updateCC()"
+              ></textarea>
+              <div id="compImgPrev" class="hide">
+                <div class="img-prev">
+                  <img id="compImgEl" src="" alt="" /><button
+                    class="img-rm"
+                    onclick="removeCompImg()"
+                  >
+                    <svg viewBox="0 0 24 24">
+                      <line x1="18" y1="6" x2="6" y2="18" />
+                      <line x1="6" y1="6" x2="18" y2="18" />
+                    </svg>
+                  </button>
+                </div>
+              </div>
+
+              <!-- ============================================================
+                   ★ YOUTUBE LINK INPUT
+                   Paste any YouTube URL here to embed it in your post.
+                   Supported formats:
+                     https://www.youtube.com/watch?v=VIDEO_ID
+                     https://youtu.be/VIDEO_ID
+                   ============================================================ -->
+              <div id="ytLinkRow" class="yt-link-row hide">
+                <div class="yt-link-inner">
+                  <input
+                    type="text"
+                    id="ytLinkInput"
+                    class="yt-link-input"
+                    placeholder="Paste YouTube link… e.g. https://youtube.com/watch?v=..."
+                    oninput="previewYTLink(this.value)"
+                    autocomplete="off"
+                  />
+                  <button
+                    onclick="clearYTLink()"
+                    style="
+                      color: #e53935;
+                      background: none;
+                      border: none;
+                      cursor: pointer;
+                      font-size: 12px;
+                      flex-shrink: 0;
+                      white-space: nowrap;
+                      font-family: inherit;
+                    "
+                  >
+                    ✕ Remove
+                  </button>
+                </div>
+                <!-- Live preview of the pasted YouTube link -->
+                <div id="ytLinkPreview" class="yt-link-preview hide"></div>
+              </div>
+              <!-- END YOUTUBE LINK INPUT -->
+              <div id="pollArea" class="hide poll-area">
+                <h4>Poll</h4>
+                <input
+                  class="fi"
+                  id="p1"
+                  placeholder="Option 1"
+                  style="margin-bottom: 6px"
+                />
+                <input
+                  class="fi"
+                  id="p2"
+                  placeholder="Option 2"
+                  style="margin-bottom: 6px"
+                />
+                <input class="fi" id="p3" placeholder="Option 3 (optional)" />
+                <button
+                  onclick="
+                    document.getElementById('pollArea').classList.add('hide')
+                  "
+                  style="
+                    font-size: 12px;
+                    color: #e53935;
+                    margin-top: 6px;
+                    cursor: pointer;
+                    background: none;
+                    border: none;
+                  "
+                >
+                  Remove poll
+                </button>
+              </div>
+              <div id="emojiArea" class="hide emoji-area"></div>
+            </div>
+          </div>
+          <div
+            style="
+              border-top: 1px solid var(--bd);
+              margin-top: 12px;
+              padding-top: 10px;
+              display: flex;
+              align-items: center;
+              justify-content: space-between;
+            "
+          >
+            <div style="display: flex; gap: 2px">
+              <label class="icoBtn" title="Photo"
+                ><svg viewBox="0 0 24 24">
+                  <rect x="3" y="3" width="18" height="18" rx="2" />
+                  <circle cx="8.5" cy="8.5" r="1.5" />
+                  <polyline points="21 15 16 10 5 21" /></svg
+                ><input
+                  type="file"
+                  accept="image/*"
+                  onchange="handleCompImg(event)"
+              /></label>
+              <!-- ★ YouTube embed button: click to show/hide YouTube link input -->
+              <button
+                class="icoBtn"
+                title="Add YouTube Video"
+                onclick="toggleYTInput()"
+                id="ytBtn"
+              >
+                <svg
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                >
+                  <path
+                    d="M22.54 6.42a2.78 2.78 0 0 0-1.95-1.96C18.88 4 12 4 12 4s-6.88 0-8.59.46A2.78 2.78 0 0 0 1.46 6.42 29 29 0 0 0 1 12a29 29 0 0 0 .46 5.58 2.78 2.78 0 0 0 1.95 1.96C5.12 20 12 20 12 20s6.88 0 8.59-.46a2.78 2.78 0 0 0 1.95-1.96A29 29 0 0 0 23 12a29 29 0 0 0-.46-5.58z"
+                  />
+                  <polygon
+                    points="9.75 15.02 15.5 12 9.75 8.98 9.75 15.02"
+                    fill="currentColor"
+                    stroke="none"
+                  />
+                </svg>
+              </button>
+              <button class="icoBtn" onclick="toggleEmoji()">
+                <svg viewBox="0 0 24 24">
+                  <circle cx="12" cy="12" r="10" />
+                  <path d="M8 13s1.5 2 4 2 4-2 4-2" />
+                  <line x1="9" y1="9" x2="9.01" y2="9" />
+                  <line x1="15" y1="9" x2="15.01" y2="9" />
+                </svg>
+              </button>
+              <button
+                class="icoBtn"
+                onclick="
+                  document.getElementById('pollArea').classList.toggle('hide')
+                "
+              >
+                <svg viewBox="0 0 24 24">
+                  <line x1="18" y1="20" x2="18" y2="10" />
+                  <line x1="12" y1="20" x2="12" y2="4" />
+                  <line x1="6" y1="20" x2="6" y2="14" />
+                </svg>
+              </button>
+            </div>
+            <div style="display: flex; align-items: center; gap: 8px">
+              <span id="ccNum" style="font-size: 12px; color: var(--t3)"
+                >280</span
+              >
+              <div class="char-ring" id="ccRing"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- EDIT PROFILE MODAL -->
+    <div class="ovl" id="epOvl">
+      <div class="modal">
+        <div class="mhdr">
+          <button class="xbtn" onclick="closeOvl('epOvl')">
+            <svg viewBox="0 0 24 24">
+              <line x1="18" y1="6" x2="6" y2="18" />
+              <line x1="6" y1="6" x2="18" y2="18" />
+            </svg>
+          </button>
+          <h3>Edit Profile</h3>
+          <button class="btn btn-p btn-sm" onclick="saveEP()">Save</button>
+        </div>
+        <div class="mpad">
+          <div class="ep-banner">
+            <div class="ep-banner-label">
+              <svg viewBox="0 0 24 24">
+                <path
+                  d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"
+                />
+                <circle cx="12" cy="13" r="4" />
+              </svg>
+            </div>
+            <img id="epBanner" src="" style="display: none" /><label
+              style="position: absolute; inset: 0; cursor: pointer"
+              ><input
+                type="file"
+                accept="image/*"
+                class="hide"
+                onchange="handleBanner(event)"
+            /></label>
+          </div>
+          <div class="ep-av-wrap">
+            <div class="av av80" id="epAv"></div>
+            <label class="ep-av-btn"
+              ><svg viewBox="0 0 24 24">
+                <path
+                  d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"
+                />
+                <circle cx="12" cy="13" r="4" /></svg
+              ><input
+                type="file"
+                accept="image/*"
+                class="hide"
+                onchange="handleAvUp(event)"
+            /></label>
+          </div>
+          <div class="fg">
+            <label class="fl">Name</label><input class="fi" id="epNm" />
+          </div>
+          <div class="fg">
+            <label class="fl">Bio</label
+            ><textarea
+              class="fi"
+              id="epBio"
+              rows="3"
+              placeholder="Your spiritual journey..."
+            ></textarea>
+          </div>
+          <div class="fg">
+            <label class="fl">Location</label
+            ><input class="fi" id="epLoc" placeholder="City, Country" />
+          </div>
+          <div class="fg">
+            <label class="fl">Website</label
+            ><input class="fi" id="epWeb" placeholder="https://" />
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- POST DETAIL MODAL -->
+    <div class="ovl" id="pdOvl">
+      <div class="modal" style="max-width: 580px">
+        <div class="mhdr">
+          <button class="xbtn" onclick="closeOvl('pdOvl')">
+            <svg viewBox="0 0 24 24"><polyline points="15 18 9 12 15 6" /></svg>
+          </button>
+          <h3>Post</h3>
+          <div></div>
+        </div>
+        <div id="pdContent"></div>
+      </div>
+    </div>
+
+    <!-- LIKES MODAL -->
+    <div class="ovl" id="likesOvl">
+      <div class="modal" style="max-width: 380px">
+        <div class="mhdr">
+          <button class="xbtn" onclick="closeOvl('likesOvl')">
+            <svg viewBox="0 0 24 24">
+              <line x1="18" y1="6" x2="6" y2="18" />
+              <line x1="6" y1="6" x2="18" y2="18" />
+            </svg>
+          </button>
+          <h3>Pranams 🙏</h3>
+          <div></div>
+        </div>
+        <div id="likesContent" class="mpad"></div>
+      </div>
+    </div>
+
+    <!-- FOLLOW MODAL -->
+    <div class="ovl" id="folOvl">
+      <div class="modal" style="max-width: 380px">
+        <div class="mhdr">
+          <button class="xbtn" onclick="closeOvl('folOvl')">
+            <svg viewBox="0 0 24 24">
+              <line x1="18" y1="6" x2="6" y2="18" />
+              <line x1="6" y1="6" x2="18" y2="18" />
+            </svg>
+          </button>
+          <h3 id="folTtl">Followers</h3>
+          <div></div>
+        </div>
+        <div id="folContent"></div>
+      </div>
+    </div>
+
+    <!-- UPLOAD VIDEO MODAL -->
+    <div class="ovl" id="uploadVidModal">
+      <div class="modal">
+        <div class="mhdr">
+          <button class="xbtn" onclick="closeOvl('uploadVidModal')">
+            <svg viewBox="0 0 24 24">
+              <line x1="18" y1="6" x2="6" y2="18" />
+              <line x1="6" y1="6" x2="18" y2="18" />
+            </svg>
+          </button>
+          <h3>Upload Video</h3>
+          <button class="btn btn-p btn-sm" onclick="submitVideoUpload()">
+            Publish
+          </button>
+        </div>
+        <div class="mpad">
+          <div
+            class="upload-zone"
+            id="vidUploadZone"
+            onclick="document.getElementById('vidFileIn').click()"
+            ondragover="
+              event.preventDefault();
+              this.classList.add('drag-over');
+            "
+            ondragleave="this.classList.remove('drag-over')"
+            ondrop="handleVidDrop(event)"
+          >
+            <svg viewBox="0 0 24 24">
+              <polyline points="16 16 12 12 8 16" />
+              <line x1="12" y1="12" x2="12" y2="21" />
+              <path d="M20.39 18.39A5 5 0 0 0 18 9h-1.26A8 8 0 1 0 3 16.3" />
+            </svg>
+            <p><strong>Click or drag & drop</strong> your video here</p>
+            <p style="font-size: 12px; margin-top: 4px">
+              MP4, WebM, MOV supported
+            </p>
+            <input
+              type="file"
+              id="vidFileIn"
+              accept="video/*"
+              class="hide"
+              onchange="handleVidFile(event)"
+            />
+          </div>
+          <div id="vidUploadPreview" class="hide" style="margin-bottom: 14px">
+            <video
+              id="vidPrevEl"
+              controls
+              style="
+                width: 100%;
+                border-radius: 10px;
+                max-height: 200px;
+                background: #000;
+              "
+            ></video>
+            <button
+              onclick="resetVidUpload()"
+              style="
+                font-size: 12px;
+                color: var(--p);
+                margin-top: 6px;
+                background: none;
+                border: none;
+                cursor: pointer;
+              "
+            >
+              ✕ Choose different file
+            </button>
+          </div>
+          <div class="fg">
+            <label class="fl">Video Title *</label
+            ><input
+              class="fi"
+              id="vidTitle"
+              placeholder="Enter an amazing title..."
+            />
+          </div>
+          <div class="fg">
+            <label class="fl">Description</label
+            ><textarea
+              class="fi"
+              id="vidDesc"
+              rows="3"
+              placeholder="Tell viewers what this video is about..."
+            ></textarea>
+          </div>
+          <div class="fg">
+            <label class="fl">Category</label
+            ><select class="fi" id="vidCat">
+              <option value="Spiritual">🕉 Spiritual</option>
+              <option value="Pilgrimage">Pilgrimage</option>
+              <option value="Discourse">Discourse</option>
+              <option value="Bhajan">Bhajan & Music</option>
+              <option value="Aarti">Aarti</option>
+              <option value="Meditation">Meditation</option>
+              <option value="Other">Other</option>
+            </select>
+          </div>
+          <div class="fg">
+            <label class="fl">Thumbnail (optional)</label>
+            <div class="thumb-prev" id="thumbPrevWrap">
+              <img
+                id="thumbPrevImg"
+                src=""
+                alt=""
+                style="
+                  display: none;
+                  width: 100%;
+                  height: 100%;
+                  object-fit: cover;
+                "
+              />
+              <label
+                id="thumbPrevLabel"
+                style="
+                  cursor: pointer;
+                  display: flex;
+                  flex-direction: column;
+                  align-items: center;
+                  gap: 8px;
+                  color: var(--t3);
+                "
+              >
+                <svg
+                  style="
+                    width: 32px;
+                    height: 32px;
+                    stroke: var(--t3);
+                    fill: none;
+                    stroke-width: 1.5;
+                    stroke-linecap: round;
+                    stroke-linejoin: round;
+                  "
+                  viewBox="0 0 24 24"
+                >
+                  <rect x="3" y="3" width="18" height="18" rx="2" />
+                  <circle cx="8.5" cy="8.5" r="1.5" />
+                  <polyline points="21 15 16 10 5 21" />
+                </svg>
+                <span style="font-size: 13px">Upload thumbnail</span>
+                <input
+                  type="file"
+                  accept="image/*"
+                  class="hide"
+                  onchange="handleThumb(event)"
+                />
+              </label>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ADD STORY MODAL -->
+    <div class="ovl" id="addStoryModal">
+      <div class="modal" style="max-width: 420px">
+        <div class="mhdr">
+          <button class="xbtn" onclick="closeOvl('addStoryModal')">
+            <svg viewBox="0 0 24 24">
+              <line x1="18" y1="6" x2="6" y2="18" />
+              <line x1="6" y1="6" x2="18" y2="18" />
+            </svg>
+          </button>
+          <h3>Add Story</h3>
+          <button class="btn btn-p btn-sm" onclick="submitStory()">
+            Share
+          </button>
+        </div>
+        <div class="mpad">
+          <div
+            style="
+              border: 2px dashed var(--bd2);
+              border-radius: 12px;
+              padding: 20px;
+              text-align: center;
+              cursor: pointer;
+              transition: all 0.18s;
+              background: var(--bg2);
+            "
+            onclick="document.getElementById('storyFileIn').click()"
+          >
+            <svg
+              style="
+                width: 32px;
+                height: 32px;
+                stroke: var(--t3);
+                fill: none;
+                stroke-width: 1.5;
+                margin: 0 auto 8px;
+                display: block;
+              "
+              viewBox="0 0 24 24"
+            >
+              <polyline points="16 16 12 12 8 16" />
+              <line x1="12" y1="12" x2="12" y2="21" />
+              <path d="M20.39 18.39A5 5 0 0 0 18 9h-1.26A8 8 0 1 0 3 16.3" />
+            </svg>
+            <p style="font-size: 14px; color: var(--t3)">
+              <strong style="color: var(--p)">Click to upload</strong> a photo
+              or video
+            </p>
+            <input
+              type="file"
+              id="storyFileIn"
+              accept="image/*,video/*"
+              class="hide"
+              onchange="handleStoryFile(event)"
+            />
+          </div>
+          <div
+            id="storyPrev"
+            class="hide"
+            style="
+              margin: 12px 0;
+              border-radius: 10px;
+              overflow: hidden;
+              max-height: 200px;
+            "
+          >
+            <img
+              id="storyPrevImg"
+              src=""
+              style="width: 100%; display: none; object-fit: cover"
+            />
+            <video
+              id="storyPrevVid"
+              controls
+              style="
+                width: 100%;
+                display: none;
+                background: #000;
+                max-height: 200px;
+              "
+            ></video>
+          </div>
+          <div class="fg" style="margin-top: 12px">
+            <label class="fl">Caption</label
+            ><input class="fi" id="storyCap" placeholder="Add a caption..." />
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- GO LIVE MODAL -->
+    <div class="ovl" id="goLiveModal">
+      <div class="modal" style="max-width: 440px">
+        <div class="mhdr">
+          <button class="xbtn" onclick="closeOvl('goLiveModal')">
+            <svg viewBox="0 0 24 24">
+              <line x1="18" y1="6" x2="6" y2="18" />
+              <line x1="6" y1="6" x2="18" y2="18" />
+            </svg>
+          </button>
+          <h3>🔴 Go Live</h3>
+          <button class="btn btn-red btn-sm" onclick="startLive()">
+            Start Live
+          </button>
+        </div>
+        <div class="mpad">
+          <div
+            style="
+              width: 100%;
+              height: 180px;
+              background: #111;
+              border-radius: 12px;
+              overflow: hidden;
+              margin-bottom: 12px;
+              position: relative;
+              display: flex;
+              align-items: center;
+              justify-content: center;
+            "
+          >
+            <div
+              id="livePreviewPlaceholder"
+              style="
+                color: rgba(255, 255, 255, 0.4);
+                font-size: 14px;
+                text-align: center;
+              "
+            >
+              <div style="font-size: 32px; margin-bottom: 8px">📹</div>
+              <div>Upload a video as live source</div>
+            </div>
+            <video
+              id="livePreviewVid"
+              style="
+                display: none;
+                width: 100%;
+                height: 100%;
+                object-fit: cover;
+                border-radius: 12px;
+              "
+            ></video>
+          </div>
+          <div class="fg">
+            <label class="fl">Stream Title *</label
+            ><input
+              class="fi"
+              id="liveTitle"
+              placeholder="What are you streaming today?"
+            />
+          </div>
+          <div class="fg">
+            <label class="fl">Upload local video as source (optional)</label
+            ><input
+              type="file"
+              accept="video/*"
+              class="fi"
+              style="padding: 6px; cursor: pointer"
+              onchange="handleLiveFile(event)"
+            />
+          </div>
+          <div class="fg">
+            <label class="fl">Mock viewer count</label
+            ><input
+              class="fi"
+              type="number"
+              id="liveViewers"
+              value="127"
+              min="1"
+            />
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ============================================================
+     ★ MOBILE DRAWER OVERLAY + DRAWER
+     ============================================================ -->
+    <div id="drawerOverlay" onclick="closeDrawer()"></div>
+
+    <nav id="mobileDrawer" aria-label="Mobile navigation">
+      <div class="drawer-header">
+        <!-- =========================================================
+         ★ MOBILE DRAWER LOGO
+         To use YOUR logo: replace the SVG below with:
+         <img src="images/logo.png" alt="Mandir Community Logo" style="width:40px;height:40px;border-radius:10px;object-fit:cover">
+         ========================================================= -->
+        <div class="drawer-logo-box">
+          <!-- DEFAULT LOGO ICON — replace with your image -->
+          <svg
+            style="
+              width: 22px;
+              height: 22px;
+              stroke: #fff;
+              fill: none;
+              stroke-width: 2.2;
+              stroke-linecap: round;
+              stroke-linejoin: round;
+            "
+            viewBox="0 0 24 24"
+          >
+            <path
+              d="M12 2C8 2 4 5.5 4 9.5c0 5.5 6 10.5 8 12 2-1.5 8-6.5 8-12C20 5.5 16 2 12 2z"
+            />
+            <circle cx="12" cy="9.5" r="2.5" fill="white" stroke="none" />
+          </svg>
+        </div>
+        <div class="drawer-logo-info">
+          <strong>Tirth Sutra</strong>
+          <span>Mandir Community</span>
+        </div>
+      </div>
+
+      <div class="drawer-nav">
+        <button class="drawer-item on" id="dHome" onclick="gpAndClose('home')">
+          <svg viewBox="0 0 24 24">
+            <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
+            <polyline points="9 22 9 12 15 12 15 22" />
+          </svg>
+          Home
+        </button>
+        <button class="drawer-item" id="dMandir" onclick="gpAndClose('mandir')">
+          <svg viewBox="0 0 24 24">
+            <path d="M3 22V8l9-6 9 6v14" />
+            <path d="M9 22V12h6v10" />
+            <path d="M12 2v2" />
+          </svg>
+          Mandir Community
+          <span class="drawer-badge">New</span>
+        </button>
+        <button class="drawer-item" id="dVideo" onclick="gpAndClose('video')">
+          <svg viewBox="0 0 24 24">
+            <polygon points="23 7 16 12 23 17 23 7" />
+            <rect x="1" y="5" width="15" height="14" rx="2" />
+          </svg>
+          Tirth Tube
+        </button>
+        <button class="drawer-item" id="dSearch" onclick="gpAndClose('search')">
+          <svg viewBox="0 0 24 24">
+            <circle cx="11" cy="11" r="8" />
+            <line x1="21" y1="21" x2="16.65" y2="16.65" />
+          </svg>
+          Search
+        </button>
+        <button class="drawer-item" id="dNotifs" onclick="gpAndClose('notifs')">
+          <svg viewBox="0 0 24 24">
+            <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9" />
+            <path d="M13.73 21a2 2 0 0 1-3.46 0" />
+          </svg>
+          Notifications
+        </button>
+        <button
+          class="drawer-item"
+          id="dMessages"
+          onclick="gpAndClose('messages')"
+        >
+          <svg viewBox="0 0 24 24">
+            <path
+              d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"
+            />
+            <polyline points="22,6 12,13 2,6" />
+          </svg>
+          Messages
+        </button>
+        <!-- CHATS DRAWER -->
+        <button class="drawer-item" id="dChats" onclick="gpAndClose('chats')">
+          <svg viewBox="0 0 24 24">
+            <path
+              d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"
+            />
+            <circle cx="9" cy="10" r="1" fill="currentColor" stroke="none" />
+            <circle cx="12" cy="10" r="1" fill="currentColor" stroke="none" />
+            <circle cx="15" cy="10" r="1" fill="currentColor" stroke="none" />
+          </svg>
+          Chats
+        </button>
+        <button
+          class="drawer-item"
+          id="dBookmarks"
+          onclick="gpAndClose('bookmarks')"
+        >
+          <svg viewBox="0 0 24 24">
+            <path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z" />
+          </svg>
+          Bookmarks
+        </button>
+        <button
+          class="drawer-item"
+          id="dProfile"
+          onclick="gpAndClose('profile')"
+        >
+          <svg viewBox="0 0 24 24">
+            <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
+            <circle cx="12" cy="7" r="4" />
+          </svg>
+          Profile
+        </button>
+
+        <div class="drawer-divider"></div>
+
+        <button
+          class="drawer-item"
+          onclick="
+            toggleDark();
+            closeDrawer();
+          "
+        >
+          <svg id="dThemeIco" viewBox="0 0 24 24">
+            <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" />
+          </svg>
+          Theme
+        </button>
+        <button
+          class="drawer-item"
+          onclick="
+            auth(() => openOvl('compOvl'));
+            closeDrawer();
+          "
+        >
+          <svg viewBox="0 0 24 24">
+            <line x1="12" y1="5" x2="12" y2="19" />
+            <line x1="5" y1="12" x2="19" y2="12" />
+          </svg>
+          New Post
+        </button>
+        <button class="drawer-item" id="dAuthBtn" onclick="handleDrawerAuth()">
+          <svg viewBox="0 0 24 24">
+            <path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4" />
+            <polyline points="10 17 15 12 10 7" />
+            <line x1="15" y1="12" x2="3" y2="12" />
+          </svg>
+          <span id="dAuthTxt">Sign In</span>
+        </button>
+      </div>
+
+      <div class="drawer-footer" id="drawerFooter">
+        <div class="av av36" id="drawerAv"></div>
+        <div class="drawer-footer-info">
+          <strong id="drawerUserName">Guest</strong>
+          <span id="drawerUserHandle">@guest</span>
+        </div>
+      </div>
+    </nav>
+
+    <!-- ============================================================
+     APP
+     ============================================================ -->
+    <div id="app">
+      <!-- ★ DESKTOP SIDEBAR -->
+      <nav id="sidebar" aria-label="Desktop navigation">
+        <!-- =========================================================
+         ★ DESKTOP SIDEBAR LOGO AREA
+         To use YOUR logo: replace the SVG inside .sidebar-logo-img with:
+         <img src="images/logo.png" alt="Mandir Community Logo">
+         ========================================================= -->
+        <div
+          class="sidebar-logo-area"
+          onclick="gp('home')"
+          style="cursor: pointer"
+        >
+          <div class="sidebar-logo-img">
+            <!-- DEFAULT SVG LOGO — replace contents with your <img> tag -->
+            <img src="Brand_Logo.jpg" alt="Mandir Community Logo" />
+          </div>
+          <div class="sidebar-logo-text">
+            <strong>Tirth Sutra</strong>
+            <span>Mandir Community</span>
+          </div>
+        </div>
+
+        <div class="sidebar-nav">
+          <button class="sb on" id="snHome" onclick="gp('home')">
+            <svg viewBox="0 0 24 24">
+              <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
+              <polyline points="9 22 9 12 15 12 15 22" />
+            </svg>
+            <span class="sb-label">Home</span>
+          </button>
+          <!-- ★ MANDIR COMMUNITY TAB -->
+          <button
+            class="sb"
+            id="snMandir"
+            onclick="gp('mandir')"
+            style="position: relative"
+          >
+            <svg viewBox="0 0 24 24">
+              <path d="M3 22V8l9-6 9 6v14" />
+              <path d="M9 22V12h6v10" />
+              <path d="M12 2v2" />
+            </svg>
+            <span class="sb-label">Mandir Community</span>
+            <span
+              style="
+                position: absolute;
+                top: 8px;
+                right: 10px;
+                background: var(--ad);
+                color: #fff;
+                font-size: 10px;
+                font-weight: 700;
+                padding: 1px 6px;
+                border-radius: 10px;
+              "
+              class="sb-label"
+              >New</span
+            >
+          </button>
+          <button class="sb" id="snVideo" onclick="gp('video')">
+            <svg viewBox="0 0 24 24">
+              <polygon points="23 7 16 12 23 17 23 7" />
+              <rect x="1" y="5" width="15" height="14" rx="2" />
+            </svg>
+            <span class="sb-label">Tirth Tube</span>
+          </button>
+          <button class="sb" id="snSearch" onclick="gp('search')">
+            <svg viewBox="0 0 24 24">
+              <circle cx="11" cy="11" r="8" />
+              <line x1="21" y1="21" x2="16.65" y2="16.65" />
+            </svg>
+            <span class="sb-label">Search</span>
+          </button>
+          <button class="sb" id="snNotifs" onclick="gp('notifs')">
+            <svg viewBox="0 0 24 24">
+              <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9" />
+              <path d="M13.73 21a2 2 0 0 1-3.46 0" />
+            </svg>
+            <span class="sb-label">Notifications</span>
+            <div class="ndot" id="ndot"></div>
+          </button>
+          <!-- CHATS SIDEBAR -->
+          <button class="sb" id="snChats" onclick="gp('chats')">
+            <svg viewBox="0 0 24 24">
+              <path
+                d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"
+              />
+              <circle cx="9" cy="10" r="1" fill="currentColor" stroke="none" />
+              <circle cx="12" cy="10" r="1" fill="currentColor" stroke="none" />
+              <circle cx="15" cy="10" r="1" fill="currentColor" stroke="none" />
+            </svg>
+            <span class="sb-label">Chats</span>
+          </button>
+          <button class="sb" id="snMessages" onclick="gp('messages')">
+            <svg viewBox="0 0 24 24">
+              <path
+                d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"
+              />
+              <polyline points="22,6 12,13 2,6" />
+            </svg>
+            <span class="sb-label">Messages</span>
+          </button>
+          <button class="sb" id="snBookmarks" onclick="gp('bookmarks')">
+            <svg viewBox="0 0 24 24">
+              <path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z" />
+            </svg>
+            <span class="sb-label">Bookmarks</span>
+          </button>
+          <button class="sb" id="snProfile" onclick="gp('profile')">
+            <svg viewBox="0 0 24 24">
+              <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
+              <circle cx="12" cy="7" r="4" />
+            </svg>
+            <span class="sb-label">Profile</span>
+          </button>
+        </div>
+
+        <div style="padding: 8px 0">
+          <button
+            class="sb"
+            onclick="auth(() => openOvl('compOvl'))"
+            style="
+              background: var(--p);
+              color: #fff;
+              border-radius: 12px;
+              margin: 0 8px;
+              width: calc(100% - 16px);
+            "
+          >
+            <svg viewBox="0 0 24 24">
+              <line x1="12" y1="5" x2="12" y2="19" />
+              <line x1="5" y1="12" x2="19" y2="12" />
+            </svg>
+            <span class="sb-label">New Post</span>
+          </button>
+          <button class="sb" onclick="toggleDark()" style="margin: 4px 0">
+            <svg id="thIco" viewBox="0 0 24 24">
+              <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" />
+            </svg>
+            <span class="sb-label">Theme</span>
+          </button>
+        </div>
+
+        <div class="sidebar-footer">
+          <div
+            class="av av36"
+            id="sbAv"
+            onclick="gp('profile')"
+            style="cursor: pointer"
+          ></div>
+          <div class="sidebar-footer-text">
+            <strong id="sbUserName">Guest</strong>
+            <span id="sbUserHandle">@guest</span>
+          </div>
+        </div>
+      </nav>
+
+      <!-- MAIN AREA -->
+      <div id="mainArea">
+        <div id="feedWrap">
+          <!-- HOME PAGE -->
+          <div class="page on" id="pgHome">
+            <div class="fhdr">
+              <div class="fhdr-row">
+                <span class="fhdr-title">Sangha Feed</span>
+                <button
+                  class="sb"
+                  style="width: 32px; height: 32px; border-radius: 8px"
+                  onclick="refreshFeed()"
+                >
+                  <svg
+                    style="width: 16px; height: 16px"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="2"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                  >
+                    <polyline points="23 4 23 10 17 10" />
+                    <polyline points="1 20 1 14 7 14" />
+                    <path
+                      d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"
+                    />
+                  </svg>
+                </button>
+              </div>
+              <div class="ftabs">
+                <button class="ftab on" onclick="setFTab('forYou', this)">
+                  For You
+                </button>
+                <button class="ftab" onclick="setFTab('following', this)">
+                  Following
+                </button>
+                <button class="ftab" onclick="setFTab('trending', this)">
+                  🔥 Trending
+                </button>
+              </div>
+            </div>
+            <div class="stories" id="storiesRow"></div>
+            <div class="composer">
+              <div
+                class="av av40"
+                id="inlineAv"
+                onclick="auth(() => openOvl('compOvl'))"
+                style="cursor: pointer"
+              ></div>
+              <div class="cmp-right">
+                <textarea
+                  class="cmp-ta"
+                  rows="1"
+                  placeholder="Share your spiritual journey... 🕉"
+                  onclick="auth(() => openOvl('compOvl'))"
+                  readonly
+                ></textarea>
+                <div class="cmp-bar">
+                  <div class="cmp-icons">
+                    <label class="icoBtn"
+                      ><svg viewBox="0 0 24 24">
+                        <rect x="3" y="3" width="18" height="18" rx="2" />
+                        <circle cx="8.5" cy="8.5" r="1.5" />
+                        <polyline points="21 15 16 10 5 21" /></svg
+                      ><input
+                        type="file"
+                        accept="image/*"
+                        onchange="
+                          auth(() => {
+                            handleCompImg(event);
+                            openOvl('compOvl');
+                          })
+                        "
+                    /></label>
+                    <button
+                      class="icoBtn"
+                      onclick="auth(() => openOvl('compOvl'))"
+                    >
+                      <svg viewBox="0 0 24 24">
+                        <circle cx="12" cy="12" r="10" />
+                        <path d="M8 13s1.5 2 4 2 4-2 4-2" />
+                        <line x1="9" y1="9" x2="9.01" y2="9" />
+                        <line x1="15" y1="9" x2="15.01" y2="9" />
+                      </svg>
+                    </button>
+                  </div>
+                  <button
+                    class="btn btn-p btn-sm"
+                    onclick="auth(() => openOvl('compOvl'))"
+                  >
+                    Post 🙏
+                  </button>
+                </div>
+              </div>
+            </div>
+            <div id="feedSkel">
+              <div
+                style="
+                  padding: 14px 16px;
+                  border-bottom: 1px solid var(--bd);
+                  display: flex;
+                  gap: 10px;
+                "
+              >
+                <div
+                  class="skel"
+                  style="
+                    width: 40px;
+                    height: 40px;
+                    border-radius: 50%;
+                    flex-shrink: 0;
+                  "
+                ></div>
+                <div style="flex: 1">
+                  <div
+                    class="skel"
+                    style="height: 12px; width: 130px; margin-bottom: 8px"
+                  ></div>
+                  <div
+                    class="skel"
+                    style="height: 12px; margin-bottom: 6px"
+                  ></div>
+                  <div class="skel" style="height: 12px; width: 65%"></div>
+                </div>
+              </div>
+              <div
+                style="
+                  padding: 14px 16px;
+                  border-bottom: 1px solid var(--bd);
+                  display: flex;
+                  gap: 10px;
+                "
+              >
+                <div
+                  class="skel"
+                  style="
+                    width: 40px;
+                    height: 40px;
+                    border-radius: 50%;
+                    flex-shrink: 0;
+                  "
+                ></div>
+                <div style="flex: 1">
+                  <div
+                    class="skel"
+                    style="height: 12px; width: 110px; margin-bottom: 8px"
+                  ></div>
+                  <div
+                    class="skel"
+                    style="
+                      height: 80px;
+                      border-radius: 10px;
+                      margin-bottom: 6px;
+                    "
+                  ></div>
+                </div>
+              </div>
+            </div>
+            <div id="feedPosts"></div>
+          </div>
+
+          <!-- ★ MANDIR COMMUNITY PAGE -->
+          <div class="page hide" id="pgMandir">
+            <div class="fhdr">
+              <div class="fhdr-row">
+                <span class="fhdr-title"> Mandir Community</span>
+                <button
+                  class="btn btn-p btn-sm"
+                  onclick="auth(() => openOvl('compOvl'))"
+                >
+                  + Post
+                </button>
+              </div>
+            </div>
+
+            <!-- Hero -->
+            <div class="mandir-hero">
+              <div class="mandir-hero-icon"></div>
+              <h1>Welcome to Mandir Community</h1>
+              <p>
+                Connect with devotees, discover sacred temples, join spiritual
+                events and share your dharmic journey.
+              </p>
+              <div class="mandir-hero-btns">
+                <button
+                  class="btn"
+                  style="background: #fff; color: var(--p); font-weight: 700"
+                  onclick="
+                    auth(() => MC.info('You joined Mandir Community! 🙏'))
+                  "
+                >
+                  Join Community
+                </button>
+                <button
+                  class="btn"
+                  style="
+                    background: rgba(255, 255, 255, 0.15);
+                    color: #fff;
+                    border: 1.5px solid rgba(255, 255, 255, 0.4);
+                  "
+                  onclick="gp('home')"
+                >
+                  Explore Feed
+                </button>
+              </div>
+            </div>
+
+            <!-- Stats bar -->
+            <div class="mandir-stats">
+              <div class="mandir-stat">
+                <strong>2.4L+</strong><span>Devotees</span>
+              </div>
+              <div class="mandir-stat">
+                <strong>850+</strong><span>Temples</span>
+              </div>
+              <div class="mandir-stat">
+                <strong>48</strong><span>Sacred Tirths</span>
+              </div>
+              <div class="mandir-stat">
+                <strong>Daily</strong><span>Pujas Live</span>
+              </div>
+            </div>
+
+            <!-- ============================================================
+                 ★ FEATURED TEMPLES — IMAGE GRID
+                 HOW TO ADD YOUR OWN TEMPLE IMAGES:
+                 1. Create a folder called: images/temples/
+                    (place it next to this HTML file)
+                 2. Add your images inside that folder, e.g.:
+                      images/temples/kashi-vishwanath.jpg
+                      images/temples/tirupati.jpg
+                      images/temples/kedarnath.jpg
+                 3. Update the src="" path in each temple card below
+                 4. Recommended image size: 400×280px or any 16:9 ratio
+                 5. Supported formats: .jpg  .jpeg  .png  .webp
+                 6. To add more temples: copy any temple-img-card block
+                 ============================================================ -->
+            <div class="mandir-section">
+              <div class="mandir-section-title">
+                <h3>Featured Temples</h3>
+                <button class="btn btn-sm btn-o" onclick="gp('video')">
+                  Live Darshan →
+                </button>
+              </div>
+
+              <!-- Scrollable quick-chips row (JS-rendered, unchanged) -->
+              <div class="temple-scroll" id="templeScroll"></div>
+
+              <!-- ── IMAGE GRID ── -->
+              <div class="temple-img-grid" style="margin-top: 16px">
+                <!-- ★ TEMPLE 1 — KASHI VISHWANATH
+                     Image path: images/temples/kashi-vishwanath.jpg
+                     Replace the src below with your actual file path -->
+                <div
+                  class="temple-img-card"
+                  onclick="
+                    MC.info('Kashi Vishwanath — The Eternal City of Light 🕉')
+                  "
+                >
+                  <div class="temple-img-wrap">
+                    <img
+                      src="images/temples/kashi-vishwanath.jpg"
+                      alt="Kashi Vishwanath Temple"
+                      onerror="
+                        this.style.display = 'none';
+                        this.nextElementSibling.style.display = 'flex';
+                      "
+                    />
+                    <div class="temple-img-placeholder" style="display: none">
+                      🕉
+                    </div>
+                    <span class="temple-img-badge">Jyotirlinga</span>
+                  </div>
+                  <div class="temple-img-body">
+                    <div class="temple-img-name">Kashi Vishwanath</div>
+                    <div class="temple-img-desc">
+                      The divine abode of Lord Shiva on the banks of the sacred
+                      Ganga in Varanasi.
+                    </div>
+                    <div class="temple-img-loc">
+                      <svg viewBox="0 0 24 24">
+                        <path
+                          d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"
+                        />
+                        <circle cx="12" cy="10" r="3" />
+                      </svg>
+                      Varanasi, UP
+                    </div>
+                  </div>
+                </div>
+
+                <!-- ★ TEMPLE 2 — TIRUPATI BALAJI
+                     Image path: images/temples/tirupati.jpg -->
+                <div
+                  class="temple-img-card"
+                  onclick="
+                    MC.info('Tirupati Balaji — The Wealthiest Temple on Earth ')
+                  "
+                >
+                  <div class="temple-img-wrap">
+                    <img
+                      src="images/temples/tirupati.jpg"
+                      alt="Tirupati Balaji Temple"
+                      onerror="
+                        this.style.display = 'none';
+                        this.nextElementSibling.style.display = 'flex';
+                      "
+                    />
+                    <div
+                      class="temple-img-placeholder"
+                      style="display: none"
+                    ></div>
+                    <span class="temple-img-badge">Vaishnava</span>
+                  </div>
+                  <div class="temple-img-body">
+                    <div class="temple-img-name">Tirupati Balaji</div>
+                    <div class="temple-img-desc">
+                      Venkateshwara temple, the richest and most visited
+                      pilgrimage site in the world.
+                    </div>
+                    <div class="temple-img-loc">
+                      <svg viewBox="0 0 24 24">
+                        <path
+                          d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"
+                        />
+                        <circle cx="12" cy="10" r="3" />
+                      </svg>
+                      Tirupati, AP
+                    </div>
+                  </div>
+                </div>
+
+                <!-- ★ TEMPLE 3 — KEDARNATH
+                     Image path: images/temples/kedarnath.jpg -->
+                <div
+                  class="temple-img-card"
+                  onclick="
+                    MC.info('Kedarnath — Gateway to Lord Shiva at 3583m 🏔')
+                  "
+                >
+                  <div class="temple-img-wrap">
+                    <img
+                      src="images/temples/kedarnath.jpg"
+                      alt="Kedarnath Temple"
+                      onerror="
+                        this.style.display = 'none';
+                        this.nextElementSibling.style.display = 'flex';
+                      "
+                    />
+                    <div class="temple-img-placeholder" style="display: none">
+                      🏔
+                    </div>
+                    <span class="temple-img-badge">Char Dham</span>
+                  </div>
+                  <div class="temple-img-body">
+                    <div class="temple-img-name">Kedarnath</div>
+                    <div class="temple-img-desc">
+                      Ancient Shiva temple nestled in the snow-capped Himalayas
+                      at 3583m altitude.
+                    </div>
+                    <div class="temple-img-loc">
+                      <svg viewBox="0 0 24 24">
+                        <path
+                          d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"
+                        />
+                        <circle cx="12" cy="10" r="3" />
+                      </svg>
+                      Rudraprayag, UK
+                    </div>
+                  </div>
+                </div>
+
+                <!-- ★ TEMPLE 4 — SOMNATH
+                     Image path: images/temples/somnath.jpg -->
+                <div
+                  class="temple-img-card"
+                  onclick="MC.info('Somnath — First among the Jyotirlingas 🌊')"
+                >
+                  <div class="temple-img-wrap">
+                    <img
+                      src="images/temples/somnath.jpg"
+                      alt="Somnath Temple"
+                      onerror="
+                        this.style.display = 'none';
+                        this.nextElementSibling.style.display = 'flex';
+                      "
+                    />
+                    <div class="temple-img-placeholder" style="display: none">
+                      🌊
+                    </div>
+                    <span class="temple-img-badge">Jyotirlinga</span>
+                  </div>
+                  <div class="temple-img-body">
+                    <div class="temple-img-name">Somnath</div>
+                    <div class="temple-img-desc">
+                      First among the 12 Jyotirlingas, standing gloriously on
+                      the shores of the Arabian Sea.
+                    </div>
+                    <div class="temple-img-loc">
+                      <svg viewBox="0 0 24 24">
+                        <path
+                          d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"
+                        />
+                        <circle cx="12" cy="10" r="3" />
+                      </svg>
+                      Veraval, Gujarat
+                    </div>
+                  </div>
+                </div>
+
+                <!-- ★ TEMPLE 5 — MEENAKSHI AMMAN
+                     Image path: images/temples/meenakshi.jpg -->
+                <div
+                  class="temple-img-card"
+                  onclick="
+                    MC.info('Meenakshi Amman — 33,000 sacred sculptures 🌺')
+                  "
+                >
+                  <div class="temple-img-wrap">
+                    <img
+                      src="images/temples/meenakshi.jpg"
+                      alt="Meenakshi Amman Temple"
+                      onerror="
+                        this.style.display = 'none';
+                        this.nextElementSibling.style.display = 'flex';
+                      "
+                    />
+                    <div class="temple-img-placeholder" style="display: none">
+                      🌺
+                    </div>
+                    <span class="temple-img-badge">Shakti Peetha</span>
+                  </div>
+                  <div class="temple-img-body">
+                    <div class="temple-img-name">Meenakshi Amman</div>
+                    <div class="temple-img-desc">
+                      Magnificent Dravidian temple with towering gopurams and
+                      33,000 sacred sculptures.
+                    </div>
+                    <div class="temple-img-loc">
+                      <svg viewBox="0 0 24 24">
+                        <path
+                          d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"
+                        />
+                        <circle cx="12" cy="10" r="3" />
+                      </svg>
+                      Madurai, TN
+                    </div>
+                  </div>
+                </div>
+
+                <!-- ★ TEMPLE 6 — RAM MANDIR AYODHYA
+                     Image path: images/temples/ram-mandir.jpg -->
+                <div
+                  class="temple-img-card"
+                  onclick="MC.info('Ram Mandir — Birthplace of Lord Ram 🏹')"
+                >
+                  <div class="temple-img-wrap">
+                    <img
+                      src="images/temples/ram-mandir.jpg"
+                      alt="Ram Mandir Ayodhya"
+                      onerror="
+                        this.style.display = 'none';
+                        this.nextElementSibling.style.display = 'flex';
+                      "
+                    />
+                    <div class="temple-img-placeholder" style="display: none">
+                      🏹
+                    </div>
+                    <span class="temple-img-badge">Ram Janmabhoomi</span>
+                  </div>
+                  <div class="temple-img-body">
+                    <div class="temple-img-name">Ram Mandir, Ayodhya</div>
+                    <div class="temple-img-desc">
+                      The sacred birthplace of Lord Ram — the grand newly built
+                      temple at Ayodhya Dham.
+                    </div>
+                    <div class="temple-img-loc">
+                      <svg viewBox="0 0 24 24">
+                        <path
+                          d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"
+                        />
+                        <circle cx="12" cy="10" r="3" />
+                      </svg>
+                      Ayodhya, UP
+                    </div>
+                  </div>
+                </div>
+
+                <!-- ★ ADD MORE TEMPLES HERE ▼
+                     Copy this block and update the image path and text:
+                <div class="temple-img-card" onclick="MC.info('YOUR TEMPLE NAME 🛕')">
+                  <div class="temple-img-wrap">
+                    <img
+                      src="images/temples/YOUR_IMAGE.jpg"
+                      alt="Your Temple Name"
+                      onerror="this.style.display='none';this.nextElementSibling.style.display='flex'">
+                    <div class="temple-img-placeholder" style="display:none">🛕</div>
+                    <span class="temple-img-badge">Badge Text</span>
+                  </div>
+                  <div class="temple-img-body">
+                    <div class="temple-img-name">Temple Name</div>
+                    <div class="temple-img-desc">Short description about this temple.</div>
+                    <div class="temple-img-loc">
+                      <svg viewBox="0 0 24 24"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
+                      City, State
+                    </div>
+                  </div>
+                </div>
+                -->
+              </div>
+              <!-- END TEMPLE IMAGE GRID -->
+            </div>
+
+            <!-- Upcoming Events -->
+            <div class="mandir-section">
+              <div class="mandir-section-title">
+                <h3>📅 Upcoming Utsavs</h3>
+              </div>
+              <div id="eventsList"></div>
+            </div>
+
+            <!-- Verified Sants -->
+            <div class="mandir-section">
+              <div class="mandir-section-title">
+                <h3>Verified Sants</h3>
+                <button class="btn btn-sm btn-o" onclick="gp('search')">
+                  See All →
+                </button>
+              </div>
+              <div class="sant-grid" id="santGrid"></div>
+            </div>
+
+            <!-- Community Discussions -->
+            <div class="mandir-section">
+              <div class="mandir-section-title">
+                <h3>💬 Community Discussions</h3>
+                <button
+                  class="btn btn-sm btn-o"
+                  onclick="auth(() => openOvl('compOvl'))"
+                >
+                  + New
+                </button>
+              </div>
+              <div id="mandirDiscussions"></div>
+            </div>
+
+            <!-- Join Banner -->
+            <div class="mandir-join-banner">
+              <h3>🕉 Become a Sattvic Seeker</h3>
+              <p>
+                Sign in to participate in discussions, follow Sants, and get
+                daily spiritual content.
+              </p>
+              <button
+                class="btn"
+                style="background: #fff; color: var(--p); font-weight: 700"
+                onclick="openOvl('authOvl')"
+              >
+                Sign In / Join Free
+              </button>
+            </div>
+
+            <!-- Padding bottom -->
+            <div style="height: 24px"></div>
+          </div>
+
+          <!-- VIDEO PAGE -->
+          <div class="page hide" id="pgVideo">
+            <div class="vid-hdr">
+              <div class="vid-hdr-row">
+                <span class="vid-hdr-title">🎬 Tirth Tube</span>
+                <div style="display: flex; gap: 6px">
+                  <button
+                    class="btn btn-red btn-sm"
+                    onclick="auth(() => openOvl('goLiveModal'))"
+                  >
+                    <svg
+                      style="
+                        width: 13px;
+                        height: 13px;
+                        stroke: #fff;
+                        fill: none;
+                        stroke-width: 2;
+                        stroke-linecap: round;
+                        stroke-linejoin: round;
+                        pointer-events: none;
+                      "
+                      viewBox="0 0 24 24"
+                    >
+                      <circle cx="12" cy="12" r="10" />
+                      <circle
+                        cx="12"
+                        cy="12"
+                        r="3"
+                        fill="#fff"
+                        stroke="none"
+                      /></svg
+                    >Go Live
+                  </button>
+                  <button
+                    class="btn btn-p btn-sm"
+                    onclick="auth(() => openOvl('uploadVidModal'))"
+                  >
+                    <svg
+                      style="
+                        width: 13px;
+                        height: 13px;
+                        stroke: #fff;
+                        fill: none;
+                        stroke-width: 2;
+                        stroke-linecap: round;
+                        stroke-linejoin: round;
+                        pointer-events: none;
+                      "
+                      viewBox="0 0 24 24"
+                    >
+                      <polyline points="16 16 12 12 8 16" />
+                      <line x1="12" y1="12" x2="12" y2="21" />
+                      <path
+                        d="M20.39 18.39A5 5 0 0 0 18 9h-1.26A8 8 0 1 0 3 16.3"
+                      /></svg
+                    >Upload
+                  </button>
+                </div>
+              </div>
+            </div>
+            <div class="vid-stories" id="vidStoriesRow"></div>
+            <!-- ============================================================
+                 ★ BHAJAN SECTION — TIRTH TUBE
+                 HOW TO ADD MORE BHAJANS:
+                 1. Copy any .bhajan-card block below
+                 2. Replace the YouTube video ID in the iframe src
+                    Format: https://www.youtube.com/embed/YOUR_VIDEO_ID?rel=0&modestbranding=1
+                    Get VIDEO_ID from: youtube.com/watch?v=VIDEO_ID
+                 3. Update bhajan-title and bhajan-sub text
+                 ============================================================ -->
+            <div class="bhajan-section">
+              <div class="bhajan-section-title">
+                Bhajans &amp; Devotional Music
+              </div>
+              <div class="bhajan-scroll" id="bhajanScroll">
+                <!-- ★ BHAJAN 1 — Hanuman Chalisa - Krishna Das Live! Songs
+                     YouTube Video ID: keeqnciDVOo
+                     To change: replace keeqnciDVOo with your own VIDEO_ID -->
+                <div class="bhajan-card">
+                  <div class="yt-container">
+                    <iframe
+                      src="https://www.youtube.com/embed/3WrImrl2dmI?si=ag-s59YlQoZbONgc"
+                      title="Hanuman Chalisa - Krishna Das Live! Songs"
+                      allowfullscreen
+                      loading="lazy"
+                      allow="
+                        accelerometer;
+                        autoplay;
+                        clipboard-write;
+                        encrypted-media;
+                        gyroscope;
+                        picture-in-picture;
+                      "
+                    >
+                    </iframe>
+                  </div>
+                  <div class="bhajan-info">
+                    <div class="bhajan-title">
+                      Hanuman Chalisa - Krishna Das Live! Songs
+                    </div>
+                    <div class="bhajan-sub">Krishna Das Musics</div>
+                  </div>
+                </div>
+
+                <!-- ★ BHAJAN 2 — संतन कू देखूं आवतो || पूज्य श्री कबीरदास जी का पद || श्री राजेंद्र दास जी महाराज भजन
+                     YouTube Video ID: AETFvQonfV8
+                     To change: replace AETFvQonfV8 with your own VIDEO_ID -->
+                <div class="bhajan-card">
+                  <div class="yt-container">
+                    <iframe
+                      src="https://www.youtube.com/embed/BzSXb2StxPs?si=sLs7sLJV4grCJZhU&amp;controls=0"
+                      title="संतन कू देखूं आवतो || पूज्य श्री कबीरदास जी का पद || श्री राजेंद्र दास जी महाराज भजन"
+                      allowfullscreen
+                      loading="lazy"
+                      allow="
+                        accelerometer;
+                        autoplay;
+                        clipboard-write;
+                        encrypted-media;
+                        gyroscope;
+                        picture-in-picture;
+                      "
+                    >
+                    </iframe>
+                  </div>
+                  <div class="bhajan-info">
+                    <div class="bhajan-title">संतन कू देखूं आवतो</div>
+                    <div class="bhajan-sub">
+                      पूज्य श्री कबीरदास जी का पद || श्री राजेंद्र दास जी महाराज
+                      भजन
+                    </div>
+                  </div>
+                </div>
+
+                <!-- ★ BHAJAN 3 — H.G. Vraja Bihari Prabhu | SB 10.1.3 | ISKCON Chowpatty Mumbai.
+                     YouTube Video ID: 6kMEGAuWaWE
+                     To change: replace 6kMEGAuWaWE with your own VIDEO_ID -->
+                <div class="bhajan-card">
+                  <div class="yt-container">
+                    <iframe
+                      src="https://www.youtube.com/embed/eZvT3XJomME?si=2xm_Es8Ujq3vh9ZC"
+                      title="H.G. Vraja Bihari Prabhu | SB 10.1.3 | ISKCON Chowpatty Mumbai."
+                      allowfullscreen
+                      loading="lazy"
+                      allow="
+                        accelerometer;
+                        autoplay;
+                        clipboard-write;
+                        encrypted-media;
+                        gyroscope;
+                        picture-in-picture;
+                      "
+                    >
+                    </iframe>
+                  </div>
+                  <div class="bhajan-info">
+                    <div class="bhajan-title">
+                      H.G. Vraja Bihari Prabhu | SB 10.1.3 🏹
+                    </div>
+                    <div class="bhajan-sub">
+                      ISKCON Chowpatty Mumbai· Devotional
+                    </div>
+                  </div>
+                </div>
+
+                <!-- ★ ADD MORE BHAJANS HERE ▼
+                     Copy this block and fill in your own YouTube link:
+                <div class="bhajan-card">
+                  <div class="yt-container">
+                    <iframe
+                      src="https://www.youtube.com/embed/YOUR_VIDEO_ID?rel=0&modestbranding=1"
+                      title="Your Bhajan Title"
+                      allowfullscreen loading="lazy"
+                      allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture">
+                    </iframe>
+                  </div>
+                  <div class="bhajan-info">
+                    <div class="bhajan-title">Your Bhajan Title</div>
+                    <div class="bhajan-sub">Artist Name · Temple Name</div>
+                  </div>
+                </div>
+                -->
+              </div>
+            </div>
+            <!-- END BHAJAN SECTION -->
+
+            <div class="cat-chips" id="catChips">
+              <button class="cat-chip on" onclick="setVidCat('All', this)">
+                All
+              </button>
+              <button class="cat-chip" onclick="setVidCat('Spiritual', this)">
+                🕉 Spiritual
+              </button>
+              <button class="cat-chip" onclick="setVidCat('Pilgrimage', this)">
+                Pilgrimage
+              </button>
+              <button class="cat-chip" onclick="setVidCat('Discourse', this)">
+                Discourse
+              </button>
+              <button class="cat-chip" onclick="setVidCat('Bhajan', this)">
+                Bhajan
+              </button>
+              <button class="cat-chip" onclick="setVidCat('Aarti', this)">
+                Aarti
+              </button>
+              <button class="cat-chip" onclick="setVidCat('Meditation', this)">
+                Meditation
+              </button>
+            </div>
+            <div class="live-section" id="liveSectionWrap">
+              <div class="live-section-title">
+                <span class="live-badge">● LIVE</span>Live Now
+              </div>
+              <div class="live-scroll" id="liveScroll"></div>
+            </div>
+            <div class="vid-tabs">
+              <button class="vid-tab on" onclick="setVidTab('feed', this)">
+                Feed
+              </button>
+              <button class="vid-tab" onclick="setVidTab('trending', this)">
+                🔥 Trending
+              </button>
+              <button class="vid-tab" onclick="setVidTab('uploads', this)">
+                My Uploads
+              </button>
+            </div>
+            <div id="vidFeed"></div>
+          </div>
+
+          <!-- SEARCH PAGE -->
+          <div class="page hide" id="pgSearch">
+            <div class="fhdr">
+              <div class="fhdr-row"><span class="fhdr-title">Search</span></div>
+              <div class="srch-box">
+                <svg viewBox="0 0 24 24">
+                  <circle cx="11" cy="11" r="8" />
+                  <line x1="21" y1="21" x2="16.65" y2="16.65" /></svg
+                ><input
+                  type="text"
+                  id="srchIn"
+                  placeholder="Search people, posts, tags…"
+                  oninput="doSearch(this.value)"
+                />
+              </div>
+              <div class="tabs" id="srchTabs">
+                <button class="tab on" onclick="setSTab('people', this)">
+                  People
+                </button>
+                <button class="tab" onclick="setSTab('posts', this)">
+                  Posts
+                </button>
+                <button class="tab" onclick="setSTab('tags', this)">
+                  #Tags
+                </button>
+              </div>
+            </div>
+            <div id="srchResults"></div>
+          </div>
+
+          <!-- NOTIFICATIONS PAGE -->
+          <div class="page hide" id="pgNotifs">
+            <div class="fhdr">
+              <div class="fhdr-row">
+                <span class="fhdr-title">Notifications</span
+                ><button
+                  onclick="markRead()"
+                  style="
+                    font-size: 13px;
+                    color: var(--p);
+                    font-weight: 600;
+                    background: none;
+                    border: none;
+                    cursor: pointer;
+                  "
+                >
+                  Mark all read
+                </button>
+              </div>
+              <div class="tabs">
+                <button class="tab on" onclick="setNTab('all', this)">
+                  All
+                </button>
+                <button class="tab" onclick="setNTab('mentions', this)">
+                  Mentions
+                </button>
+                <button class="tab" onclick="setNTab('pranams', this)">
+                  Pranams
+                </button>
+              </div>
+            </div>
+            <div id="notifsWrap"></div>
+          </div>
+
+          <!-- MESSAGES PAGE -->
+          <div class="page hide" id="pgMessages">
+            <div class="fhdr">
+              <div class="fhdr-row">
+                <span class="fhdr-title">Messages</span>
+              </div>
+              <div class="srch-box">
+                <svg viewBox="0 0 24 24">
+                  <circle cx="11" cy="11" r="8" />
+                  <line x1="21" y1="21" x2="16.65" y2="16.65" /></svg
+                ><input
+                  type="text"
+                  placeholder="Search messages…"
+                  oninput="filterConvs(this.value)"
+                />
+              </div>
+            </div>
+            <div id="convsList"></div>
+            <div id="chatView" class="hide chat">
+              <div
+                style="
+                  display: flex;
+                  align-items: center;
+                  gap: 10px;
+                  padding: 10px 16px;
+                  border-bottom: 1px solid var(--bd);
+                "
+              >
+                <button onclick="backToConvs()" style="color: var(--t2)">
+                  <svg
+                    style="
+                      width: 20px;
+                      height: 20px;
+                      stroke: currentColor;
+                      fill: none;
+                      stroke-width: 2;
+                      stroke-linecap: round;
+                      stroke-linejoin: round;
+                    "
+                    viewBox="0 0 24 24"
+                  >
+                    <polyline points="15 18 9 12 15 6" />
+                  </svg>
+                </button>
+                <div class="av av36" id="chatAv"></div>
+                <div>
+                  <div
+                    style="font-weight: 600; font-size: 15px"
+                    id="chatNm"
+                  ></div>
+                  <div style="font-size: 12px; color: var(--t3)">
+                    Active recently
+                  </div>
+                </div>
+              </div>
+              <div class="chat-msgs" id="chatMsgs"></div>
+              <div class="msg-bar">
+                <input
+                  class="msg-in"
+                  id="msgIn"
+                  placeholder="Type a message…"
+                  onkeydown="if (event.key === 'Enter') sendMsg();"
+                />
+                <button
+                  class="btn btn-p btn-sm"
+                  style="
+                    border-radius: 50%;
+                    width: 36px;
+                    height: 36px;
+                    padding: 0;
+                    justify-content: center;
+                    flex-shrink: 0;
+                  "
+                  onclick="sendMsg()"
+                >
+                  <svg
+                    style="
+                      width: 15px;
+                      height: 15px;
+                      stroke: #fff;
+                      fill: none;
+                      stroke-width: 2;
+                      stroke-linecap: round;
+                      stroke-linejoin: round;
+                      pointer-events: none;
+                    "
+                    viewBox="0 0 24 24"
+                  >
+                    <line x1="22" y1="2" x2="11" y2="13" />
+                    <polygon points="22 2 15 22 11 13 2 9 22 2" />
+                  </svg>
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <!-- CHATS PAGE -->
+          <div class="page hide" id="pgChats">
+            <div id="chatsPanel" class="chats-panel">
+              <div class="chats-hdr">
+                <div class="chats-hdr-row">
+                  <span class="chats-hdr-title">Chats</span>
+                  <div style="display: flex; gap: 6px">
+                    <button
+                      class="chats-icon-btn"
+                      onclick="openNewGroupModal()"
+                      title="New group"
+                    >
+                      <svg viewBox="0 0 24 24">
+                        <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
+                        <circle cx="9" cy="7" r="4" />
+                        <path d="M23 21v-2a4 4 0 0 0-3-3.87" />
+                        <path d="M16 3.13a4 4 0 0 1 0 7.75" />
+                      </svg>
+                    </button>
+                    <button
+                      class="chats-icon-btn"
+                      onclick="openNewDMModal()"
+                      title="New message"
+                    >
+                      <svg viewBox="0 0 24 24">
+                        <line x1="12" y1="5" x2="12" y2="19" />
+                        <line x1="5" y1="12" x2="19" y2="12" />
+                      </svg>
+                    </button>
+                  </div>
+                </div>
+                <div class="chats-search-box">
+                  <svg viewBox="0 0 24 24">
+                    <circle cx="11" cy="11" r="8" />
+                    <line x1="21" y1="21" x2="16.65" y2="16.65" />
+                  </svg>
+                  <input
+                    type="text"
+                    id="chatsSearchIn"
+                    placeholder="Search chats…"
+                    oninput="filterChats(this.value)"
+                  />
+                </div>
+                <div class="chats-filter-tabs">
+                  <button
+                    class="chats-ftab on"
+                    onclick="setChatFilter('all', this)"
+                  >
+                    All
+                  </button>
+                  <button
+                    class="chats-ftab"
+                    onclick="setChatFilter('direct', this)"
+                  >
+                    Direct
+                  </button>
+                  <button
+                    class="chats-ftab"
+                    onclick="setChatFilter('groups', this)"
+                  >
+                    Groups
+                  </button>
+                  <button
+                    class="chats-ftab"
+                    onclick="setChatFilter('unread', this)"
+                  >
+                    Unread
+                  </button>
+                </div>
+              </div>
+              <div id="chatsList"></div>
+            </div>
+
+            <div id="chatWindow" class="chat-window hide">
+              <div class="chat-win-hdr" id="chatWinHdr">
+                <button
+                  class="chat-back-btn"
+                  id="chatBackBtn"
+                  onclick="closeChatWindow()"
+                  style="display: flex"
+                >
+                  <svg viewBox="0 0 24 24">
+                    <polyline points="15 18 9 12 15 6" />
+                  </svg>
+                </button>
+                <div class="chat-win-av" id="chatWinAv"></div>
+                <div class="chat-win-info">
+                  <div class="chat-win-name" id="chatWinName"></div>
+                  <div class="chat-win-sub" id="chatWinSub"></div>
+                </div>
+                <div
+                  style="
+                    display: flex;
+                    gap: 4px;
+                    margin-left: auto;
+                    position: relative;
+                  "
+                >
+                  <button
+                    class="chats-icon-btn"
+                    onclick="MC.info('Voice call coming soon! 📞')"
+                  >
+                    <svg viewBox="0 0 24 24">
+                      <path
+                        d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07A19.5 19.5 0 0 1 4.69 12 19.79 19.79 0 0 1 1.62 3.38 2 2 0 0 1 3.59 1h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L7.91 8.56a16 16 0 0 0 6.29 6.29l.96-.96a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 22 16.92z"
+                      />
+                    </svg>
+                  </button>
+                  <button
+                    class="chats-icon-btn"
+                    onclick="MC.info('Video call coming soon! 📹')"
+                  >
+                    <svg viewBox="0 0 24 24">
+                      <polygon points="23 7 16 12 23 17 23 7" />
+                      <rect x="1" y="5" width="15" height="14" rx="2" />
+                    </svg>
+                  </button>
+                  <button
+                    class="chats-icon-btn"
+                    id="chatWinMenuBtn"
+                    onclick="toggleChatWinMenu()"
+                  >
+                    <svg viewBox="0 0 24 24">
+                      <circle
+                        cx="12"
+                        cy="5"
+                        r="1"
+                        fill="currentColor"
+                        stroke="none"
+                      />
+                      <circle
+                        cx="12"
+                        cy="12"
+                        r="1"
+                        fill="currentColor"
+                        stroke="none"
+                      />
+                      <circle
+                        cx="12"
+                        cy="19"
+                        r="1"
+                        fill="currentColor"
+                        stroke="none"
+                      />
+                    </svg>
+                  </button>
+                  <div class="chat-win-menu hide" id="chatWinMenu">
+                    <button class="chat-win-mi" onclick="viewChatInfo()">
+                      View info
+                    </button>
+                    <button class="chat-win-mi" onclick="clearChatMessages()">
+                      Clear messages
+                    </button>
+                    <button
+                      class="chat-win-mi red"
+                      onclick="deleteChatFromMenu()"
+                    >
+                      Delete chat
+                    </button>
+                  </div>
+                </div>
+              </div>
+              <div class="chat-win-msgs" id="chatWinMsgs">
+                <div class="chat-empty-state" id="chatEmptyState">
+                  <div style="font-size: 48px; margin-bottom: 12px">💬</div>
+                  <div
+                    style="
+                      font-size: 16px;
+                      font-weight: 600;
+                      margin-bottom: 6px;
+                    "
+                  >
+                    Select a chat
+                  </div>
+                  <div style="font-size: 13px; color: var(--t3)">
+                    Choose a conversation to start chatting.
+                  </div>
+                </div>
+              </div>
+              <div class="chat-win-bar" id="chatWinBar" style="display: none">
+                <button class="chat-emoji-btn" onclick="toggleChatEmoji()">
+                  <svg viewBox="0 0 24 24">
+                    <circle cx="12" cy="12" r="10" />
+                    <path d="M8 13s1.5 2 4 2 4-2 4-2" />
+                    <line x1="9" y1="9" x2="9.01" y2="9" />
+                    <line x1="15" y1="9" x2="15.01" y2="9" />
+                  </svg>
+                </button>
+                <div class="chat-emoji-picker hide" id="chatEmojiPicker"></div>
+                <label class="chat-attach-btn" title="Attach image">
+                  <svg viewBox="0 0 24 24">
+                    <path
+                      d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"
+                    />
+                  </svg>
+                  <input
+                    type="file"
+                    accept="image/*"
+                    class="hide"
+                    onchange="handleChatImgAttach(event)"
+                  />
+                </label>
+                <input
+                  class="chat-msg-input"
+                  id="chatMsgInput"
+                  placeholder="Type a message…"
+                  onkeydown="
+                    if (event.key === 'Enter' && !event.shiftKey) {
+                      event.preventDefault();
+                      sendChatMessage();
+                    }
+                  "
+                  oninput="updateChatTyping()"
+                />
+                <button class="chat-send-btn" onclick="sendChatMessage()">
+                  <svg viewBox="0 0 24 24">
+                    <line x1="22" y1="2" x2="11" y2="13" />
+                    <polygon points="22 2 15 22 11 13 2 9 22 2" />
+                  </svg>
+                </button>
+              </div>
+            </div>
+
+            <!-- NEW GROUP MODAL -->
+            <div class="ovl" id="newGroupModal">
+              <div class="modal" style="max-width: 420px">
+                <div class="mhdr">
+                  <button class="xbtn" onclick="closeOvl('newGroupModal')">
+                    <svg viewBox="0 0 24 24">
+                      <line x1="18" y1="6" x2="6" y2="18" />
+                      <line x1="6" y1="6" x2="18" y2="18" />
+                    </svg>
+                  </button>
+                  <h3>New Group</h3>
+                  <button class="btn btn-p btn-sm" onclick="createGroup()">
+                    Create
+                  </button>
+                </div>
+                <div class="mpad">
+                  <div class="fg">
+                    <label class="fl">Group Name *</label>
+                    <input
+                      class="fi"
+                      id="ngName"
+                      placeholder="e.g. Kedarnath Yatra 2025"
+                    />
+                  </div>
+                  <div class="fg">
+                    <label class="fl">Select Members</label>
+                    <div
+                      id="ngMemberList"
+                      style="
+                        max-height: 220px;
+                        overflow-y: auto;
+                        border: 1.5px solid var(--bd);
+                        border-radius: 8px;
+                      "
+                    ></div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- NEW DM MODAL -->
+            <div class="ovl" id="newDMModal">
+              <div class="modal" style="max-width: 380px">
+                <div class="mhdr">
+                  <button class="xbtn" onclick="closeOvl('newDMModal')">
+                    <svg viewBox="0 0 24 24">
+                      <line x1="18" y1="6" x2="6" y2="18" />
+                      <line x1="6" y1="6" x2="18" y2="18" />
+                    </svg>
+                  </button>
+                  <h3>New Message</h3>
+                  <div></div>
+                </div>
+                <div class="mpad">
+                  <div class="chats-search-box" style="margin-bottom: 12px">
+                    <svg viewBox="0 0 24 24">
+                      <circle cx="11" cy="11" r="8" />
+                      <line x1="21" y1="21" x2="16.65" y2="16.65" />
+                    </svg>
+                    <input
+                      type="text"
+                      id="dmSearchIn"
+                      placeholder="Search users…"
+                      oninput="filterDMSearch(this.value)"
+                    />
+                  </div>
+                  <div id="dmUserList"></div>
+                </div>
+              </div>
+            </div>
+          </div>
+          <!-- END CHATS PAGE -->
+
+          <!-- BOOKMARKS PAGE -->
+          <div class="page hide" id="pgBookmarks">
+            <div class="fhdr">
+              <div class="fhdr-row">
+                <span class="fhdr-title">Bookmarks</span>
+              </div>
+              <div
+                style="font-size: 13px; color: var(--t3); margin-top: 2px"
+                id="bmCnt"
+              ></div>
+            </div>
+            <div id="bmPosts"></div>
+          </div>
+
+          <!-- PROFILE PAGE -->
+          <div class="page hide" id="pgProfile">
+            <div class="fhdr" style="padding: 10px 14px">
+              <div style="display: flex; align-items: center; gap: 10px">
+                <button onclick="gp('home')" style="color: var(--t2)">
+                  <svg
+                    style="
+                      width: 20px;
+                      height: 20px;
+                      stroke: currentColor;
+                      fill: none;
+                      stroke-width: 2;
+                      stroke-linecap: round;
+                      stroke-linejoin: round;
+                    "
+                    viewBox="0 0 24 24"
+                  >
+                    <polyline points="15 18 9 12 15 6" />
+                  </svg>
+                </button>
+                <div>
+                  <div style="font-weight: 700; font-size: 16px" id="phName">
+                    Profile
+                  </div>
+                  <div style="font-size: 12px; color: var(--t3)" id="phPosts">
+                    0 posts
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div class="prof-banner" id="prBanner">
+              <img id="prBannerImg" src="" alt="" />
+            </div>
+            <div class="prof-hdr">
+              <div class="prof-av-wrap">
+                <div class="av av80" id="prAv"></div>
+                <div id="prActions"></div>
+              </div>
+              <div class="prof-name" id="prName"></div>
+              <div class="prof-hdl" id="prHdl"></div>
+              <div class="prof-bio" id="prBio"></div>
+              <div class="prof-meta" id="prMeta"></div>
+              <div class="prof-stats" id="prStats"></div>
+            </div>
+            <div class="tabs" id="prTabs">
+              <button class="tab on" onclick="setPTab('posts', this)">
+                Posts
+              </button>
+              <button class="tab" onclick="setPTab('replies', this)">
+                Replies
+              </button>
+              <button class="tab" onclick="setPTab('media', this)">
+                Media
+              </button>
+              <button class="tab" onclick="setPTab('likes', this)">
+                Pranams
+              </button>
+            </div>
+            <div id="prPosts"></div>
+          </div>
+        </div>
+        <!-- end feedWrap -->
+
+        <!-- RIGHT COLUMN -->
+        <div id="rightWrap">
+          <div class="srch">
+            <svg viewBox="0 0 24 24">
+              <circle cx="11" cy="11" r="8" />
+              <line x1="21" y1="21" x2="16.65" y2="16.65" /></svg
+            ><input
+              type="text"
+              placeholder="Search…"
+              oninput="doSearch(this.value)"
+              onfocus="gp('search')"
+            />
+          </div>
+          <div class="widget">
+            <h3>Mandir Community</h3>
+            <p style="font-size: 13px; color: var(--t2); margin-bottom: 10px">
+              Join 2.4 lakh devotees in the sacred digital sangha.
+            </p>
+            <button
+              class="btn btn-p btn-sm"
+              style="width: 100%; justify-content: center"
+              onclick="gp('mandir')"
+            >
+              Explore Mandir Community →
+            </button>
+          </div>
+          <div class="widget">
+            <h3>🔥 Trending</h3>
+            <div id="trendW"></div>
+          </div>
+          <div class="widget">
+            <h3>Who to Follow</h3>
+            <div id="wtfW"></div>
+          </div>
+          <div
+            class="widget"
+            style="font-size: 12px; color: var(--t3); line-height: 1.8"
+          >
+            <a href="#" style="color: var(--t3); margin-right: 8px">Privacy</a
+            ><a href="#" style="color: var(--t3); margin-right: 8px">Terms</a
+            ><a href="#" style="color: var(--t3)">About</a>
+            <div style="margin-top: 4px">
+              © 2025 Tirth Sutra — Mandir Community 🕉
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ★ MOBILE TOP BAR -->
+    <header id="topBar">
+      <!-- Hamburger -->
+      <button
+        id="hamburgerBtn"
+        onclick="toggleDrawer()"
+        aria-label="Open menu"
+        aria-expanded="false"
+      >
+        <div class="ham-icon"><span></span><span></span><span></span></div>
+      </button>
+
+      <!-- =========================================================
+       ★ MOBILE TOP BAR LOGO
+       To use YOUR logo: replace the SVG inside .topbar-logo-img with:
+       <img src="images/logo.png" alt="Mandir Community Logo" style="width:100%;height:100%;object-fit:cover">
+       ========================================================= -->
+      <div class="topbar-logo" onclick="gp('home')">
+        <div class="topbar-logo-img">
+          <!-- DEFAULT SVG — replace with your <img src="images/logo.png"> -->
+          <img
+            src="Brand_Logo.jpg"
+            alt="Mandir Community Logo"
+            style="width: 100%; height: 100%; object-fit: cover"
+          />
+        </div>
+        <span class="topbar-logo-text">Tirth Sutra</span>
+      </div>
+
+      <div class="topbar-actions">
+        <button class="topbar-btn" onclick="gp('search')" aria-label="Search">
+          <svg viewBox="0 0 24 24">
+            <circle cx="11" cy="11" r="8" />
+            <line x1="21" y1="21" x2="16.65" y2="16.65" />
+          </svg>
+        </button>
+        <button
+          class="topbar-btn"
+          onclick="auth(() => openOvl('compOvl'))"
+          aria-label="New post"
+        >
+          <svg viewBox="0 0 24 24">
+            <line x1="12" y1="5" x2="12" y2="19" />
+            <line x1="5" y1="12" x2="19" y2="12" />
+          </svg>
+        </button>
+      </div>
+    </header>
+
+    <!-- ★ MOBILE BOTTOM NAV -->
+    <nav id="bottomNav" aria-label="Mobile bottom navigation">
+      <div class="bnb-inner">
+        <button class="bnb on" id="bnHome" onclick="gp('home')">
+          <svg viewBox="0 0 24 24">
+            <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
+            <polyline points="9 22 9 12 15 12 15 22" />
+          </svg>
+          <span class="bnb-label">Home</span>
+        </button>
+        <!-- ★ MANDIR COMMUNITY in bottom nav -->
+        <button class="bnb mandir-tab" id="bnMandir" onclick="gp('mandir')">
+          <svg viewBox="0 0 24 24">
+            <path d="M3 22V8l9-6 9 6v14" />
+            <path d="M9 22V12h6v10" />
+            <path d="M12 2v2" />
+          </svg>
+          <span class="bnb-label">Mandir</span>
+        </button>
+        <button class="bnb" id="bnVideo" onclick="gp('video')">
+          <svg viewBox="0 0 24 24">
+            <polygon points="23 7 16 12 23 17 23 7" />
+            <rect x="1" y="5" width="15" height="14" rx="2" />
+          </svg>
+          <span class="bnb-label">Videos</span>
+        </button>
+        <button
+          class="bnb"
+          id="bnNotifs"
+          onclick="gp('notifs')"
+          style="display: none"
+        >
+          <svg viewBox="0 0 24 24">
+            <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9" />
+            <path d="M13.73 21a2 2 0 0 1-3.46 0" />
+          </svg>
+          <span class="bnb-label">Alerts</span>
+          <div class="bnb-badge" id="bnNotifBadge"></div>
+        </button>
+        <!-- CHATS BOTTOM NAV -->
+        <button class="bnb" id="bnChats" onclick="gp('chats')">
+          <svg viewBox="0 0 24 24">
+            <path
+              d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"
+            />
+          </svg>
+          <span class="bnb-label">Chats</span>
+        </button>
+        <button class="bnb" id="bnProfile" onclick="gp('profile')">
+          <svg viewBox="0 0 24 24">
+            <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
+            <circle cx="12" cy="7" r="4" />
+          </svg>
+          <span class="bnb-label">Me</span>
+        </button>
+      </div>
+    </nav>
+
+    <!-- ============================================================
+     JAVASCRIPT
+     ============================================================ -->
+    <script src="Script.js"></script>
+  </body>
+</html>
