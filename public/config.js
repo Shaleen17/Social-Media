@@ -4,7 +4,7 @@ const CONFIG = {
   // Otherwise, use the production Render backend URL.
   BACKEND_URL:
     window.location.hostname === "localhost" ||
-    window.location.hostname === "127.0.0.1"
+      window.location.hostname === "127.0.0.1"
       ? "http://localhost:5000"
-      : "https://YOUR_RENDER_APP_NAME.onrender.com", // <-- UPDATE THIS AFTER DEPLOYING TO RENDER
+      : "https://tirth-sutra-backend.onrender.com", // <-- UPDATE THIS AFTER DEPLOYING TO RENDER
 };
