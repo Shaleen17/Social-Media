@@ -1640,6 +1640,59 @@
     }
   };
 
+  // =============================================
+  // Mobile Keyboard — keep chat input visible
+  // =============================================
+  (function setupMobileKeyboardHandler() {
+    if (!window.visualViewport) return;
+
+    let chatWindow = null;
+
+    function onViewportResize() {
+      chatWindow = chatWindow || document.getElementById("chatWindow");
+      if (!chatWindow || chatWindow.classList.contains("hide")) return;
+      if (window.innerWidth > 640) return;
+
+      const vvh = window.visualViewport.height;
+      const vvTop = window.visualViewport.offsetTop;
+
+      // Set chat window height to match the visible viewport (excludes keyboard)
+      chatWindow.style.height = vvh + "px";
+      chatWindow.style.top = vvTop + "px";
+
+      // Scroll messages to bottom so latest message stays visible
+      const msgs = document.getElementById("chatWinMsgs");
+      if (msgs) {
+        requestAnimationFrame(() => {
+          msgs.scrollTop = msgs.scrollHeight;
+        });
+      }
+    }
+
+    function onViewportScroll() {
+      // Prevent the page from scrolling when keyboard pushes the viewport
+      chatWindow = chatWindow || document.getElementById("chatWindow");
+      if (!chatWindow || chatWindow.classList.contains("hide")) return;
+      if (window.innerWidth > 640) return;
+
+      const vvTop = window.visualViewport.offsetTop;
+      chatWindow.style.top = vvTop + "px";
+    }
+
+    window.visualViewport.addEventListener("resize", onViewportResize);
+    window.visualViewport.addEventListener("scroll", onViewportScroll);
+
+    // Also reset when chat window is closed
+    const origClose = window.closeChatWindow;
+    window.closeChatWindow = function () {
+      if (chatWindow) {
+        chatWindow.style.height = "";
+        chatWindow.style.top = "";
+      }
+      origClose.apply(this, arguments);
+    };
+  })();
+
   // Remove the old DOMContentLoaded listener and re-fire init
   window.init();
 })();

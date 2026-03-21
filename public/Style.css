@@ -4081,6 +4081,7 @@ video {
   #pgChats.on {
     flex-direction: column;
     height: calc(100vh - var(--topbar-h) - var(--bottomnav-h));
+    height: calc(100dvh - var(--topbar-h) - var(--bottomnav-h));
   }
   .chats-panel {
     width: 100%;
@@ -4094,11 +4095,24 @@ video {
     right: 0;
     bottom: 0;
     z-index: 500;
-    height: 100vh !important;
+    height: 100% !important;
+    height: 100dvh !important;
     background: var(--bg2);
+    display: flex;
+    flex-direction: column;
+  }
+  .chat-win-hdr {
+    flex-shrink: 0;
   }
   .chat-win-msgs {
     padding: 10px 12px;
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+  }
+  .chat-win-bar {
+    flex-shrink: 0;
+    position: relative;
   }
   .msg-bubble {
     max-width: 80%;
