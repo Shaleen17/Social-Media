@@ -1956,16 +1956,35 @@
                   placeholder="Share with the community... 🙏"
                   style="width: 100%; min-height: 100px; resize: vertical"
                 ></textarea>
-                <div id="mandirCompImgPreview" style="display: none; margin: 10px 0; position: relative">
-                  <img id="mandirCompImg" style="max-width: 100%; border-radius: 10px" alt="Preview">
-                  <button onclick="removeMandirCompImg()" style="position: absolute; top: 6px; right: 6px; background: rgba(0,0,0,0.6); color: #fff; border: none; border-radius: 50%; width: 28px; height: 28px; cursor: pointer">✕</button>
+
+                <!-- Image Preview -->
+                <div id="mandirCompImgPreview" class="mc-media-preview hide">
+                  <img id="mandirCompImg" alt="Preview">
+                  <button class="mc-media-rm" onclick="removeMandirCompMedia()">✕</button>
+                  <span class="mc-media-badge">📷 Image</span>
                 </div>
-                <div style="display: flex; align-items: center; gap: 10px; margin-top: 10px">
-                  <label class="icoBtn" style="cursor: pointer">
+
+                <!-- Video Preview -->
+                <div id="mandirCompVidPreview" class="mc-media-preview hide">
+                  <video id="mandirCompVid" muted></video>
+                  <div class="mc-vid-play-icon">▶</div>
+                  <button class="mc-media-rm" onclick="removeMandirCompMedia()">✕</button>
+                  <span class="mc-media-badge">🎬 Video</span>
+                </div>
+
+                <div class="mc-comp-toolbar">
+                  <label class="mc-comp-btn" title="Add Image">
                     <svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
-                    <input type="file" accept="image/*" onchange="handleMandirCompImg(event)" style="display: none">
+                    <span>Photo</span>
+                    <input type="file" accept="image/*" onchange="handleMandirCompMedia(event, 'image')" style="display: none">
+                  </label>
+                  <label class="mc-comp-btn" title="Add Video">
+                    <svg viewBox="0 0 24 24"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2"/></svg>
+                    <span>Video</span>
+                    <input type="file" accept="video/*" onchange="handleMandirCompMedia(event, 'video')" style="display: none">
                   </label>
                   <div style="flex: 1"></div>
+                  <div id="mandirUploadProgress" class="hide" style="font-size:12px;color:var(--t3)">Uploading...</div>
                   <button class="btn btn-p" id="mandirPostBtn" onclick="submitMandirPost()">Post 🙏</button>
                 </div>
               </div>
@@ -1980,6 +1999,34 @@
                 <button class="ovl-close" onclick="closeOvl('mandirPostOvl')">✕</button>
               </div>
               <div id="mandirPostDetail" style="padding: 16px"></div>
+            </div>
+          </div>
+
+          <!-- ★ SHORTS / REELS VIEWER OVERLAY -->
+          <div class="mc-shorts-ovl hide" id="mcShortsOvl">
+            <button class="mc-shorts-close" onclick="closeMandirShorts()">✕</button>
+            <button class="mc-shorts-mute" id="mcShortsMute" onclick="toggleShortsMute()">🔇</button>
+            <div class="mc-shorts-container" id="mcShortsContainer">
+              <!-- Videos rendered dynamically -->
+            </div>
+            <div class="mc-shorts-actions" id="mcShortsActions">
+              <button class="mc-shorts-act-btn" id="mcShortsLikeBtn" onclick="likeShortsPost()">
+                <span>❤</span>
+                <small id="mcShortsLikeCount">0</small>
+              </button>
+              <button class="mc-shorts-act-btn" onclick="commentShortsPost()">
+                <span>💬</span>
+                <small id="mcShortsCommentCount">0</small>
+              </button>
+              <button class="mc-shorts-act-btn" onclick="MC.info('Share coming soon!')">
+                <span>↗</span>
+                <small>Share</small>
+              </button>
+            </div>
+            <div class="mc-shorts-info" id="mcShortsInfo"></div>
+            <div class="mc-shorts-nav">
+              <button class="mc-shorts-nav-btn" id="mcShortsPrev" onclick="navigateShorts(-1)">▲</button>
+              <button class="mc-shorts-nav-btn" id="mcShortsNext" onclick="navigateShorts(1)">▼</button>
             </div>
           </div>
 

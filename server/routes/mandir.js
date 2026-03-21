@@ -42,6 +42,8 @@ function transformPost(p) {
     user: p.user,
     txt: p.text,
     img: p.image,
+    video: p.video || null,
+    mediaType: p.mediaType || (p.video ? "video" : p.image ? "image" : "text"),
     likes: (p.likes || []).map((l) => l.toString()),
     cmts: (p.comments || []).map((c) => ({
       id: c._id,
@@ -63,10 +65,15 @@ router.get("/accounts", (req, res) => {
 // GET /api/mandir/:mandirId/posts — public viewing
 router.get("/:mandirId/posts", validateMandir, optionalAuth, async (req, res) => {
   try {
-    const { page = 1, limit = 30 } = req.query;
+    const { page = 1, limit = 30, type } = req.query;
     const skip = (parseInt(page) - 1) * parseInt(limit);
 
-    const posts = await MandirPost.find({ mandirId: req.params.mandirId })
+    // Build filter
+    const filter = { mandirId: req.params.mandirId };
+    if (type === "video") filter.mediaType = "video";
+    else if (type === "image") filter.mediaType = "image";
+
+    const posts = await MandirPost.find(filter)
       .sort({ createdAt: -1 })
       .skip(skip)
       .limit(parseInt(limit))
@@ -74,7 +81,7 @@ router.get("/:mandirId/posts", validateMandir, optionalAuth, async (req, res) =>
       .populate("comments.user", "name handle avatar")
       .lean();
 
-    const total = await MandirPost.countDocuments({ mandirId: req.params.mandirId });
+    const total = await MandirPost.countDocuments(filter);
 
     res.json({
       posts: posts.map(transformPost),
@@ -97,16 +104,23 @@ router.post("/:mandirId/posts", validateMandir, auth, async (req, res) => {
       });
     }
 
-    const { text, image } = req.body;
-    if (!text && !image) {
-      return res.status(400).json({ error: "Post content required" });
+    const { text, image, video } = req.body;
+    if (!text && !image && !video) {
+      return res.status(400).json({ error: "Post content required (text, image, or video)" });
     }
+
+    // Determine media type
+    let mediaType = "text";
+    if (video) mediaType = "video";
+    else if (image) mediaType = "image";
 
     const post = await MandirPost.create({
       mandirId: req.params.mandirId,
       user: req.user._id,
       text: text || "",
       image: image || null,
+      video: video || null,
+      mediaType,
     });
 
     const populated = await MandirPost.findById(post._id).populate(

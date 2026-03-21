@@ -1850,11 +1850,20 @@ async function loadMandirPosts(mandirId) {
 function renderMandirGrid(posts) {
   const grid = document.getElementById("mcPostGrid");
   grid.innerHTML = posts.map((p, i) => {
-    const hasImg = p.img;
-    const preview = hasImg
-      ? `<img src="${p.img}" alt="Post" class="mc-grid-img">`
-      : `<div class="mc-grid-text"><p>${esc(p.txt).substring(0, 120)}</p></div>`;
-    return `<div class="mc-post-cell" onclick="openMandirPostDetail(${i})">
+    const mt = p.mediaType || (p.video ? "video" : p.img ? "image" : "text");
+    let preview = "";
+    if (mt === "video") {
+      preview = p.img
+        ? `<img src="${p.img}" alt="" class="mc-grid-img" loading="lazy"><div class="mc-grid-play">▶</div>`
+        : `<div class="mc-grid-text mc-grid-video-bg"><div class="mc-grid-play">▶</div></div>`;
+    } else if (mt === "image" && p.img) {
+      preview = `<img src="${p.img}" alt="Post" class="mc-grid-img" loading="lazy">`;
+    } else {
+      preview = `<div class="mc-grid-text"><p>${esc(p.txt).substring(0, 120)}</p></div>`;
+    }
+    const realIdx = currentMandirPosts.indexOf(p) >= 0 ? currentMandirPosts.indexOf(p) : i;
+    const action = mt === "video" ? `openMandirShorts(${realIdx})` : `openMandirPostDetail(${realIdx})`;
+    return `<div class="mc-post-cell" onclick="${action}">
       ${preview}
       <div class="mc-post-overlay">
         <span>❤ ${p.likes.length}</span>
@@ -1893,7 +1902,7 @@ function openMandirPostDetail(idx) {
       </div>
     </div>
     ${p.txt ? `<div style="font-size:15px;line-height:1.5;margin-bottom:12px;white-space:pre-wrap">${esc(p.txt)}</div>` : ''}
-    ${p.img ? `<img src="${p.img}" style="width:100%;border-radius:10px;margin-bottom:12px" alt="Post">` : ''}
+    ${p.video ? `<video src="${p.video}" controls playsinline style="width:100%;border-radius:10px;margin-bottom:12px;max-height:400px"></video>` : (p.img ? `<img src="${p.img}" style="width:100%;border-radius:10px;margin-bottom:12px" alt="Post" loading="lazy">` : '')}
     <div style="display:flex;gap:16px;padding:10px 0;border-top:1px solid var(--bd);border-bottom:1px solid var(--bd)">
       <button class="disc-btn" onclick="toggleMandirPostLike('${p.id}', ${idx})">❤ ${p.likes.length}</button>
       <button class="disc-btn">💬 ${p.cmts ? p.cmts.length : 0}</button>
@@ -1949,15 +1958,17 @@ async function addMandirPostComment(postId, idx) {
 function setMCTab(tab, el) {
   document.querySelectorAll(".mc-tab").forEach(t => t.classList.remove("on"));
   if (el) el.classList.add("on");
-  // For now all tabs show same grid — video/tagged are placeholders
   if (tab === "all") {
     renderMandirGrid(currentMandirPosts);
   } else if (tab === "video") {
-    const grid = document.getElementById("mcPostGrid");
-    grid.innerHTML = '<div style="padding:60px 20px;text-align:center;color:var(--t3)"><div style="font-size:32px;margin-bottom:8px">🎬</div>Videos coming soon</div>';
+    const videoPosts = currentMandirPosts.filter(p => p.mediaType === "video" || p.video);
+    if (videoPosts.length === 0) {
+      document.getElementById("mcPostGrid").innerHTML = '<div style="padding:60px 20px;text-align:center;color:var(--t3)"><div style="font-size:32px;margin-bottom:8px">🎬</div>No videos yet</div>';
+    } else {
+      renderMandirGrid(videoPosts);
+    }
   } else if (tab === "tagged") {
-    const grid = document.getElementById("mcPostGrid");
-    grid.innerHTML = '<div style="padding:60px 20px;text-align:center;color:var(--t3)"><div style="font-size:32px;margin-bottom:8px">👤</div>Tagged posts coming soon</div>';
+    document.getElementById("mcPostGrid").innerHTML = '<div style="padding:60px 20px;text-align:center;color:var(--t3)"><div style="font-size:32px;margin-bottom:8px">👤</div>Tagged posts coming soon</div>';
   }
 }
 
@@ -1970,55 +1981,82 @@ function openMandirCompose() {
   const config = MANDIR_CONFIG[currentMandirSlug];
   document.getElementById("mandirCompTitle").textContent = `New Post — ${config?.name || 'Community'}`;
   document.getElementById("mandirCompText").value = "";
-  removeMandirCompImg();
+  removeMandirCompMedia();
   openOvl("mandirCompOvl");
 }
 
-function handleMandirCompImg(event) {
+let mandirCompMediaFile = null;
+let mandirCompMediaType = null;
+
+function handleMandirCompMedia(event, type) {
   const file = event.target.files[0];
   if (!file) return;
-  const reader = new FileReader();
-  reader.onload = (e) => {
-    mandirCompImgData = e.target.result;
-    document.getElementById("mandirCompImg").src = mandirCompImgData;
-    document.getElementById("mandirCompImgPreview").style.display = "block";
-  };
-  reader.readAsDataURL(file);
+  const maxSize = type === "video" ? 50 * 1024 * 1024 : 10 * 1024 * 1024;
+  if (file.size > maxSize) {
+    MC.error(`File too large. Max ${type === "video" ? "50MB" : "10MB"}.`);
+    event.target.value = "";
+    return;
+  }
+  removeMandirCompMedia();
+  mandirCompMediaFile = file;
+  mandirCompMediaType = type;
+  if (type === "image") {
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      document.getElementById("mandirCompImg").src = e.target.result;
+      document.getElementById("mandirCompImgPreview").classList.remove("hide");
+    };
+    reader.readAsDataURL(file);
+  } else {
+    const vidEl = document.getElementById("mandirCompVid");
+    vidEl.src = URL.createObjectURL(file);
+    document.getElementById("mandirCompVidPreview").classList.remove("hide");
+  }
 }
 
-function removeMandirCompImg() {
+function removeMandirCompMedia() {
+  mandirCompMediaFile = null;
+  mandirCompMediaType = null;
   mandirCompImgData = null;
-  document.getElementById("mandirCompImgPreview").style.display = "none";
+  document.getElementById("mandirCompImgPreview").classList.add("hide");
   document.getElementById("mandirCompImg").src = "";
+  const vidEl = document.getElementById("mandirCompVid");
+  if (vidEl && vidEl.src) { try { URL.revokeObjectURL(vidEl.src); } catch(e){} vidEl.src = ""; }
+  document.getElementById("mandirCompVidPreview").classList.add("hide");
+  document.querySelectorAll("#mandirCompOvl input[type=file]").forEach(inp => { inp.value = ""; });
 }
 
 async function submitMandirPost() {
   const text = (document.getElementById("mandirCompText")?.value || "").trim();
-  if (!text && !mandirCompImgData) {
-    MC.error("Please write something or add an image.");
+  if (!text && !mandirCompMediaFile) {
+    MC.error("Please write something or add media.");
     return;
   }
-
   const btn = document.getElementById("mandirPostBtn");
+  const progress = document.getElementById("mandirUploadProgress");
   btn.disabled = true;
   btn.textContent = "Posting...";
-
   try {
     let imageUrl = null;
-    if (mandirCompImgData) {
+    let videoUrl = null;
+    if (mandirCompMediaFile) {
+      progress.classList.remove("hide");
+      progress.textContent = "Uploading " + mandirCompMediaType + "...";
       try {
-        const uploadResult = await API.uploadBase64(mandirCompImgData, "mandir");
-        imageUrl = uploadResult.url;
+        const uploadResult = await API.uploadFile(mandirCompMediaFile);
+        if (mandirCompMediaType === "video") videoUrl = uploadResult.url;
+        else imageUrl = uploadResult.url;
       } catch (e) {
-        console.warn("Image upload failed, posting text only");
+        MC.error("Media upload failed. Please try again.");
+        return;
+      } finally {
+        progress.classList.add("hide");
       }
     }
-
-    const newPost = await API.createMandirPost(currentMandirSlug, text, imageUrl);
+    const newPost = await API.createMandirPost(currentMandirSlug, text, imageUrl, videoUrl);
     currentMandirPosts.unshift(newPost);
     renderMandirGrid(currentMandirPosts);
     document.getElementById("mcPostCount").textContent = currentMandirPosts.length;
-
     closeOvl("mandirCompOvl");
     MC.success("Post published! 🙏");
   } catch (err) {
@@ -2028,6 +2066,122 @@ async function submitMandirPost() {
     btn.textContent = "Post 🙏";
   }
 }
+
+/* ── SHORTS / REELS VIEWER ── */
+let shortsVideoPosts = [];
+let shortsCurrentIdx = 0;
+let shortsMuted = true;
+
+function openMandirShorts(gridIdx) {
+  shortsVideoPosts = currentMandirPosts.filter(p => p.video || p.mediaType === "video");
+  if (shortsVideoPosts.length === 0) { MC.info("No videos available"); return; }
+  const clickedPost = currentMandirPosts[gridIdx];
+  shortsCurrentIdx = shortsVideoPosts.findIndex(p => p.id === clickedPost?.id);
+  if (shortsCurrentIdx < 0) shortsCurrentIdx = 0;
+  shortsMuted = true;
+  document.getElementById("mcShortsOvl").classList.remove("hide");
+  document.body.style.overflow = "hidden";
+  renderCurrentShort();
+}
+
+function closeMandirShorts() {
+  document.getElementById("mcShortsOvl").classList.add("hide");
+  document.body.style.overflow = "";
+  document.querySelectorAll("#mcShortsContainer video").forEach(v => { v.pause(); v.src = ""; });
+}
+
+function renderCurrentShort() {
+  const p = shortsVideoPosts[shortsCurrentIdx];
+  if (!p) return;
+  const container = document.getElementById("mcShortsContainer");
+  container.innerHTML = `<video id="mcShortsVideo" src="${p.video}" ${shortsMuted ? 'muted' : ''} autoplay loop playsinline webkit-playsinline class="mc-shorts-video" onclick="toggleShortsPlayPause()"></video>`;
+  const vid = document.getElementById("mcShortsVideo");
+  if (vid) vid.play().catch(() => {});
+  const u = p.user || {};
+  document.getElementById("mcShortsInfo").innerHTML = `
+    <div class="mc-shorts-user"><strong>@${u.handle || "user"}</strong>${u.verified ? ' 🔱' : ''}</div>
+    ${p.txt ? `<div class="mc-shorts-caption">${esc(p.txt).substring(0, 150)}</div>` : ''}
+  `;
+  document.getElementById("mcShortsLikeCount").textContent = p.likes ? p.likes.length : 0;
+  document.getElementById("mcShortsCommentCount").textContent = p.cmts ? p.cmts.length : 0;
+  document.getElementById("mcShortsMute").textContent = shortsMuted ? "🔇" : "🔊";
+  document.getElementById("mcShortsPrev").style.opacity = shortsCurrentIdx > 0 ? "1" : "0.3";
+  document.getElementById("mcShortsNext").style.opacity = shortsCurrentIdx < shortsVideoPosts.length - 1 ? "1" : "0.3";
+}
+
+function toggleShortsPlayPause() {
+  const vid = document.getElementById("mcShortsVideo");
+  if (!vid) return;
+  if (vid.paused) vid.play().catch(() => {});
+  else vid.pause();
+}
+
+function toggleShortsMute() {
+  shortsMuted = !shortsMuted;
+  const vid = document.getElementById("mcShortsVideo");
+  if (vid) vid.muted = shortsMuted;
+  document.getElementById("mcShortsMute").textContent = shortsMuted ? "🔇" : "🔊";
+}
+
+function navigateShorts(direction) {
+  const newIdx = shortsCurrentIdx + direction;
+  if (newIdx < 0 || newIdx >= shortsVideoPosts.length) return;
+  const vid = document.getElementById("mcShortsVideo");
+  if (vid) vid.pause();
+  shortsCurrentIdx = newIdx;
+  renderCurrentShort();
+}
+
+async function likeShortsPost() {
+  if (!API.getToken()) { openOvl("authOvl"); return; }
+  const p = shortsVideoPosts[shortsCurrentIdx];
+  if (!p) return;
+  try {
+    const result = await API.toggleMandirLike(currentMandirSlug, p.id);
+    p.likes = result.likes;
+    document.getElementById("mcShortsLikeCount").textContent = p.likes.length;
+    const mainIdx = currentMandirPosts.findIndex(mp => mp.id === p.id);
+    if (mainIdx >= 0) currentMandirPosts[mainIdx].likes = result.likes;
+  } catch (err) { MC.error("Failed to like"); }
+}
+
+function commentShortsPost() {
+  const p = shortsVideoPosts[shortsCurrentIdx];
+  if (!p) return;
+  const mainIdx = currentMandirPosts.findIndex(mp => mp.id === p.id);
+  closeMandirShorts();
+  if (mainIdx >= 0) {
+    const u = p.user || {};
+    const ini = getIni(u.name || "U");
+    const avatarHtml = u.avatar ? `<img src="${u.avatar}" alt="">` : ini;
+    let commentsHtml = (p.cmts || []).map(c => {
+      const cu = c.user || {};
+      return `<div style="display:flex;gap:8px;padding:8px 0;border-top:1px solid var(--bd)"><div class="av av28">${cu.avatar?`<img src="${cu.avatar}">`:(getIni(cu.name||"U"))}</div><div style="flex:1"><strong style="font-size:13px">${cu.name||'User'}</strong> <span style="font-size:12px;color:var(--t3)">${c.t}</span><div style="font-size:13px;margin-top:2px">${esc(c.txt)}</div></div></div>`;
+    }).join("");
+    document.getElementById("mandirPostDetail").innerHTML = `
+      <div style="display:flex;gap:10px;align-items:center;margin-bottom:12px"><div class="av av40">${avatarHtml}</div><div><strong>${u.name||'Unknown'}</strong>${u.verified?' 🔱':''}<div style="font-size:12px;color:var(--t3)">@${u.handle||'user'} · ${p.t}</div></div></div>
+      ${p.txt?`<div style="font-size:15px;line-height:1.5;margin-bottom:12px;white-space:pre-wrap">${esc(p.txt)}</div>`:''}
+      <video src="${p.video}" controls playsinline style="width:100%;border-radius:10px;margin-bottom:12px;max-height:400px"></video>
+      <div style="display:flex;gap:16px;padding:10px 0;border-top:1px solid var(--bd);border-bottom:1px solid var(--bd)"><button class="disc-btn" onclick="toggleMandirPostLike('${p.id}', ${mainIdx})">❤ ${p.likes.length}</button><button class="disc-btn">💬 ${p.cmts?p.cmts.length:0}</button></div>
+      ${commentsHtml}
+      <div style="display:flex;gap:8px;margin-top:12px"><input type="text" id="mcCommentInput" placeholder="Add a comment..." style="flex:1;padding:8px 12px;border-radius:20px;border:1px solid var(--bd);background:var(--bg2);color:var(--t1);font-size:13px"><button class="btn btn-p btn-sm" onclick="addMandirPostComment('${p.id}', ${mainIdx})">Post</button></div>
+    `;
+    openOvl("mandirPostOvl");
+  }
+}
+
+// Touch swipe for shorts
+(function() {
+  let touchStartY = 0;
+  document.addEventListener("touchstart", (e) => {
+    if (!document.getElementById("mcShortsOvl")?.classList.contains("hide")) touchStartY = e.touches[0].clientY;
+  }, { passive: true });
+  document.addEventListener("touchend", (e) => {
+    if (document.getElementById("mcShortsOvl")?.classList.contains("hide")) return;
+    const diff = touchStartY - e.changedTouches[0].clientY;
+    if (Math.abs(diff) > 60) navigateShorts(diff > 0 ? 1 : -1);
+  }, { passive: true });
+})();
 
 /* ── VIDEO PAGE ── */
 function renderVideoPage() {

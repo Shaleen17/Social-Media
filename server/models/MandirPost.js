@@ -12,6 +12,12 @@ const mandirPostSchema = new mongoose.Schema(
     user: { type: mongoose.Schema.Types.ObjectId, ref: "User", required: true },
     text: { type: String, default: "" },
     image: { type: String, default: null },
+    video: { type: String, default: null },
+    mediaType: {
+      type: String,
+      enum: ["text", "image", "video"],
+      default: "text",
+    },
     likes: [{ type: mongoose.Schema.Types.ObjectId, ref: "User" }],
     comments: [mandirCommentSchema],
   },

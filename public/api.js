@@ -323,10 +323,10 @@ const API = (() => {
       return request(`/mandir/${mandirId}/posts?page=${page}`);
     },
 
-    async createMandirPost(mandirId, text, image) {
+    async createMandirPost(mandirId, text, image, video) {
       return request(`/mandir/${mandirId}/posts`, {
         method: "POST",
-        body: JSON.stringify({ text, image }),
+        body: JSON.stringify({ text, image, video }),
       });
     },
 
