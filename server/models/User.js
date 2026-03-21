@@ -27,6 +27,7 @@ const userSchema = new mongoose.Schema(
     followers: [{ type: mongoose.Schema.Types.ObjectId, ref: "User" }],
     following: [{ type: mongoose.Schema.Types.ObjectId, ref: "User" }],
     verified: { type: Boolean, default: false },
+    mandirId: { type: String, default: null },
     joined: { type: String, default: "" },
   },
   { timestamps: true }

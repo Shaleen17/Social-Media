@@ -1547,9 +1547,7 @@
                      Replace the src below with your actual file path -->
                 <div
                   class="temple-img-card"
-                  onclick="
-                    MC.info('Kashi Vishwanath — The Eternal City of Light 🕉')
-                  "
+                  onclick="openMandirCommunity('kashi-vishwanath')"
                 >
                   <div class="temple-img-wrap">
                     <img
@@ -1587,9 +1585,7 @@
                      Image path: images/temples/tirupati.jpg -->
                 <div
                   class="temple-img-card"
-                  onclick="
-                    MC.info('Tirupati Balaji — The Wealthiest Temple on Earth ')
-                  "
+                  onclick="openMandirCommunity('tirupati')"
                 >
                   <div class="temple-img-wrap">
                     <img
@@ -1628,9 +1624,7 @@
                      Image path: images/temples/kedarnath.jpg -->
                 <div
                   class="temple-img-card"
-                  onclick="
-                    MC.info('Kedarnath — Gateway to Lord Shiva at 3583m 🏔')
-                  "
+                  onclick="openMandirCommunity('kedarnath')"
                 >
                   <div class="temple-img-wrap">
                     <img
@@ -1668,7 +1662,7 @@
                      Image path: images/temples/somnath.jpg -->
                 <div
                   class="temple-img-card"
-                  onclick="MC.info('Somnath — First among the Jyotirlingas 🌊')"
+                  onclick="openMandirCommunity('somnath')"
                 >
                   <div class="temple-img-wrap">
                     <img
@@ -1706,9 +1700,7 @@
                      Image path: images/temples/meenakshi.jpg -->
                 <div
                   class="temple-img-card"
-                  onclick="
-                    MC.info('Meenakshi Amman — 33,000 sacred sculptures 🌺')
-                  "
+                  onclick="openMandirCommunity('meenakshi')"
                 >
                   <div class="temple-img-wrap">
                     <img
@@ -1746,7 +1738,7 @@
                      Image path: images/temples/ram-mandir.jpg -->
                 <div
                   class="temple-img-card"
-                  onclick="MC.info('Ram Mandir — Birthplace of Lord Ram 🏹')"
+                  onclick="openMandirCommunity('ram-mandir')"
                 >
                   <div class="temple-img-wrap">
                     <img
@@ -1856,6 +1848,139 @@
 
             <!-- Padding bottom -->
             <div style="height: 24px"></div>
+          </div>
+
+          <!-- ★ MANDIR COMMUNITY DETAIL PAGE (Instagram-style) -->
+          <div class="page hide" id="pgMandirCommunity">
+            <!-- Top header bar -->
+            <div class="mc-topbar">
+              <button class="mc-back-btn" onclick="gp('mandir')">
+                <svg viewBox="0 0 24 24"><polyline points="15 18 9 12 15 6"/></svg>
+              </button>
+              <span class="mc-topbar-title" id="mcTopTitle">Temple</span>
+              <button class="mc-more-btn" onclick="MC.info('More options coming soon')">
+                <svg viewBox="0 0 24 24"><circle cx="12" cy="5" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="12" cy="19" r="1"/></svg>
+              </button>
+            </div>
+
+            <!-- Profile Header -->
+            <div class="mc-profile-header">
+              <div class="mc-profile-top">
+                <div class="mc-avatar-wrap">
+                  <img id="mcAvatar" src="" alt="Mandir" class="mc-avatar-img">
+                </div>
+                <div class="mc-stats-row">
+                  <div class="mc-stat-item">
+                    <strong id="mcPostCount">0</strong>
+                    <span>posts</span>
+                  </div>
+                  <div class="mc-stat-item">
+                    <strong id="mcFollowers">0</strong>
+                    <span>followers</span>
+                  </div>
+                  <div class="mc-stat-item">
+                    <strong id="mcFollowing">0</strong>
+                    <span>following</span>
+                  </div>
+                </div>
+              </div>
+              <div class="mc-profile-info">
+                <div class="mc-name-row">
+                  <h2 id="mcName">Temple Name</h2>
+                  <span class="mc-verified-badge">🔱</span>
+                </div>
+                <div class="mc-category" id="mcCategory">Religious Organisation</div>
+                <p class="mc-bio" id="mcBio">Temple description</p>
+                <div class="mc-location" id="mcLocation">
+                  <svg viewBox="0 0 24 24"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
+                  <span>Location</span>
+                </div>
+              </div>
+              <div class="mc-action-btns">
+                <button class="mc-btn mc-btn-follow" onclick="MC.info('Following! 🙏')">Following ▾</button>
+                <button class="mc-btn mc-btn-message" onclick="MC.info('Messages coming soon!')">Message</button>
+                <button class="mc-btn mc-btn-add" onclick="MC.info('Suggest feature coming soon!')">
+                  <svg viewBox="0 0 24 24"><path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="8.5" cy="7" r="4"/><line x1="20" y1="8" x2="20" y2="14"/><line x1="23" y1="11" x2="17" y2="11"/></svg>
+                </button>
+              </div>
+            </div>
+
+            <!-- Story Highlights (placeholder circles) -->
+            <div class="mc-highlights" id="mcHighlights"></div>
+
+            <!-- Tab Bar -->
+            <div class="mc-tab-bar">
+              <button class="mc-tab on" id="mcTabAll" onclick="setMCTab('all', this)">
+                <svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
+              </button>
+              <button class="mc-tab" id="mcTabVideo" onclick="setMCTab('video', this)">
+                <svg viewBox="0 0 24 24"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2"/></svg>
+              </button>
+              <button class="mc-tab" id="mcTabTagged" onclick="setMCTab('tagged', this)">
+                <svg viewBox="0 0 24 24"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+              </button>
+            </div>
+
+            <!-- Post Grid -->
+            <div class="mc-post-grid" id="mcPostGrid">
+              <!-- Posts will be rendered here -->
+            </div>
+
+            <!-- Compose FAB (only shown to authorized users) -->
+            <button class="mc-compose-fab hide" id="mcComposeFab" onclick="openMandirCompose()">
+              <svg viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+            </button>
+
+            <!-- Empty state -->
+            <div class="mc-empty hide" id="mcEmpty">
+              <div class="mc-empty-icon">🛕</div>
+              <p>No posts yet in this community</p>
+              <span>Be the first to share something!</span>
+            </div>
+
+            <div style="height: 80px"></div>
+          </div>
+
+          <!-- ★ MANDIR POST COMPOSE OVERLAY -->
+          <div class="ovl" id="mandirCompOvl">
+            <div class="ovl-box" style="max-width: 520px">
+              <div class="ovl-hdr">
+                <h3 id="mandirCompTitle">New Post</h3>
+                <button class="ovl-close" onclick="closeOvl('mandirCompOvl')">✕</button>
+              </div>
+              <div style="padding: 16px">
+                <textarea
+                  id="mandirCompText"
+                  class="cmp-ta"
+                  rows="4"
+                  placeholder="Share with the community... 🙏"
+                  style="width: 100%; min-height: 100px; resize: vertical"
+                ></textarea>
+                <div id="mandirCompImgPreview" style="display: none; margin: 10px 0; position: relative">
+                  <img id="mandirCompImg" style="max-width: 100%; border-radius: 10px" alt="Preview">
+                  <button onclick="removeMandirCompImg()" style="position: absolute; top: 6px; right: 6px; background: rgba(0,0,0,0.6); color: #fff; border: none; border-radius: 50%; width: 28px; height: 28px; cursor: pointer">✕</button>
+                </div>
+                <div style="display: flex; align-items: center; gap: 10px; margin-top: 10px">
+                  <label class="icoBtn" style="cursor: pointer">
+                    <svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
+                    <input type="file" accept="image/*" onchange="handleMandirCompImg(event)" style="display: none">
+                  </label>
+                  <div style="flex: 1"></div>
+                  <button class="btn btn-p" id="mandirPostBtn" onclick="submitMandirPost()">Post 🙏</button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- ★ MANDIR POST DETAIL OVERLAY -->
+          <div class="ovl" id="mandirPostOvl">
+            <div class="ovl-box" style="max-width: 600px; max-height: 90vh; overflow-y: auto">
+              <div class="ovl-hdr">
+                <h3>Post</h3>
+                <button class="ovl-close" onclick="closeOvl('mandirPostOvl')">✕</button>
+              </div>
+              <div id="mandirPostDetail" style="padding: 16px"></div>
+            </div>
           </div>
 
           <!-- VIDEO PAGE -->

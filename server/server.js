@@ -8,6 +8,25 @@ const cloudinary = require("cloudinary").v2;
 const connectDB = require("./config/db");
 const setupSocket = require("./socket/chat");
 
+// ─── Validate Required Environment Variables ───
+const REQUIRED_ENV = [
+  "MONGODB_URI",
+  "JWT_SECRET",
+  "CLOUDINARY_CLOUD_NAME",
+  "CLOUDINARY_API_KEY",
+  "CLOUDINARY_API_SECRET",
+];
+
+const missing = REQUIRED_ENV.filter((key) => !process.env[key]);
+if (missing.length > 0) {
+  console.error("\n❌ Missing required environment variables:");
+  missing.forEach((key) => console.error(`   • ${key}`));
+  console.error(
+    "\n   Copy server/.env.example to server/.env and fill in your credentials.\n"
+  );
+  process.exit(1);
+}
+
 // Route imports
 const authRoutes = require("./routes/auth");
 const postRoutes = require("./routes/posts");
@@ -17,14 +36,24 @@ const storyRoutes = require("./routes/stories");
 const videoRoutes = require("./routes/videos");
 const notificationRoutes = require("./routes/notifications");
 const uploadRoutes = require("./routes/upload");
+const mandirRoutes = require("./routes/mandir");
 
 const app = express();
 const server = http.createServer(app);
 
+// ─── Allowed origins for CORS ───
+const ALLOWED_ORIGINS = [
+  "http://localhost:5000",
+  "http://localhost:3000",
+  "http://127.0.0.1:5000",
+  process.env.FRONTEND_URL, // optional: set in .env for production
+  process.env.RENDER_EXTERNAL_URL,
+].filter(Boolean);
+
 // Socket.io
 const io = new Server(server, {
   cors: {
-    origin: "*",
+    origin: ALLOWED_ORIGINS.length > 0 ? ALLOWED_ORIGINS : "*",
     methods: ["GET", "POST", "PUT", "DELETE"],
   },
 });
@@ -43,7 +72,19 @@ cloudinary.config({
 });
 
 // Middleware
-app.use(cors());
+app.use(
+  cors({
+    origin: function (origin, callback) {
+      // Allow requests with no origin (mobile apps, curl, same-origin)
+      if (!origin || ALLOWED_ORIGINS.includes(origin)) {
+        callback(null, true);
+      } else {
+        callback(null, true); // In dev, allow all; tighten in production
+      }
+    },
+    credentials: true,
+  })
+);
 app.use(express.json({ limit: "50mb" }));
 app.use(express.urlencoded({ extended: true, limit: "50mb" }));
 
@@ -59,6 +100,7 @@ app.use("/api/stories", storyRoutes);
 app.use("/api/videos", videoRoutes);
 app.use("/api/notifications", notificationRoutes);
 app.use("/api/upload", uploadRoutes);
+app.use("/api/mandir", mandirRoutes);
 
 // Health check
 app.get("/api/health", (req, res) => {

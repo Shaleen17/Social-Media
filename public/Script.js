@@ -858,6 +858,7 @@ function logout() {
 const PAGE_IDS = [
   "home",
   "mandir",
+  "mandirCommunity",
   "video",
   "search",
   "notifs",
@@ -904,6 +905,7 @@ function gp(page) {
       renderWidgets();
     },
     mandir: () => renderMandir(),
+    mandirCommunity: () => {}, // rendered by openMandirCommunity
     video: () => renderVideoPage(),
     search: () => {
       doSearch("");
@@ -1676,6 +1678,355 @@ function renderMandir() {
       const ini = getIni(u.name);
       return `<div class="disc-post"><div class="av av36">${u.avatar ? `<img src="${u.avatar}" alt="">` : ini}</div><div class="disc-body"><div class="disc-meta">${u.name}${u.verified ? " 🔱" : ""} · ${d.t}</div><div class="disc-text">${esc(d.txt)}</div><div class="disc-acts"><button class="disc-btn" onclick="auth(()=>MC.success('Pranam given! 🙏'))"><svg viewBox="0 0 24 24"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>${d.likes}</button><button class="disc-btn" onclick="auth(()=>openOvl('compOvl'))"><svg viewBox="0 0 24 24"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>${d.cmts}</button><button class="disc-btn" onclick="openSH('d1',event)"><svg viewBox="0 0 24 24"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg>Share</button></div></div></div>`;
     }).join("");
+}
+
+/* ── MANDIR COMMUNITY CONFIG ── */
+const MANDIR_CONFIG = {
+  "kedarnath": {
+    name: "Kedarnath Temple",
+    handle: "kedarnath_mandir",
+    slug: "kedarnath",
+    image: "images/temples/kedarnath.jpg",
+    bio: "Official Kedarnath Temple Community 🏔 Ancient Shiva temple at 3583m altitude in the Himalayas. One of the Char Dhams.",
+    category: "Religious Organisation",
+    location: "Rudraprayag, Uttarakhand",
+    followers: "1.2M",
+    following: "0",
+    highlights: ["Yatra 2025", "Morning Aarti", "Snow Season", "History", "Trekking"],
+    email: "kedarnath@tirthsutra.com",
+  },
+  "kashi-vishwanath": {
+    name: "Kashi Vishwanath",
+    handle: "kashi_mandir",
+    slug: "kashi-vishwanath",
+    image: "images/temples/kashi-vishwanath.jpg",
+    bio: "Official Kashi Vishwanath Temple Community 🕉 The divine abode of Lord Shiva on the banks of sacred Ganga in Varanasi.",
+    category: "Religious Organisation",
+    location: "Varanasi, UP",
+    followers: "2.8M",
+    following: "0",
+    highlights: ["Ganga Aarti", "Corridor Tour", "Daily Darshan", "Festivals", "History"],
+    email: "kashi@tirthsutra.com",
+  },
+  "tirupati": {
+    name: "Tirupati Balaji",
+    handle: "tirupati_mandir",
+    slug: "tirupati",
+    image: "images/temples/tirupati.jpg",
+    bio: "Official Tirupati Balaji Community 🛕 Tirumala Tirupati Devasthanams — the richest and most visited pilgrimage site.",
+    category: "Religious Organisation",
+    location: "Tirupati, AP",
+    followers: "5.6M",
+    following: "0",
+    highlights: ["Darshan Info", "Seva Booking", "Kalyanotsavam", "Prasadam", "Festivals"],
+    email: "tirupati@tirthsutra.com",
+  },
+  "somnath": {
+    name: "Somnath Temple",
+    handle: "somnath_mandir",
+    slug: "somnath",
+    image: "images/temples/somnath.jpg",
+    bio: "Official Somnath Temple Community 🌊 First among the 12 Jyotirlingas, standing gloriously on the shores of Arabian Sea.",
+    category: "Religious Organisation",
+    location: "Veraval, Gujarat",
+    followers: "890K",
+    following: "0",
+    highlights: ["Light Show", "Aarti", "Sea View", "History", "Pilgrimage"],
+    email: "somnath@tirthsutra.com",
+  },
+  "meenakshi": {
+    name: "Meenakshi Amman",
+    handle: "meenakshi_mandir",
+    slug: "meenakshi",
+    image: "images/temples/meenakshi.jpg",
+    bio: "Official Meenakshi Amman Temple Community 🌺 Magnificent Dravidian temple with towering gopurams and 33,000 sacred sculptures.",
+    category: "Religious Organisation",
+    location: "Madurai, TN",
+    followers: "1.5M",
+    following: "0",
+    highlights: ["Chithirai", "Architecture", "Night Temple", "Sculptures", "Festivals"],
+    email: "meenakshi@tirthsutra.com",
+  },
+  "ram-mandir": {
+    name: "Ram Mandir Ayodhya",
+    handle: "ramji_mandir",
+    slug: "ram-mandir",
+    image: "images/temples/ram-mandir.jpg",
+    bio: "Official Ram Mandir Community 🏹 The sacred birthplace of Lord Ram — the grand newly built temple at Ayodhya Dham.",
+    category: "Religious Organisation",
+    location: "Ayodhya, UP",
+    followers: "8.2M",
+    following: "0",
+    highlights: ["Aarti Schedule", "Architecture", "Ram Lalla", "History", "Live Darshan"],
+    email: "ramji@tirthsutra.com",
+  },
+};
+
+let currentMandirSlug = null;
+let currentMandirPosts = [];
+let mandirCompImgData = null;
+
+function openMandirCommunity(slug) {
+  const config = MANDIR_CONFIG[slug];
+  if (!config) {
+    MC.error("Mandir not found");
+    return;
+  }
+  currentMandirSlug = slug;
+
+  // Navigate to mandirCommunity page
+  gp("mandirCommunity");
+
+  // Fill header info
+  document.getElementById("mcTopTitle").textContent = config.handle;
+  document.getElementById("mcAvatar").src = config.image;
+  document.getElementById("mcName").textContent = config.name;
+  document.getElementById("mcCategory").textContent = config.category;
+  document.getElementById("mcBio").textContent = config.bio;
+  document.getElementById("mcLocation").querySelector("span").textContent = config.location;
+  document.getElementById("mcFollowers").textContent = config.followers;
+  document.getElementById("mcFollowing").textContent = config.following;
+
+  // Render highlights
+  const hlEl = document.getElementById("mcHighlights");
+  if (hlEl && config.highlights) {
+    hlEl.innerHTML = config.highlights.map((h, i) =>
+      `<div class="mc-hl-item">
+        <div class="mc-hl-circle">
+          <span>${["🕉","🔱","🛕","📿","🪷"][i % 5]}</span>
+        </div>
+        <div class="mc-hl-label">${h}</div>
+      </div>`
+    ).join("");
+  }
+
+  // Show/hide compose FAB based on auth
+  const fab = document.getElementById("mcComposeFab");
+  const storedUser = API.getStoredUser();
+  if (storedUser && storedUser.mandirId === slug) {
+    fab.classList.remove("hide");
+  } else {
+    fab.classList.add("hide");
+  }
+
+  // Reset tabs
+  document.querySelectorAll(".mc-tab").forEach(t => t.classList.remove("on"));
+  document.getElementById("mcTabAll").classList.add("on");
+
+  // Load posts
+  loadMandirPosts(slug);
+}
+
+async function loadMandirPosts(mandirId) {
+  const grid = document.getElementById("mcPostGrid");
+  const empty = document.getElementById("mcEmpty");
+  const countEl = document.getElementById("mcPostCount");
+
+  // Show loading skeleton
+  grid.innerHTML = Array(6).fill('').map(() =>
+    '<div class="mc-post-cell"><div class="skel" style="width:100%;height:100%"></div></div>'
+  ).join('');
+  empty.classList.add("hide");
+
+  try {
+    const data = await API.getMandirPosts(mandirId);
+    currentMandirPosts = data.posts || [];
+    countEl.textContent = data.total || currentMandirPosts.length;
+
+    if (currentMandirPosts.length === 0) {
+      grid.innerHTML = "";
+      empty.classList.remove("hide");
+      return;
+    }
+
+    empty.classList.add("hide");
+    renderMandirGrid(currentMandirPosts);
+  } catch (err) {
+    console.error("Load mandir posts error:", err);
+    grid.innerHTML = '<div style="padding:40px;text-align:center;color:var(--t3)">Failed to load posts. Please try again.</div>';
+  }
+}
+
+function renderMandirGrid(posts) {
+  const grid = document.getElementById("mcPostGrid");
+  grid.innerHTML = posts.map((p, i) => {
+    const hasImg = p.img;
+    const preview = hasImg
+      ? `<img src="${p.img}" alt="Post" class="mc-grid-img">`
+      : `<div class="mc-grid-text"><p>${esc(p.txt).substring(0, 120)}</p></div>`;
+    return `<div class="mc-post-cell" onclick="openMandirPostDetail(${i})">
+      ${preview}
+      <div class="mc-post-overlay">
+        <span>❤ ${p.likes.length}</span>
+        <span>💬 ${p.cmts ? p.cmts.length : 0}</span>
+      </div>
+    </div>`;
+  }).join("");
+}
+
+function openMandirPostDetail(idx) {
+  const p = currentMandirPosts[idx];
+  if (!p) return;
+  const detail = document.getElementById("mandirPostDetail");
+  const u = p.user || {};
+  const ini = getIni(u.name || "U");
+  const avatarHtml = u.avatar ? `<img src="${u.avatar}" alt="">` : ini;
+
+  let commentsHtml = "";
+  if (p.cmts && p.cmts.length > 0) {
+    commentsHtml = p.cmts.map(c => {
+      const cu = c.user || {};
+      const cIni = getIni(cu.name || "U");
+      return `<div style="display:flex;gap:8px;padding:8px 0;border-top:1px solid var(--bd)">
+        <div class="av av28">${cu.avatar ? `<img src="${cu.avatar}">` : cIni}</div>
+        <div style="flex:1"><strong style="font-size:13px">${cu.name || 'User'}</strong> <span style="font-size:12px;color:var(--t3)">${c.t}</span><div style="font-size:13px;margin-top:2px">${esc(c.txt)}</div></div>
+      </div>`;
+    }).join("");
+  }
+
+  detail.innerHTML = `
+    <div style="display:flex;gap:10px;align-items:center;margin-bottom:12px">
+      <div class="av av40">${avatarHtml}</div>
+      <div>
+        <strong>${u.name || 'Unknown'}</strong>${u.verified ? ' 🔱' : ''}
+        <div style="font-size:12px;color:var(--t3)">@${u.handle || 'user'} · ${p.t}</div>
+      </div>
+    </div>
+    ${p.txt ? `<div style="font-size:15px;line-height:1.5;margin-bottom:12px;white-space:pre-wrap">${esc(p.txt)}</div>` : ''}
+    ${p.img ? `<img src="${p.img}" style="width:100%;border-radius:10px;margin-bottom:12px" alt="Post">` : ''}
+    <div style="display:flex;gap:16px;padding:10px 0;border-top:1px solid var(--bd);border-bottom:1px solid var(--bd)">
+      <button class="disc-btn" onclick="toggleMandirPostLike('${p.id}', ${idx})">❤ ${p.likes.length}</button>
+      <button class="disc-btn">💬 ${p.cmts ? p.cmts.length : 0}</button>
+    </div>
+    ${commentsHtml}
+    <div style="display:flex;gap:8px;margin-top:12px">
+      <input type="text" id="mcCommentInput" placeholder="Add a comment..." style="flex:1;padding:8px 12px;border-radius:20px;border:1px solid var(--bd);background:var(--bg2);color:var(--t1);font-size:13px">
+      <button class="btn btn-p btn-sm" onclick="addMandirPostComment('${p.id}', ${idx})">Post</button>
+    </div>
+  `;
+  openOvl("mandirPostOvl");
+}
+
+async function toggleMandirPostLike(postId, idx) {
+  if (!API.getToken()) {
+    openOvl("authOvl");
+    return;
+  }
+  try {
+    const result = await API.toggleMandirLike(currentMandirSlug, postId);
+    if (currentMandirPosts[idx]) {
+      currentMandirPosts[idx].likes = result.likes;
+    }
+    renderMandirGrid(currentMandirPosts);
+    openMandirPostDetail(idx);
+  } catch (err) {
+    MC.error("Failed to like post");
+  }
+}
+
+async function addMandirPostComment(postId, idx) {
+  if (!API.getToken()) {
+    openOvl("authOvl");
+    return;
+  }
+  const input = document.getElementById("mcCommentInput");
+  const text = (input?.value || "").trim();
+  if (!text) return;
+  try {
+    const comment = await API.addMandirComment(currentMandirSlug, postId, text);
+    if (currentMandirPosts[idx]) {
+      if (!currentMandirPosts[idx].cmts) currentMandirPosts[idx].cmts = [];
+      currentMandirPosts[idx].cmts.push(comment);
+    }
+    input.value = "";
+    openMandirPostDetail(idx);
+    MC.success("Comment added! 🙏");
+  } catch (err) {
+    MC.error("Failed to add comment");
+  }
+}
+
+function setMCTab(tab, el) {
+  document.querySelectorAll(".mc-tab").forEach(t => t.classList.remove("on"));
+  if (el) el.classList.add("on");
+  // For now all tabs show same grid — video/tagged are placeholders
+  if (tab === "all") {
+    renderMandirGrid(currentMandirPosts);
+  } else if (tab === "video") {
+    const grid = document.getElementById("mcPostGrid");
+    grid.innerHTML = '<div style="padding:60px 20px;text-align:center;color:var(--t3)"><div style="font-size:32px;margin-bottom:8px">🎬</div>Videos coming soon</div>';
+  } else if (tab === "tagged") {
+    const grid = document.getElementById("mcPostGrid");
+    grid.innerHTML = '<div style="padding:60px 20px;text-align:center;color:var(--t3)"><div style="font-size:32px;margin-bottom:8px">👤</div>Tagged posts coming soon</div>';
+  }
+}
+
+function openMandirCompose() {
+  const storedUser = API.getStoredUser();
+  if (!storedUser || storedUser.mandirId !== currentMandirSlug) {
+    MC.error("You can only post in your assigned mandir community.");
+    return;
+  }
+  const config = MANDIR_CONFIG[currentMandirSlug];
+  document.getElementById("mandirCompTitle").textContent = `New Post — ${config?.name || 'Community'}`;
+  document.getElementById("mandirCompText").value = "";
+  removeMandirCompImg();
+  openOvl("mandirCompOvl");
+}
+
+function handleMandirCompImg(event) {
+  const file = event.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    mandirCompImgData = e.target.result;
+    document.getElementById("mandirCompImg").src = mandirCompImgData;
+    document.getElementById("mandirCompImgPreview").style.display = "block";
+  };
+  reader.readAsDataURL(file);
+}
+
+function removeMandirCompImg() {
+  mandirCompImgData = null;
+  document.getElementById("mandirCompImgPreview").style.display = "none";
+  document.getElementById("mandirCompImg").src = "";
+}
+
+async function submitMandirPost() {
+  const text = (document.getElementById("mandirCompText")?.value || "").trim();
+  if (!text && !mandirCompImgData) {
+    MC.error("Please write something or add an image.");
+    return;
+  }
+
+  const btn = document.getElementById("mandirPostBtn");
+  btn.disabled = true;
+  btn.textContent = "Posting...";
+
+  try {
+    let imageUrl = null;
+    if (mandirCompImgData) {
+      try {
+        const uploadResult = await API.uploadBase64(mandirCompImgData, "mandir");
+        imageUrl = uploadResult.url;
+      } catch (e) {
+        console.warn("Image upload failed, posting text only");
+      }
+    }
+
+    const newPost = await API.createMandirPost(currentMandirSlug, text, imageUrl);
+    currentMandirPosts.unshift(newPost);
+    renderMandirGrid(currentMandirPosts);
+    document.getElementById("mcPostCount").textContent = currentMandirPosts.length;
+
+    closeOvl("mandirCompOvl");
+    MC.success("Post published! 🙏");
+  } catch (err) {
+    MC.error(err.message || "Failed to create post");
+  } finally {
+    btn.disabled = false;
+    btn.textContent = "Post 🙏";
+  }
 }
 
 /* ── VIDEO PAGE ── */
@@ -2866,6 +3217,7 @@ window.addEventListener("DOMContentLoaded", init);
         renderWidgets();
       },
       mandir: () => renderMandir(),
+      mandirCommunity: () => { if (currentMandirSlug) loadMandirPosts(currentMandirSlug); },
       video: () => renderVideoPage(),
       search: () => doSearch(""),
       notifs: () => renderNotifs(),

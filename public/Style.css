@@ -2909,6 +2909,463 @@ video {
 }
 
 /* ============================================================
+   ★ MANDIR COMMUNITY DETAIL PAGE (Instagram-style)
+   ============================================================ */
+
+/* ── Top Bar ── */
+.mc-topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 16px;
+  border-bottom: 1px solid var(--bd);
+  position: sticky;
+  top: 0;
+  background: var(--bg);
+  z-index: 50;
+}
+.mc-topbar-title {
+  font-size: 15px;
+  font-weight: 700;
+  flex: 1;
+  text-align: center;
+}
+.mc-back-btn, .mc-more-btn {
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 6px;
+  border-radius: 8px;
+  transition: background 0.15s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.mc-back-btn:hover, .mc-more-btn:hover {
+  background: var(--bg2);
+}
+.mc-back-btn svg, .mc-more-btn svg {
+  width: 22px;
+  height: 22px;
+  stroke: var(--t);
+  fill: none;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.mc-more-btn svg {
+  fill: var(--t);
+  stroke: none;
+}
+
+/* ── Profile Header ── */
+.mc-profile-header {
+  padding: 16px;
+}
+.mc-profile-top {
+  display: flex;
+  align-items: center;
+  gap: 24px;
+  margin-bottom: 14px;
+}
+.mc-avatar-wrap {
+  flex-shrink: 0;
+}
+.mc-avatar-img {
+  width: 80px;
+  height: 80px;
+  border-radius: 50%;
+  border: 3px solid var(--p);
+  object-fit: cover;
+  background: var(--bg3);
+}
+.mc-stats-row {
+  display: flex;
+  flex: 1;
+  justify-content: space-around;
+  text-align: center;
+}
+.mc-stat-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+}
+.mc-stat-item strong {
+  font-size: 17px;
+  font-weight: 700;
+  color: var(--t);
+}
+.mc-stat-item span {
+  font-size: 12px;
+  color: var(--t3);
+}
+
+/* ── Profile Info ── */
+.mc-profile-info {
+  margin-bottom: 14px;
+}
+.mc-name-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.mc-name-row h2 {
+  font-size: 15px;
+  font-weight: 700;
+  margin: 0;
+}
+.mc-verified-badge {
+  font-size: 14px;
+}
+.mc-category {
+  font-size: 13px;
+  color: var(--t3);
+  margin: 2px 0 6px;
+}
+.mc-bio {
+  font-size: 14px;
+  line-height: 1.45;
+  color: var(--t);
+  margin: 0 0 6px;
+  word-break: break-word;
+}
+.mc-location {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 13px;
+  color: var(--t3);
+}
+.mc-location svg {
+  width: 13px;
+  height: 13px;
+  stroke: var(--t3);
+  fill: none;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+/* ── Action Buttons ── */
+.mc-action-btns {
+  display: flex;
+  gap: 6px;
+}
+.mc-btn {
+  flex: 1;
+  padding: 7px 0;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  border: none;
+  text-align: center;
+  transition: all 0.18s;
+}
+.mc-btn-follow {
+  background: var(--bg3);
+  color: var(--t);
+  border: 1px solid var(--bd);
+}
+.mc-btn-follow:hover {
+  background: var(--bg2);
+}
+.mc-btn-message {
+  background: var(--bg3);
+  color: var(--t);
+  border: 1px solid var(--bd);
+}
+.mc-btn-message:hover {
+  background: var(--bg2);
+}
+.mc-btn-add {
+  flex: 0;
+  width: 34px;
+  min-width: 34px;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--bg3);
+  border: 1px solid var(--bd);
+  border-radius: 8px;
+}
+.mc-btn-add svg {
+  width: 16px;
+  height: 16px;
+  stroke: var(--t);
+  fill: none;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.mc-btn-add:hover {
+  background: var(--bg2);
+}
+
+/* ── Story Highlights ── */
+.mc-highlights {
+  display: flex;
+  gap: 16px;
+  padding: 8px 16px 14px;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.mc-highlights::-webkit-scrollbar {
+  display: none;
+}
+.mc-hl-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+}
+.mc-hl-circle {
+  width: 60px;
+  height: 60px;
+  border-radius: 50%;
+  border: 1.5px solid var(--bd2);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--bg2);
+  font-size: 22px;
+  cursor: pointer;
+  transition: border-color 0.18s;
+}
+.mc-hl-circle:hover {
+  border-color: var(--p);
+}
+.mc-hl-label {
+  font-size: 11px;
+  color: var(--t3);
+  max-width: 60px;
+  text-align: center;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ── Tab Bar ── */
+.mc-tab-bar {
+  display: flex;
+  border-top: 1px solid var(--bd);
+  border-bottom: 1px solid var(--bd);
+}
+.mc-tab {
+  flex: 1;
+  padding: 12px 0;
+  background: none;
+  border: none;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.18s;
+  border-bottom: 2px solid transparent;
+  opacity: 0.4;
+}
+.mc-tab.on {
+  opacity: 1;
+  border-bottom-color: var(--t);
+}
+.mc-tab svg {
+  width: 22px;
+  height: 22px;
+  stroke: var(--t);
+  fill: none;
+  stroke-width: 1.5;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.mc-tab.on svg {
+  stroke-width: 2;
+}
+
+/* ── Post Grid (Instagram 3-column) ── */
+.mc-post-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 2px;
+}
+.mc-post-cell {
+  position: relative;
+  aspect-ratio: 1;
+  overflow: hidden;
+  cursor: pointer;
+  background: var(--bg3);
+}
+.mc-grid-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+  transition: transform 0.3s;
+}
+.mc-post-cell:hover .mc-grid-img {
+  transform: scale(1.05);
+}
+.mc-grid-text {
+  width: 100%;
+  height: 100%;
+  padding: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(135deg, var(--bg2) 0%, var(--bg3) 100%);
+  text-align: center;
+}
+.mc-grid-text p {
+  font-size: 12px;
+  color: var(--t);
+  line-height: 1.4;
+  margin: 0;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 5;
+  overflow: hidden;
+}
+.mc-post-overlay {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.35);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  opacity: 0;
+  transition: opacity 0.2s;
+}
+.mc-post-cell:hover .mc-post-overlay {
+  opacity: 1;
+}
+.mc-post-overlay span {
+  color: #fff;
+  font-size: 14px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+/* ── Compose FAB ── */
+.mc-compose-fab {
+  position: fixed;
+  bottom: 80px;
+  right: 20px;
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  background: var(--p);
+  color: #fff;
+  border: none;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
+  z-index: 40;
+  transition: all 0.2s;
+}
+.mc-compose-fab:hover {
+  transform: scale(1.1);
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.35);
+}
+.mc-compose-fab svg {
+  width: 24px;
+  height: 24px;
+  stroke: #fff;
+  fill: none;
+  stroke-width: 2.5;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+/* ── Empty State ── */
+.mc-empty {
+  text-align: center;
+  padding: 60px 24px;
+  color: var(--t3);
+}
+.mc-empty-icon {
+  font-size: 48px;
+  margin-bottom: 12px;
+}
+.mc-empty p {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--t2);
+  margin-bottom: 4px;
+}
+.mc-empty span {
+  font-size: 13px;
+}
+
+/* ── Mobile responsive for Mandir Community ── */
+@media (max-width: 640px) {
+  .mc-topbar {
+    top: 0;
+    position: sticky;
+  }
+  .mc-avatar-img {
+    width: 70px;
+    height: 70px;
+  }
+  .mc-profile-top {
+    gap: 16px;
+  }
+  .mc-stat-item strong {
+    font-size: 16px;
+  }
+  .mc-hl-circle {
+    width: 52px;
+    height: 52px;
+    font-size: 18px;
+  }
+  .mc-compose-fab {
+    bottom: 70px;
+    right: 14px;
+    width: 50px;
+    height: 50px;
+  }
+  .mc-compose-fab svg {
+    width: 20px;
+    height: 20px;
+  }
+  .mc-post-overlay {
+    opacity: 1;
+    background: rgba(0, 0, 0, 0.15);
+  }
+  .mc-post-overlay span {
+    font-size: 12px;
+  }
+}
+
+@media (max-width: 400px) {
+  .mc-avatar-img {
+    width: 60px;
+    height: 60px;
+  }
+  .mc-profile-top {
+    gap: 12px;
+  }
+  .mc-stat-item strong {
+    font-size: 15px;
+  }
+  .mc-hl-circle {
+    width: 48px;
+    height: 48px;
+    font-size: 16px;
+  }
+  .mc-hl-label {
+    font-size: 10px;
+    max-width: 50px;
+  }
+}
+
+/* ============================================================
    SHARE / REPOST SHEETS
    ============================================================ */
 #shareSheet,

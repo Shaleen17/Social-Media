@@ -15,6 +15,7 @@ const Story = require("./models/Story");
 const Video = require("./models/Video");
 const Notification = require("./models/Notification");
 const Conversation = require("./models/Message");
+const MandirPost = require("./models/MandirPost");
 
 async function seed() {
   await connectDB();
@@ -27,9 +28,10 @@ async function seed() {
   await Video.deleteMany({});
   await Notification.deleteMany({});
   await Conversation.deleteMany({});
+  await MandirPost.deleteMany({});
 
   // Create users (passwords are hashed automatically by the model)
-  const password = "password123"; // Default password for all seed users
+  const password = process.env.SEED_PASSWORD || "password123";
 
   const u1 = await User.create({
     name: "Swami Krishnananda",
@@ -71,6 +73,79 @@ async function seed() {
     bio: "Pilgrimage guide & photographer 📸",
     location: "Haridwar, India",
     joined: "Apr 2023",
+  });
+
+  // ─── MANDIR ADMIN ACCOUNTS ───
+  const mKedarnath = await User.create({
+    name: "Kedarnath Temple",
+    handle: "kedarnath_mandir",
+    email: "kedarnath@tirthsutra.com",
+    password,
+    bio: "Official Kedarnath Temple Community 🏔 Ancient Shiva temple at 3583m altitude in the Himalayas.",
+    location: "Rudraprayag, Uttarakhand",
+    verified: true,
+    mandirId: "kedarnath",
+    joined: "Jan 2025",
+  });
+
+  const mKashi = await User.create({
+    name: "Kashi Vishwanath",
+    handle: "kashi_mandir",
+    email: "kashi@tirthsutra.com",
+    password,
+    bio: "Official Kashi Vishwanath Temple Community 🕉 The divine abode of Lord Shiva on the banks of sacred Ganga.",
+    location: "Varanasi, UP",
+    verified: true,
+    mandirId: "kashi-vishwanath",
+    joined: "Jan 2025",
+  });
+
+  const mTirupati = await User.create({
+    name: "Tirupati Balaji",
+    handle: "tirupati_mandir",
+    email: "tirupati@tirthsutra.com",
+    password,
+    bio: "Official Tirupati Balaji Community 🛕 Venkateshwara temple, the richest and most visited pilgrimage site.",
+    location: "Tirupati, AP",
+    verified: true,
+    mandirId: "tirupati",
+    joined: "Jan 2025",
+  });
+
+  const mSomnath = await User.create({
+    name: "Somnath Temple",
+    handle: "somnath_mandir",
+    email: "somnath@tirthsutra.com",
+    password,
+    bio: "Official Somnath Temple Community 🌊 First among the 12 Jyotirlingas on the shores of Arabian Sea.",
+    location: "Veraval, Gujarat",
+    verified: true,
+    mandirId: "somnath",
+    joined: "Jan 2025",
+  });
+
+  const mMeenakshi = await User.create({
+    name: "Meenakshi Amman",
+    handle: "meenakshi_mandir",
+    email: "meenakshi@tirthsutra.com",
+    password,
+    bio: "Official Meenakshi Amman Temple Community 🌺 Magnificent Dravidian temple with towering gopurams.",
+    location: "Madurai, TN",
+    verified: true,
+    mandirId: "meenakshi",
+    joined: "Jan 2025",
+  });
+
+  const mRamMandir = await User.create({
+    name: "Ram Mandir Ayodhya",
+    handle: "ramji_mandir",
+    email: "ramji@tirthsutra.com",
+    password,
+    bio: "Official Ram Mandir Community 🏹 The sacred birthplace of Lord Ram — the grand temple at Ayodhya Dham.",
+    location: "Ayodhya, UP",
+    verified: true,
+    mandirId: "ram-mandir",
+    joined: "Jan 2025",
   });
 
   // Set up follow relationships
@@ -131,6 +206,121 @@ async function seed() {
       votes: [`${u1._id}:0`, `${u2._id}:0`, `${u3._id}:1`],
     },
     createdAt: new Date(Date.now() - 43200000),
+  });
+
+  // ─── MANDIR COMMUNITY POSTS ───
+  // Kedarnath posts
+  await MandirPost.create({
+    mandirId: "kedarnath",
+    user: mKedarnath._id,
+    text: "🏔 Kedarnath Temple doors will open on May 7th, 2025! Start planning your yatra now. Registration opens next week.\n\n#KedarnathYatra2025",
+    likes: [u1._id, u2._id, u3._id],
+    comments: [{ user: u2._id, text: "Can't wait! 🙏" }],
+    createdAt: new Date(Date.now() - 3600000),
+  });
+  await MandirPost.create({
+    mandirId: "kedarnath",
+    user: mKedarnath._id,
+    text: "Morning aarti at Kedarnath — the purest form of devotion at 3583m. Har Har Mahadev! 🔱",
+    likes: [u1._id, u4._id],
+    createdAt: new Date(Date.now() - 86400000),
+  });
+  await MandirPost.create({
+    mandirId: "kedarnath",
+    user: mKedarnath._id,
+    text: "Snow-covered peaks surrounding the sacred temple. Winter season serenity. ❄️🕉",
+    likes: [u2._id, u3._id, u4._id],
+    createdAt: new Date(Date.now() - 172800000),
+  });
+
+  // Kashi Vishwanath posts
+  await MandirPost.create({
+    mandirId: "kashi-vishwanath",
+    user: mKashi._id,
+    text: "🕯 Evening Ganga Aarti at the ghats of Varanasi. The spiritual energy here is beyond words.\n\n#GangaAarti #KashiVishwanath",
+    likes: [u1._id, u2._id, u3._id, u4._id],
+    comments: [
+      { user: u1._id, text: "Om Namah Shivaya! 🙏" },
+      { user: u3._id, text: "The eternal city of light" },
+    ],
+    createdAt: new Date(Date.now() - 7200000),
+  });
+  await MandirPost.create({
+    mandirId: "kashi-vishwanath",
+    user: mKashi._id,
+    text: "The newly renovated Kashi Vishwanath corridor is a masterpiece. Visit and witness the grandeur of Mahadev's abode. 🛕",
+    likes: [u2._id, u3._id],
+    createdAt: new Date(Date.now() - 259200000),
+  });
+
+  // Tirupati Balaji posts
+  await MandirPost.create({
+    mandirId: "tirupati",
+    user: mTirupati._id,
+    text: "🛕 Tirumala Tirupati Devasthanams — Today's darshan wait time: approx 4 hours. Plan your visit accordingly.\n\nOm Namo Venkatesaya!",
+    likes: [u1._id, u2._id],
+    comments: [{ user: u4._id, text: "Thank you for the update 🙏" }],
+    createdAt: new Date(Date.now() - 14400000),
+  });
+  await MandirPost.create({
+    mandirId: "tirupati",
+    user: mTirupati._id,
+    text: "Srivari Kalyanotsavam — the divine wedding ceremony of Lord Venkateswara. A sight that fills every heart with devotion. 💛",
+    likes: [u3._id, u4._id],
+    createdAt: new Date(Date.now() - 345600000),
+  });
+
+  // Somnath posts
+  await MandirPost.create({
+    mandirId: "somnath",
+    user: mSomnath._id,
+    text: "🌊 Somnath — First of the 12 Jyotirlingas. The sound of the Arabian Sea waves and the temple bells create an unforgettable spiritual experience.\n\n#Somnath #Jyotirlinga",
+    likes: [u1._id, u2._id, u4._id],
+    createdAt: new Date(Date.now() - 10800000),
+  });
+  await MandirPost.create({
+    mandirId: "somnath",
+    user: mSomnath._id,
+    text: "Light and Sound show narrating the glorious history of Somnath temple. Every evening at 7:30 PM.",
+    likes: [u1._id],
+    createdAt: new Date(Date.now() - 432000000),
+  });
+
+  // Meenakshi Amman posts
+  await MandirPost.create({
+    mandirId: "meenakshi",
+    user: mMeenakshi._id,
+    text: "🌺 Meenakshi Amman Temple, Madurai — The towering gopurams adorned with 33,000 sacred sculptures. A marvel of Dravidian architecture.\n\n#MeenakshiTemple",
+    likes: [u1._id, u3._id, u4._id],
+    comments: [{ user: u1._id, text: "Architectural wonder! 🏛" }],
+    createdAt: new Date(Date.now() - 21600000),
+  });
+  await MandirPost.create({
+    mandirId: "meenakshi",
+    user: mMeenakshi._id,
+    text: "Chithirai Festival preparations are underway! The grand procession of Lord Sundareswarar and Goddess Meenakshi. 🎊",
+    likes: [u2._id, u3._id],
+    createdAt: new Date(Date.now() - 518400000),
+  });
+
+  // Ram Mandir posts
+  await MandirPost.create({
+    mandirId: "ram-mandir",
+    user: mRamMandir._id,
+    text: "🏹 Jai Shri Ram! The grand Ram Mandir at Ayodhya Dham — the sacred birthplace of Lord Ram. A dream fulfilled for millions of devotees.\n\n#RamMandir #Ayodhya",
+    likes: [u1._id, u2._id, u3._id, u4._id],
+    comments: [
+      { user: u2._id, text: "Jai Shri Ram! 🙏" },
+      { user: u4._id, text: "Historic moment for Sanatan Dharma" },
+    ],
+    createdAt: new Date(Date.now() - 28800000),
+  });
+  await MandirPost.create({
+    mandirId: "ram-mandir",
+    user: mRamMandir._id,
+    text: "Daily aarti schedule at Ram Mandir, Ayodhya:\n🌅 Mangala Aarti — 6:00 AM\n☀️ Shringar Aarti — 12:00 PM\n🌆 Sandhya Aarti — 7:00 PM\n🌙 Shayan Aarti — 9:00 PM",
+    likes: [u1._id, u3._id],
+    createdAt: new Date(Date.now() - 604800000),
   });
 
   // Create stories
@@ -312,6 +502,15 @@ async function seed() {
   ananya@tirthsutra.com
   veda@tirthsutra.com
   prakash@tirthsutra.com
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  Mandir Admin Accounts
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  kedarnath@tirthsutra.com   → Kedarnath
+  kashi@tirthsutra.com       → Kashi Vishwanath
+  tirupati@tirthsutra.com    → Tirupati Balaji
+  somnath@tirthsutra.com     → Somnath
+  meenakshi@tirthsutra.com   → Meenakshi Amman
+  ramji@tirthsutra.com       → Ram Mandir, Ayodhya
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   `);
 

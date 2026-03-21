@@ -1,0 +1,41 @@
+# ─── Dependencies ───
+node_modules/
+package-lock.json
+
+# ─── Environment Variables (NEVER commit these) ───
+.env
+.env.local
+.env.production
+.env.*.local
+
+# ─── OS Files ───
+.DS_Store
+Thumbs.db
+Desktop.ini
+ehthumbs.db
+
+# ─── IDE / Editor ───
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.project
+.settings/
+
+# ─── Logs ───
+logs/
+*.log
+npm-debug.log*
+
+# ─── Build / Dist ───
+dist/
+build/
+.cache/
+.tmp/
+tmp/
+
+# ─── Misc ───
+*.tgz
+coverage/
+.nyc_output/

@@ -317,5 +317,36 @@ const API = (() => {
     // Upload
     uploadFile,
     uploadBase64,
+
+    // Mandir Community
+    async getMandirPosts(mandirId, page = 1) {
+      return request(`/mandir/${mandirId}/posts?page=${page}`);
+    },
+
+    async createMandirPost(mandirId, text, image) {
+      return request(`/mandir/${mandirId}/posts`, {
+        method: "POST",
+        body: JSON.stringify({ text, image }),
+      });
+    },
+
+    async toggleMandirLike(mandirId, postId) {
+      return request(`/mandir/${mandirId}/posts/${postId}/like`, {
+        method: "PUT",
+      });
+    },
+
+    async addMandirComment(mandirId, postId, text) {
+      return request(`/mandir/${mandirId}/posts/${postId}/comment`, {
+        method: "PUT",
+        body: JSON.stringify({ text }),
+      });
+    },
+
+    async deleteMandirPost(mandirId, postId) {
+      return request(`/mandir/${mandirId}/posts/${postId}`, {
+        method: "DELETE",
+      });
+    },
   };
 })();
