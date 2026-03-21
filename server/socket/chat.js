@@ -139,12 +139,23 @@ module.exports = function setupSocket(io) {
     // Caller initiates a call
     socket.on("callUser", (data) => {
       // data: { userToCall, signalData, from, name, isVideo }
+      console.log(`📞 callUser event: ${data.from} → ${data.userToCall} (online: ${isOnline(data.userToCall)})`);
+      
+      if (!isOnline(data.userToCall)) {
+        // User is offline — notify caller immediately
+        socket.emit("callRejected", { reason: "User is offline" });
+        return;
+      }
+
       io.to(data.userToCall).emit("callUser", {
         signal: data.signalData,
         from: data.from,
         name: data.name,
         isVideo: data.isVideo,
       });
+
+      // Confirm delivery to the caller
+      socket.emit("callRinging", { to: data.userToCall });
     });
 
     // Callee answers the call
@@ -173,7 +184,7 @@ module.exports = function setupSocket(io) {
       }
     });
 
-    // Disconnect
+    // Disconnect — also notify call partner if in a call
     socket.on("disconnect", () => {
       const userId = socket.userId;
       if (userId) {

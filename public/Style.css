@@ -407,6 +407,13 @@ video {
   stroke-linejoin: round;
   pointer-events: none;
 }
+.topbar-auth-btn {
+  background: var(--a) !important;
+  border-color: var(--p) !important;
+}
+.topbar-auth-btn:hover {
+  background: var(--am) !important;
+}
 
 /* Hamburger button */
 #hamburgerBtn {
@@ -4073,7 +4080,7 @@ video {
 @media (max-width: 640px) {
   #pgChats.on {
     flex-direction: column;
-    height: calc(100vh - 124px);
+    height: calc(100vh - var(--topbar-h) - var(--bottomnav-h));
   }
   .chats-panel {
     width: 100%;
@@ -4082,8 +4089,12 @@ video {
   }
   .chat-window {
     position: fixed;
-    inset: 0;
-    z-index: 350;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 500;
+    height: 100vh !important;
     background: var(--bg2);
   }
   .chat-win-msgs {
@@ -4094,6 +4105,15 @@ video {
   }
   .chat-back-btn {
     display: flex;
+  }
+  /* Hide top bar and bottom nav when chat is fullscreen */
+  body.chat-fullscreen #topBar,
+  body.chat-fullscreen #bottomNav {
+    display: none !important;
+  }
+  body.chat-fullscreen {
+    padding-top: 0;
+    padding-bottom: 0;
   }
 }
 @media (min-width: 641px) {
@@ -4408,6 +4428,7 @@ video {
   .chat-win-hdr {
     padding: 8px 10px;
     gap: 8px;
+    padding-top: max(8px, env(safe-area-inset-top, 8px));
   }
   .chats-icon-btn {
     width: 32px;
@@ -4424,9 +4445,8 @@ video {
   .chat-win-name {
     font-size: 14px;
   }
-  .chat-window {
-    top: var(--topbar-h, 60px) !important;
-    height: calc(100vh - var(--topbar-h, 60px)) !important;
+  .chat-win-bar {
+    padding-bottom: max(10px, env(safe-area-inset-bottom, 10px));
   }
 }
 

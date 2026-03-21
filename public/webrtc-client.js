@@ -12,6 +12,7 @@ const WebRTCClient = (() => {
   let isCaller = false;
   let isVideoEnabled = false;
   let currentCallUser = null; // { id, name, avatar }
+  let callTimeout = null; // 30s auto-cancel timer
 
   // DOM Elements (will be set after init)
   let els = {};
@@ -20,6 +21,22 @@ const WebRTCClient = (() => {
     iceServers: [
       { urls: "stun:stun.l.google.com:19302" },
       { urls: "stun:stun1.l.google.com:19302" },
+      { urls: "stun:stun2.l.google.com:19302" },
+      {
+        urls: "turn:openrelay.metered.ca:80",
+        username: "openrelayproject",
+        credential: "openrelayproject",
+      },
+      {
+        urls: "turn:openrelay.metered.ca:443",
+        username: "openrelayproject",
+        credential: "openrelayproject",
+      },
+      {
+        urls: "turn:openrelay.metered.ca:443?transport=tcp",
+        username: "openrelayproject",
+        credential: "openrelayproject",
+      },
     ],
   };
 
@@ -73,6 +90,7 @@ const WebRTCClient = (() => {
     socket.on("iceCandidate", handleIceCandidate);
     socket.on("callRejected", handleCallRejected);
     socket.on("callEnded", handleCallEnded);
+    socket.on("callRinging", handleCallRinging);
     
     console.log("WebRTC Client: Socket listeners attached successfully.");
   }
@@ -102,6 +120,15 @@ const WebRTCClient = (() => {
         name: (typeof CU !== "undefined" && CU) ? CU.name : "Someone",
         isVideo: withVideo,
       });
+
+      // Start 30-second call timeout
+      callTimeout = setTimeout(() => {
+        if (isInCall && isCaller && els.statusTxt.textContent !== "Connected 🟢") {
+          els.statusTxt.textContent = "No Answer";
+          if (typeof MC !== "undefined") MC.warn("No answer. Call timed out.");
+          setTimeout(resetCallUI, 1500);
+        }
+      }, 30000);
       
     } catch (err) {
       console.error("Failed to start call", err);
@@ -167,6 +194,7 @@ const WebRTCClient = (() => {
 
   // 5. Caller handles accepted call
   async function handleCallAccepted(signal) {
+    clearTimeout(callTimeout);
     showActiveUi();
     await peerConnection.setRemoteDescription(new RTCSessionDescription(signal));
   }
@@ -183,13 +211,23 @@ const WebRTCClient = (() => {
   }
 
   // 7. Handle Call Rejection
-  function handleCallRejected() {
-    els.statusTxt.textContent = "Call Rejected";
+  function handleCallRejected(data) {
+    clearTimeout(callTimeout);
+    const reason = (data && data.reason) ? data.reason : "Call Rejected";
+    els.statusTxt.textContent = reason;
+    if (typeof MC !== "undefined") MC.warn(reason);
     setTimeout(resetCallUI, 2000);
+  }
+
+  // 7b. Handle Call Ringing confirmation
+  function handleCallRinging(data) {
+    console.log("WebRTC: Call is ringing on", data?.to);
+    if (els.statusTxt) els.statusTxt.textContent = "Ringing...";
   }
 
   // 8. Handle Remote End Call
   function handleCallEnded() {
+    clearTimeout(callTimeout);
     resetCallUI();
     MC?.info("Call ended");
   }
@@ -307,6 +345,8 @@ const WebRTCClient = (() => {
     currentCallUser = null;
     isCaller = false;
     pendingOffer = null;
+    clearTimeout(callTimeout);
+    callTimeout = null;
     
     els.audioRing?.pause();
     els.overlay?.classList.remove("show");

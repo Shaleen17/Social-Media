@@ -986,6 +986,58 @@ function updateDrawer() {
       avEl.innerHTML = `<svg style="width:16px;height:16px;stroke:#fff;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round" viewBox="0 0 24 24"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>`;
     if (authTxt) authTxt.textContent = "Sign In";
   }
+  // Also update sidebar and topbar auth buttons
+  updateNavAuthButtons();
+}
+
+function updateNavAuthButtons() {
+  // Desktop sidebar auth button
+  const sbAuthTxt = document.getElementById("sbAuthTxt");
+  if (sbAuthTxt) sbAuthTxt.textContent = CU ? "Sign Out" : "Sign In";
+
+  // Mobile topbar auth button
+  const topbarBtn = document.getElementById("topbarAuthBtn");
+  if (topbarBtn) {
+    if (CU) {
+      const ini = getIni(CU.name);
+      topbarBtn.innerHTML = CU.avatar
+        ? `<img src="${CU.avatar}" alt="" style="width:100%;height:100%;object-fit:cover;border-radius:50%">`
+        : `<span style="font-size:13px;font-weight:700;color:var(--p)">${ini}</span>`;
+      topbarBtn.style.background = CU.avatar ? 'transparent' : 'var(--a)';
+      topbarBtn.style.border = CU.avatar ? 'none' : '2px solid var(--p)';
+      topbarBtn.style.padding = '0';
+      topbarBtn.style.overflow = 'hidden';
+    } else {
+      topbarBtn.innerHTML = `<svg viewBox="0 0 24 24" id="topbarAuthIco"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" /><circle cx="12" cy="7" r="4" /></svg>`;
+      topbarBtn.style.background = '';
+      topbarBtn.style.border = '';
+      topbarBtn.style.padding = '';
+      topbarBtn.style.overflow = '';
+    }
+  }
+}
+
+function handleSidebarAuth() {
+  if (CU) {
+    doLogout();
+  } else {
+    openOvl('authOvl');
+  }
+}
+function handleTopbarAuth() {
+  if (CU) {
+    gp('profile');
+  } else {
+    openOvl('authOvl');
+  }
+}
+function handleDrawerAuth() {
+  closeDrawer();
+  if (CU) {
+    doLogout();
+  } else {
+    openOvl('authOvl');
+  }
 }
 
 /* ── STORIES ── */
@@ -2600,6 +2652,7 @@ function initUI() {
     if (sbH) sbH.textContent = "@guest";
   }
   updateDrawer();
+  updateNavAuthButtons();
 }
 
 /* ── BOOTSTRAP ── */

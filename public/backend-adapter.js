@@ -905,6 +905,11 @@
     if (bar) bar.style.display = "flex";
     if (empty) empty.style.display = "none";
 
+    // On mobile, go fullscreen (hide top/bottom nav)
+    if (window.innerWidth < 641) {
+      document.body.classList.add('chat-fullscreen');
+    }
+
     // Find conversation info
     const conv = _cachedConversations.find(
       (c) => (c.id || c._id || "").toString() === chatId
@@ -1197,6 +1202,7 @@
 
     if (window.innerWidth < 641) {
       document.getElementById("chatWindow")?.classList.add("hide");
+      document.body.classList.remove('chat-fullscreen');
     } else {
       const bar = document.getElementById("chatWinBar");
       if (bar) bar.style.display = "none";

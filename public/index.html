@@ -1267,6 +1267,14 @@
             </svg>
             <span class="sb-label">Theme</span>
           </button>
+          <button class="sb" id="sbAuthBtn" onclick="handleSidebarAuth()" style="margin: 4px 0">
+            <svg viewBox="0 0 24 24">
+              <path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4" />
+              <polyline points="10 17 15 12 10 7" />
+              <line x1="15" y1="12" x2="3" y2="12" />
+            </svg>
+            <span class="sb-label" id="sbAuthTxt">Sign In</span>
+          </button>
         </div>
 
         <div class="sidebar-footer">
@@ -2707,6 +2715,12 @@
           <svg viewBox="0 0 24 24">
             <line x1="12" y1="5" x2="12" y2="19" />
             <line x1="5" y1="12" x2="19" y2="12" />
+          </svg>
+        </button>
+        <button class="topbar-btn topbar-auth-btn" id="topbarAuthBtn" onclick="handleTopbarAuth()" aria-label="Sign In">
+          <svg viewBox="0 0 24 24" id="topbarAuthIco">
+            <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
+            <circle cx="12" cy="7" r="4" />
           </svg>
         </button>
       </div>
