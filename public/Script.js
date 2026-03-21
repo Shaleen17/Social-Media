@@ -2043,10 +2043,22 @@ async function submitMandirPost() {
       progress.classList.remove("hide");
       progress.textContent = "Uploading " + mandirCompMediaType + "...";
       try {
-        const uploadResult = await API.uploadFile(mandirCompMediaFile);
-        if (mandirCompMediaType === "video") videoUrl = uploadResult.url;
-        else imageUrl = uploadResult.url;
+        if (mandirCompMediaType === "video") {
+          const uploadResult = await API.uploadFile(mandirCompMediaFile);
+          videoUrl = uploadResult.url;
+        } else {
+          // For images, read as base64 and use uploadBase64 (more reliable)
+          const base64Data = await new Promise((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onload = () => resolve(reader.result);
+            reader.onerror = reject;
+            reader.readAsDataURL(mandirCompMediaFile);
+          });
+          const uploadResult = await API.uploadBase64(base64Data, "tirth-sutra/mandir");
+          imageUrl = uploadResult.url;
+        }
       } catch (e) {
+        console.error("Upload error:", e);
         MC.error("Media upload failed. Please try again.");
         return;
       } finally {
