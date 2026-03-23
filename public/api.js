@@ -49,7 +49,15 @@ const API = (() => {
         ...options,
         headers,
       });
-      const data = await res.json();
+      // Read as text first to avoid "Unexpected token" on non-JSON responses
+      const text = await res.text();
+      let data;
+      try {
+        data = JSON.parse(text);
+      } catch (parseErr) {
+        console.error("Non-JSON response from", path, ":", text.substring(0, 200));
+        throw new Error(res.ok ? "Invalid server response" : `Server error (${res.status})`);
+      }
       if (!res.ok) {
         throw new Error(data.error || "Request failed");
       }
