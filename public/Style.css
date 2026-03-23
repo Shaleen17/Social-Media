@@ -5355,3 +5355,586 @@ video {
   0%, 100% { transform: translateY(0); }
   50% { transform: translateY(-10px); }
 }
+
+/* ============================================================
+   ★ DESKTOP UI SCALING — Improved spacing, fonts, layout
+   ============================================================ */
+@media (min-width: 641px) {
+  /* --- Google Font override for modern look --- */
+  body {
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    line-height: 1.65;
+  }
+
+  /* --- Wider feed area on desktop --- */
+  #feedWrap {
+    max-width: 720px;
+  }
+
+  /* --- Wider right sidebar --- */
+  #rightWrap {
+    width: 360px;
+    padding: 20px 22px;
+  }
+
+  /* --- Sidebar scaling --- */
+  .sidebar-logo-area {
+    padding: 20px 18px 16px;
+    min-height: 78px;
+  }
+  .sidebar-logo-text strong {
+    font-size: 16px;
+  }
+  .sidebar-logo-text span {
+    font-size: 12px;
+  }
+  .sb {
+    padding: 13px 18px;
+    gap: 14px;
+  }
+  .sb svg {
+    width: 22px;
+    height: 22px;
+  }
+  .sb-label {
+    font-size: 15px;
+  }
+  .sidebar-footer {
+    padding: 14px 18px;
+  }
+  .sidebar-footer-text strong {
+    font-size: 14px;
+  }
+  .sidebar-footer-text span {
+    font-size: 12px;
+  }
+
+  /* --- Feed header --- */
+  .fhdr {
+    padding: 14px 20px;
+  }
+  .fhdr-title {
+    font-size: 22px;
+  }
+  .ftab {
+    font-size: 15px;
+    padding: 12px;
+  }
+
+  /* --- Stories --- */
+  .stories {
+    padding: 14px 20px;
+    gap: 14px;
+  }
+  .s-ring {
+    width: 62px;
+    height: 62px;
+  }
+  .s-inner {
+    width: 54px;
+    height: 54px;
+    font-size: 16px;
+  }
+  .s-lbl {
+    font-size: 12px;
+    max-width: 62px;
+  }
+
+  /* --- Composer --- */
+  .composer {
+    padding: 16px 20px;
+    gap: 12px;
+  }
+  .cmp-ta {
+    font-size: 16px;
+    min-height: 44px;
+  }
+
+  /* --- Post cards --- */
+  .post {
+    padding: 18px 22px;
+  }
+  .post-row {
+    gap: 14px;
+  }
+  .post-name {
+    font-size: 16px;
+  }
+  .post-handle, .post-time {
+    font-size: 14px;
+  }
+  .post-txt {
+    font-size: 16px;
+    line-height: 1.6;
+    margin-bottom: 12px;
+  }
+  .post-img {
+    border-radius: 14px;
+    max-height: 420px;
+    margin-bottom: 12px;
+  }
+  .post-acts {
+    gap: 6px;
+    margin-top: 6px;
+  }
+  .pa {
+    font-size: 14px;
+    padding: 8px 12px;
+    border-radius: 22px;
+    gap: 6px;
+  }
+  .pa svg {
+    width: 18px;
+    height: 18px;
+  }
+
+  /* --- Comments --- */
+  .cmts {
+    padding: 6px 22px 14px;
+  }
+  .cmt-body {
+    font-size: 15px;
+  }
+  .cmt-name {
+    font-size: 14px;
+  }
+  .cmt-in {
+    padding: 9px 16px;
+    font-size: 15px;
+  }
+
+  /* --- Widgets --- */
+  .widget {
+    padding: 18px;
+    margin-bottom: 16px;
+    border-radius: 16px;
+  }
+  .widget h3 {
+    font-size: 16px;
+    margin-bottom: 12px;
+  }
+  .srch {
+    padding: 10px 16px;
+    margin-bottom: 16px;
+  }
+  .srch input {
+    font-size: 15px;
+  }
+  .trend-item {
+    padding: 9px 10px;
+  }
+  .trend-cat {
+    font-size: 13px;
+  }
+  .trend-name {
+    font-size: 15px;
+  }
+  .trend-cnt {
+    font-size: 13px;
+  }
+  .who-item {
+    padding: 7px 0;
+    gap: 10px;
+  }
+  .who-name {
+    font-size: 15px;
+  }
+  .who-hdl {
+    font-size: 13px;
+  }
+
+  /* --- Buttons --- */
+  .btn {
+    font-size: 14px;
+    padding: 10px 20px;
+  }
+  .btn-sm {
+    font-size: 13px;
+    padding: 8px 16px;
+  }
+
+  /* --- Modals --- */
+  .modal {
+    border-radius: 18px;
+  }
+  .mhdr {
+    padding: 14px 20px;
+  }
+  .mhdr h3 {
+    font-size: 18px;
+  }
+  .mpad {
+    padding: 20px;
+  }
+  .fi {
+    font-size: 15px;
+    padding: 10px 14px;
+  }
+  .fl {
+    font-size: 14px;
+  }
+
+  /* --- Icon buttons --- */
+  .icoBtn {
+    width: 38px;
+    height: 38px;
+  }
+  .icoBtn svg {
+    width: 20px;
+    height: 20px;
+  }
+
+  /* --- Notifications --- */
+  .notif {
+    padding: 14px 20px;
+  }
+  .notif-txt {
+    font-size: 15px;
+  }
+  .notif-tm {
+    font-size: 13px;
+  }
+
+  /* --- Profile on desktop --- */
+  .prof-banner {
+    height: 200px;
+  }
+  .prof-hdr {
+    margin: -34px 16px 0;
+    padding: 20px 22px 22px;
+    border-radius: 22px;
+  }
+  .prof-av-wrap .av.av80 {
+    width: 94px;
+    height: 94px;
+    font-size: 30px;
+    margin-top: -58px;
+  }
+  .prof-name {
+    font-size: 22px;
+  }
+  .prof-hdl {
+    font-size: 15px;
+  }
+  .prof-bio {
+    font-size: 16px;
+  }
+  .prof-meta {
+    font-size: 14px;
+  }
+  .ps strong {
+    font-size: 20px;
+  }
+  .ps span {
+    font-size: 13px;
+  }
+}
+
+/* Extra large screens */
+@media (min-width: 1400px) {
+  #feedWrap {
+    max-width: 780px;
+  }
+  #rightWrap {
+    width: 400px;
+    padding: 24px;
+  }
+  .post {
+    padding: 20px 26px;
+  }
+  .post-txt {
+    font-size: 17px;
+  }
+  .fhdr-title {
+    font-size: 24px;
+  }
+  .widget {
+    padding: 20px;
+  }
+}
+
+/* ============================================================
+   ★ CHAT PAGE — Full-Screen WhatsApp-Style Desktop Layout
+   ============================================================ */
+@media (min-width: 641px) {
+  #pgChats.on {
+    height: 100vh;
+    width: calc(100vw - var(--sidebar-w));
+  }
+  .chats-panel {
+    width: 380px;
+    min-width: 320px;
+  }
+  .chats-hdr {
+    padding: 16px 16px 0;
+  }
+  .chats-hdr-title {
+    font-size: 22px;
+  }
+  .chats-icon-btn {
+    width: 38px;
+    height: 38px;
+  }
+  .chats-icon-btn svg {
+    width: 18px;
+    height: 18px;
+  }
+  .chats-search-box {
+    padding: 10px 16px;
+  }
+  .chats-search-box input {
+    font-size: 15px;
+  }
+  .chats-ftab {
+    font-size: 14px;
+    padding: 6px 16px;
+  }
+  .chat-item {
+    padding: 13px 16px;
+    gap: 13px;
+  }
+  .chat-item-av .av {
+    width: 50px;
+    height: 50px;
+    font-size: 17px;
+  }
+  .chat-item-name {
+    font-size: 15px;
+  }
+  .chat-item-prev {
+    font-size: 14px;
+  }
+  .chat-item-time {
+    font-size: 12px;
+  }
+  .chat-win-hdr {
+    padding: 12px 18px;
+    gap: 12px;
+  }
+  .chat-win-av {
+    width: 42px;
+    height: 42px;
+    font-size: 14px;
+  }
+  .chat-win-name {
+    font-size: 16px;
+  }
+  .chat-win-sub {
+    font-size: 13px;
+  }
+  .chat-win-msgs {
+    padding: 20px 24px;
+    gap: 4px;
+  }
+  .msg-bubble {
+    font-size: 15px;
+    padding: 10px 16px;
+  }
+  .msg-time {
+    font-size: 11px;
+  }
+}
+
+/* ============================================================
+   ★ DONATION MODAL STYLES
+   ============================================================ */
+.donate-modal-content {
+  text-align: center;
+}
+.donate-temple-name {
+  font-size: 20px;
+  font-weight: 700;
+  color: var(--p);
+  margin-bottom: 4px;
+}
+.donate-subtitle {
+  font-size: 14px;
+  color: var(--t3);
+  margin-bottom: 20px;
+}
+.donate-amounts {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+  margin-bottom: 18px;
+}
+.donate-amt {
+  padding: 14px 8px;
+  border: 2px solid var(--bd2);
+  border-radius: 14px;
+  background: var(--bg2);
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--t);
+  cursor: pointer;
+  transition: all 0.2s ease;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+}
+.donate-amt:hover {
+  border-color: var(--p);
+  background: var(--a);
+  transform: translateY(-2px);
+  box-shadow: 0 4px 16px rgba(74, 46, 42, 0.12);
+}
+.donate-amt.selected {
+  border-color: var(--p);
+  background: var(--p);
+  color: #fff;
+  box-shadow: 0 4px 20px rgba(74, 46, 42, 0.25);
+  transform: translateY(-2px);
+}
+.donate-amt small {
+  font-size: 11px;
+  font-weight: 500;
+  opacity: 0.7;
+}
+.donate-custom-wrap {
+  margin-bottom: 20px;
+}
+.donate-custom-label {
+  font-size: 13px;
+  color: var(--t3);
+  margin-bottom: 6px;
+  text-align: left;
+}
+.donate-custom-input {
+  width: 100%;
+  padding: 12px 16px;
+  border: 2px solid var(--bd2);
+  border-radius: 14px;
+  font-size: 18px;
+  font-weight: 600;
+  text-align: center;
+  color: var(--t);
+  background: var(--bg2);
+  outline: none;
+  transition: border-color 0.2s;
+}
+.donate-custom-input:focus {
+  border-color: var(--p);
+  background: var(--bg);
+}
+.donate-custom-input::placeholder {
+  color: var(--t3);
+  font-weight: 400;
+}
+.donate-pay-btn {
+  width: 100%;
+  padding: 14px;
+  border-radius: 14px;
+  background: linear-gradient(135deg, #4a2e2a 0%, #7a5c56 100%);
+  color: #fff;
+  font-size: 16px;
+  font-weight: 700;
+  border: none;
+  cursor: pointer;
+  transition: all 0.25s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  box-shadow: 0 4px 20px rgba(74, 46, 42, 0.3);
+}
+.donate-pay-btn:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 28px rgba(74, 46, 42, 0.4);
+}
+.donate-pay-btn:active {
+  transform: translateY(0);
+}
+.donate-pay-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  transform: none;
+}
+
+/* Success screen */
+.donate-success {
+  display: none;
+  text-align: center;
+  padding: 30px 10px;
+}
+.donate-success.show {
+  display: block;
+}
+.donate-success-icon {
+  width: 80px;
+  height: 80px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #43a047, #66bb6a);
+  margin: 0 auto 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  animation: donatePopIn 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+  box-shadow: 0 8px 30px rgba(67, 160, 71, 0.3);
+}
+.donate-success-icon svg {
+  width: 40px;
+  height: 40px;
+  stroke: #fff;
+  fill: none;
+  stroke-width: 3;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.donate-success h3 {
+  font-size: 22px;
+  font-weight: 800;
+  color: var(--p);
+  margin-bottom: 6px;
+}
+.donate-success p {
+  font-size: 15px;
+  color: var(--t2);
+  line-height: 1.6;
+  margin-bottom: 20px;
+}
+.donate-success-amount {
+  font-size: 32px;
+  font-weight: 800;
+  color: var(--p);
+  margin-bottom: 20px;
+}
+@keyframes donatePopIn {
+  0% { transform: scale(0); opacity: 0; }
+  100% { transform: scale(1); opacity: 1; }
+}
+
+/* Secure badge */
+.donate-secure {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--t3);
+  margin-top: 14px;
+}
+.donate-secure svg {
+  width: 14px;
+  height: 14px;
+  stroke: var(--t3);
+  fill: none;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+/* Mobile donation adjustments */
+@media (max-width: 640px) {
+  .donate-amounts {
+    grid-template-columns: repeat(3, 1fr);
+    gap: 8px;
+  }
+  .donate-amt {
+    padding: 12px 6px;
+    font-size: 15px;
+  }
+  .donate-temple-name {
+    font-size: 18px;
+  }
+}

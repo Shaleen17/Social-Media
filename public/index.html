@@ -8,7 +8,11 @@
     />
     <title>Tirth Sutra — Mandir Community</title>
     <link rel="icon" type="image/png" href="Brand_Logo.jpg" />
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
     <link href="Style.css" rel="stylesheet" type="text/css" />
+    <script src="https://checkout.razorpay.com/v1/checkout.js"></script>
   </head>
   <!-- Google tag (gtag.js) -->
   <script
@@ -1492,9 +1496,9 @@
                     color: #fff;
                     border: 1.5px solid rgba(255, 255, 255, 0.4);
                   "
-                  onclick="gp('home')"
+                  onclick="openDonateModal()"
                 >
-                  Explore Feed
+                  Donate to Mandir 🙏
                 </button>
               </div>
             </div>
@@ -2815,9 +2819,9 @@
             <button
               class="btn btn-p btn-sm"
               style="width: 100%; justify-content: center"
-              onclick="gp('mandir')"
+              onclick="openDonateModal()"
             >
-              Explore Mandir Community →
+              Donate to Mandir 🙏
             </button>
           </div>
           <div class="widget">
@@ -2992,6 +2996,166 @@
         </div>
       </div>
     </div>
+
+    <!-- ============================================================
+     DONATION MODAL
+     ============================================================ -->
+    <div class="ovl" id="donateOvl">
+      <div class="modal" style="max-width: 440px">
+        <div class="mhdr">
+          <button class="xbtn" onclick="closeDonateModal()">
+            <svg viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" /></svg>
+          </button>
+          <h3>🙏 Donate</h3>
+          <div></div>
+        </div>
+        <div class="mpad">
+          <!-- Form view -->
+          <div id="donateFormView" class="donate-modal-content">
+            <div class="donate-temple-name" id="donateTempleName">Mandir Community</div>
+            <div class="donate-subtitle">Support the sacred community with your contribution</div>
+            <div class="donate-amounts">
+              <button class="donate-amt" onclick="selectDonation(51, this)">₹51<small>Seva</small></button>
+              <button class="donate-amt" onclick="selectDonation(101, this)">₹101<small>Pooja</small></button>
+              <button class="donate-amt selected" onclick="selectDonation(251, this)">₹251<small>Prasad</small></button>
+              <button class="donate-amt" onclick="selectDonation(501, this)">₹501<small>Archana</small></button>
+              <button class="donate-amt" onclick="selectDonation(1001, this)">₹1,001<small>Abhishek</small></button>
+              <button class="donate-amt" onclick="selectDonation(2100, this)">₹2,100<small>Maha Seva</small></button>
+            </div>
+            <div class="donate-custom-wrap">
+              <div class="donate-custom-label">Or enter custom amount</div>
+              <input type="number" class="donate-custom-input" id="donateCustomAmt" placeholder="₹ Enter amount" min="1" oninput="handleCustomDonation(this)">
+            </div>
+            <button class="donate-pay-btn" id="donatePayBtn" onclick="startPayment()">
+              <svg viewBox="0 0 24 24" style="width:20px;height:20px;stroke:#fff;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round">
+                <rect x="1" y="4" width="22" height="16" rx="2" ry="2"/><line x1="1" y1="10" x2="23" y2="10"/>
+              </svg>
+              Proceed to Pay — ₹<span id="donatePayAmount">251</span>
+            </button>
+            <div class="donate-secure">
+              <svg viewBox="0 0 24 24"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+              Secure payment via Razorpay & UPI
+            </div>
+          </div>
+          <!-- Success view -->
+          <div id="donateSuccessView" class="donate-success">
+            <div class="donate-success-icon">
+              <svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>
+            </div>
+            <h3>Donation Successful! 🎉</h3>
+            <div class="donate-success-amount" id="donateSuccessAmt">₹251</div>
+            <p>Thank you for your generous contribution to the Mandir Community. May your devotion be blessed! 🙏</p>
+            <button class="btn btn-p" style="width:100%;justify-content:center" onclick="closeDonateModal()">Jai Shri Ram 🙏</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <script>
+    /* ── DONATION MODULE ── */
+    let _donateAmount = 251;
+
+    function openDonateModal() {
+      // Reset to form view
+      const fv = document.getElementById('donateFormView');
+      const sv = document.getElementById('donateSuccessView');
+      if (fv) fv.style.display = '';
+      if (sv) sv.classList.remove('show');
+      // Reset selection
+      document.querySelectorAll('.donate-amt').forEach((b, i) => {
+        b.classList.toggle('selected', i === 2); // ₹251 default
+      });
+      const ci = document.getElementById('donateCustomAmt');
+      if (ci) ci.value = '';
+      _donateAmount = 251;
+      updateDonatePayLabel();
+      openOvl('donateOvl');
+    }
+
+    function closeDonateModal() {
+      closeOvl('donateOvl');
+    }
+
+    function selectDonation(amount, btn) {
+      _donateAmount = amount;
+      document.querySelectorAll('.donate-amt').forEach(b => b.classList.remove('selected'));
+      if (btn) btn.classList.add('selected');
+      const ci = document.getElementById('donateCustomAmt');
+      if (ci) ci.value = '';
+      updateDonatePayLabel();
+    }
+
+    function handleCustomDonation(input) {
+      const val = parseInt(input.value);
+      if (val > 0) {
+        _donateAmount = val;
+        document.querySelectorAll('.donate-amt').forEach(b => b.classList.remove('selected'));
+        updateDonatePayLabel();
+      }
+    }
+
+    function updateDonatePayLabel() {
+      const sp = document.getElementById('donatePayAmount');
+      if (sp) sp.textContent = _donateAmount.toLocaleString('en-IN');
+      const btn = document.getElementById('donatePayBtn');
+      if (btn) btn.disabled = !_donateAmount || _donateAmount < 1;
+    }
+
+    function startPayment() {
+      if (!_donateAmount || _donateAmount < 1) {
+        MC.warn('Please select or enter an amount');
+        return;
+      }
+
+      const options = {
+        key: 'rzp_test_XXXXXXXXXX', // TODO: Replace with your Razorpay Key ID
+        amount: _donateAmount * 100, // Razorpay expects paise
+        currency: 'INR',
+        name: 'Tirth Sutra',
+        description: 'Donation to Mandir Community',
+        image: 'Brand_Logo.jpg',
+        handler: function(response) {
+          // Payment successful
+          showDonateSuccess();
+          MC.success('Donation of ₹' + _donateAmount.toLocaleString('en-IN') + ' successful! 🙏');
+        },
+        prefill: {
+          name: CU ? CU.name : '',
+          email: CU ? (CU.email || '') : '',
+        },
+        theme: {
+          color: '#4a2e2a',
+          backdrop_color: 'rgba(74, 46, 42, 0.8)',
+        },
+        modal: {
+          ondismiss: function() {
+            MC.info('Payment cancelled');
+          }
+        }
+      };
+
+      try {
+        const rzp = new Razorpay(options);
+        rzp.on('payment.failed', function(response) {
+          MC.error('Payment failed. Please try again.');
+        });
+        rzp.open();
+      } catch(e) {
+        // Fallback: simulate success for demo/test mode
+        MC.info('Razorpay test mode — simulating successful payment');
+        setTimeout(() => showDonateSuccess(), 800);
+      }
+    }
+
+    function showDonateSuccess() {
+      const fv = document.getElementById('donateFormView');
+      const sv = document.getElementById('donateSuccessView');
+      const sa = document.getElementById('donateSuccessAmt');
+      if (fv) fv.style.display = 'none';
+      if (sa) sa.textContent = '₹' + _donateAmount.toLocaleString('en-IN');
+      if (sv) sv.classList.add('show');
+    }
+    </script>
 
     <!-- ============================================================
      JAVASCRIPT

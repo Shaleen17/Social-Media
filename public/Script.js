@@ -923,11 +923,17 @@ function gp(page) {
     if (cp) cp.style.display = "flex";
     const rw = document.getElementById("rightWrap");
     if (rw) rw.style.display = "none";
+    // Full-width chat: expand feedWrap to fill all space
+    const fw = document.getElementById("feedWrap");
+    if (fw) { fw.style.maxWidth = "100%"; fw.style.borderRight = "none"; }
   } else {
     const cp = document.getElementById("pgChats");
     if (cp) cp.style.display = "";
     const rw = document.getElementById("rightWrap");
     if (rw) rw.style.display = "";
+    // Restore feedWrap defaults
+    const fw = document.getElementById("feedWrap");
+    if (fw) { fw.style.maxWidth = ""; fw.style.borderRight = ""; }
   }
   if (renderers[page]) renderers[page]();
   window.scrollTo({ top: 0, behavior: "smooth" });
