@@ -1033,19 +1033,7 @@
           </svg>
           Notifications
         </button>
-        <button
-          class="drawer-item"
-          id="dMessages"
-          onclick="gpAndClose('messages')"
-        >
-          <svg viewBox="0 0 24 24">
-            <path
-              d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"
-            />
-            <polyline points="22,6 12,13 2,6" />
-          </svg>
-          Messages
-        </button>
+
         <!-- CHATS DRAWER -->
         <button class="drawer-item" id="dChats" onclick="gpAndClose('chats')">
           <svg viewBox="0 0 24 24">
@@ -1223,15 +1211,7 @@
             </svg>
             <span class="sb-label">Chats</span>
           </button>
-          <button class="sb" id="snMessages" onclick="gp('messages')">
-            <svg viewBox="0 0 24 24">
-              <path
-                d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"
-              />
-              <polyline points="22,6 12,13 2,6" />
-            </svg>
-            <span class="sb-label">Messages</span>
-          </button>
+
           <button class="sb" id="snBookmarks" onclick="gp('bookmarks')">
             <svg viewBox="0 0 24 24">
               <path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z" />
@@ -2325,102 +2305,6 @@
               </div>
             </div>
             <div id="notifsWrap"></div>
-          </div>
-
-          <!-- MESSAGES PAGE -->
-          <div class="page hide" id="pgMessages">
-            <div class="fhdr">
-              <div class="fhdr-row">
-                <span class="fhdr-title">Messages</span>
-              </div>
-              <div class="srch-box">
-                <svg viewBox="0 0 24 24">
-                  <circle cx="11" cy="11" r="8" />
-                  <line x1="21" y1="21" x2="16.65" y2="16.65" /></svg
-                ><input
-                  type="text"
-                  placeholder="Search messages…"
-                  oninput="filterConvs(this.value)"
-                />
-              </div>
-            </div>
-            <div id="convsList"></div>
-            <div id="chatView" class="hide chat">
-              <div
-                style="
-                  display: flex;
-                  align-items: center;
-                  gap: 10px;
-                  padding: 10px 16px;
-                  border-bottom: 1px solid var(--bd);
-                "
-              >
-                <button onclick="backToConvs()" style="color: var(--t2)">
-                  <svg
-                    style="
-                      width: 20px;
-                      height: 20px;
-                      stroke: currentColor;
-                      fill: none;
-                      stroke-width: 2;
-                      stroke-linecap: round;
-                      stroke-linejoin: round;
-                    "
-                    viewBox="0 0 24 24"
-                  >
-                    <polyline points="15 18 9 12 15 6" />
-                  </svg>
-                </button>
-                <div class="av av36" id="chatAv"></div>
-                <div>
-                  <div
-                    style="font-weight: 600; font-size: 15px"
-                    id="chatNm"
-                  ></div>
-                  <div style="font-size: 12px; color: var(--t3)">
-                    Active recently
-                  </div>
-                </div>
-              </div>
-              <div class="chat-msgs" id="chatMsgs"></div>
-              <div class="msg-bar">
-                <input
-                  class="msg-in"
-                  id="msgIn"
-                  placeholder="Type a message…"
-                  onkeydown="if (event.key === 'Enter') sendMsg();"
-                />
-                <button
-                  class="btn btn-p btn-sm"
-                  style="
-                    border-radius: 50%;
-                    width: 36px;
-                    height: 36px;
-                    padding: 0;
-                    justify-content: center;
-                    flex-shrink: 0;
-                  "
-                  onclick="sendMsg()"
-                >
-                  <svg
-                    style="
-                      width: 15px;
-                      height: 15px;
-                      stroke: #fff;
-                      fill: none;
-                      stroke-width: 2;
-                      stroke-linecap: round;
-                      stroke-linejoin: round;
-                      pointer-events: none;
-                    "
-                    viewBox="0 0 24 24"
-                  >
-                    <line x1="22" y1="2" x2="11" y2="13" />
-                    <polygon points="22 2 15 22 11 13 2 9 22 2" />
-                  </svg>
-                </button>
-              </div>
-            </div>
           </div>
 
           <!-- CHATS PAGE -->

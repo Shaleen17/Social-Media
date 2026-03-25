@@ -4010,6 +4010,8 @@ video {
   #mainArea {
     margin-left: 0;
     max-width: 100vw;
+    margin-top: 0;
+    padding-top: 0;
   }
   #feedWrap {
     max-width: 100%;
@@ -5926,3 +5928,19 @@ video {
     font-size: 18px;
   }
 }
+
+/* ============================================================
+   ★ SCROLL & RENDERING PERFORMANCE
+   ============================================================ */
+.stories,
+#feedPosts,
+#chatsList,
+.sidebar-nav,
+.chat-win-msgs,
+#chatsPanel {
+  -webkit-overflow-scrolling: touch;
+}
+.stories { will-change: scroll-position; }
+.post { contain: layout style; }
+.page { scroll-behavior: smooth; }
+

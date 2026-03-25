@@ -862,7 +862,6 @@ const PAGE_IDS = [
   "video",
   "search",
   "notifs",
-  "messages",
   "bookmarks",
   "profile",
   "chats",
@@ -912,7 +911,6 @@ function gp(page) {
       renderWidgets();
     },
     notifs: () => renderNotifs(),
-    messages: () => renderConvs(),
     bookmarks: () => renderBM(),
     profile: () => renderProfile(CU ? CU.id : curProfId || "u1"),
     chats: () => renderChatsPage(),
@@ -1027,7 +1025,7 @@ function updateNavAuthButtons() {
 
 function handleSidebarAuth() {
   if (CU) {
-    doLogout();
+    logout();
   } else {
     openOvl('authOvl');
   }
@@ -1042,7 +1040,7 @@ function handleTopbarAuth() {
 function handleDrawerAuth() {
   closeDrawer();
   if (CU) {
-    doLogout();
+    logout();
   } else {
     openOvl('authOvl');
   }
