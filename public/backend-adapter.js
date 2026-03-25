@@ -1329,15 +1329,97 @@
   // Override old Messages page too (pgMessages)
   // =============================================
   window.renderConvs = async function () {
+    const cl = document.getElementById("convsList");
     if (!CU) {
-      const c = document.getElementById("convsList");
-      if (c)
-        c.innerHTML =
+      if (cl)
+        cl.innerHTML =
           '<div class="empty"><div class="empty-ico">✉️</div><div class="empty-ttl">Sign in to message</div><button class="btn btn-p" style="margin-top:12px" onclick="openOvl(\'authOvl\')">Sign In</button></div>';
       return;
     }
-    // Redirect to chats page
-    gp("chats");
+    // Show loading skeleton
+    if (cl) cl.innerHTML = '<div style="padding:20px;text-align:center;color:var(--t3)">Loading messages…</div>';
+    try {
+      const data = await API.getConversations();
+      const convs = data.conversations || data || [];
+      if (!convs.length) {
+        if (cl) cl.innerHTML = '<div class="empty"><div class="empty-ico">✉️</div><div class="empty-ttl">No messages yet</div><div class="empty-sub">Start a conversation from someone\'s profile</div></div>';
+        return;
+      }
+      if (cl) {
+        cl.innerHTML = convs.map(conv => {
+          const other = conv.otherUser || conv.participants?.find(p => p._id !== CU.id) || {};
+          const name = other.name || "User";
+          const handle = other.handle || "";
+          const avatar = other.avatar;
+          const ini = name.charAt(0).toUpperCase();
+          const avH = avatar ? `<img src="${avatar}" alt="">` : ini;
+          const lastMsg = conv.lastMessage || "";
+          const time = conv.lastMessageAt ? new Date(conv.lastMessageAt).toLocaleTimeString([], {hour: '2-digit', minute: '2-digit'}) : "";
+          const convId = conv._id || conv.id || "";
+          return `<div class="conv" onclick="openMsgChat('${convId}')">
+            <div class="av av40">${avH}</div>
+            <div style="flex:1;min-width:0">
+              <div style="display:flex;justify-content:space-between">
+                <span class="conv-name">${name}</span>
+                <span class="conv-tm">${time}</span>
+              </div>
+              <div class="conv-prev">${lastMsg}</div>
+            </div>
+          </div>`;
+        }).join("");
+      }
+    } catch (err) {
+      console.error("renderConvs error:", err);
+      if (cl) cl.innerHTML = '<div class="empty"><div class="empty-ico">✉️</div><div class="empty-ttl">Could not load messages</div><div class="empty-sub">Please check your connection</div></div>';
+    }
+  };
+
+  // Open a conversation in the Messages page chat view
+  window.openMsgChat = async function(convId) {
+    const cl = document.getElementById("convsList");
+    const cv = document.getElementById("chatView");
+    if (cl) cl.style.display = "none";
+    if (cv) cv.classList.remove("hide");
+
+    try {
+      const data = await API.getMessages(convId);
+      const msgs = data.messages || data || [];
+      const conv = (await API.getConversations()).conversations?.find(c => c._id === convId) || {};
+      const other = conv.otherUser || conv.participants?.find(p => p._id !== CU.id) || {};
+
+      const chatNm = document.getElementById("chatNm");
+      const chatAv = document.getElementById("chatAv");
+      if (chatNm) chatNm.textContent = other.name || "User";
+      if (chatAv) chatAv.innerHTML = other.avatar ? `<img src="${other.avatar}" alt="">` : (other.name || "U").charAt(0).toUpperCase();
+
+      const chatMsgs = document.getElementById("chatMsgs");
+      if (chatMsgs) {
+        chatMsgs.innerHTML = msgs.map(m => {
+          const isMe = m.sender === CU.id || m.sender?._id === CU.id;
+          return `<div class="msg ${isMe ? 'msg-me' : 'msg-them'}">${m.text || ""}</div>`;
+        }).join("");
+        chatMsgs.scrollTop = chatMsgs.scrollHeight;
+      }
+
+      // Wire up send button for this conversation
+      const msgIn = document.getElementById("msgIn");
+      window._msgConvId = convId;
+      window.sendMsg = async function() {
+        const text = (msgIn?.value || "").trim();
+        if (!text) return;
+        msgIn.value = "";
+        try {
+          await API.sendMessage(convId, text);
+          const chatMsgs = document.getElementById("chatMsgs");
+          if (chatMsgs) {
+            chatMsgs.innerHTML += `<div class="msg msg-me">${text}</div>`;
+            chatMsgs.scrollTop = chatMsgs.scrollHeight;
+          }
+        } catch(e) { console.error("Send msg error:", e); }
+      };
+    } catch(err) {
+      console.error("openMsgChat error:", err);
+    }
   };
 
   window.openDM = function (uid) {
