@@ -4023,15 +4023,21 @@ video {
   #bottomNav {
     display: block;
   }
-  body {
+  /* Push only #app down by topbar height — avoids double-shifting body */
+  #app {
     padding-top: var(--topbar-h);
+    min-height: calc(100vh - var(--topbar-h));
+    box-sizing: border-box;
+  }
+  body {
     padding-bottom: var(--bottomnav-h);
   }
+  /* fhdr sticks at top of viewport on mobile (already inside #app padding offset) */
   .fhdr {
-    top: var(--topbar-h);
+    top: 0;
   }
   .vid-hdr {
-    top: var(--topbar-h);
+    top: 0;
   }
 
   /* Modal as bottom sheet on mobile */
@@ -4836,8 +4842,8 @@ video {
 @media (max-width: 640px) {
   #pgChats.on {
     flex-direction: column;
-    height: calc(100vh - var(--topbar-h) - var(--bottomnav-h));
-    height: calc(100dvh - var(--topbar-h) - var(--bottomnav-h));
+    height: calc(100vh - var(--bottomnav-h));
+    height: calc(100dvh - var(--bottomnav-h));
   }
   .chats-panel {
     width: 100%;
@@ -4881,7 +4887,7 @@ video {
   body.chat-fullscreen #bottomNav {
     display: none !important;
   }
-  body.chat-fullscreen {
+  body.chat-fullscreen #app {
     padding-top: 0;
     padding-bottom: 0;
   }
@@ -5188,7 +5194,7 @@ video {
 
 /* Push page content down while refreshing — mobile only */
 @media (max-width: 640px) {
-  body.pull-refreshing {
+  #app.pull-refreshing {
     padding-top: calc(var(--topbar-h) + 60px);
     transition: padding-top 0.2s ease;
   }
