@@ -9,6 +9,7 @@
     <title>Tirth Sutra — Mandir Community</title>
     <link rel="icon" type="image/png" href="Brand_Logo.jpg" />
     <link href="Style.css" rel="stylesheet" type="text/css" />
+    <script src="https://accounts.google.com/gsi/client" async></script>
   </head>
   <!-- Google tag (gtag.js) -->
   <script
@@ -149,30 +150,14 @@
                 style="
                   width: 26px;
                   height: 26px;
-                  background: var(--p);
                   border-radius: 7px;
+                  overflow: hidden;
                   display: flex;
                   align-items: center;
                   justify-content: center;
                 "
               >
-                <svg
-                  style="
-                    width: 14px;
-                    height: 14px;
-                    stroke: #fff;
-                    fill: none;
-                    stroke-width: 2.2;
-                    stroke-linecap: round;
-                    stroke-linejoin: round;
-                  "
-                  viewBox="0 0 24 24"
-                >
-                  <path
-                    d="M12 2C8 2 4 5.5 4 9.5c0 5.5 6 10.5 8 12 2-1.5 8-6.5 8-12C20 5.5 16 2 12 2z"
-                  />
-                  <circle cx="12" cy="9.5" r="2.5" fill="white" stroke="none" />
-                </svg>
+                <img src="Brand_Logo.jpg" alt="Tirth Sutra Logo" style="width: 100%; height: 100%; object-fit: cover;" />
               </div>
               <span style="font-weight: 700; color: var(--p); font-size: 14px"
                 >Tirth Sutra</span
@@ -182,6 +167,23 @@
           </div>
         </div>
         <div class="mpad">
+          <div id="g_id_onload"
+               data-client_id="606959870591-83m8t0ka02l60770kal4t8vfcpoo59pt.apps.googleusercontent.com"
+               data-context="signin"
+               data-ux_mode="popup"
+               data-callback="handleGoogleCredentialResponse"
+               data-auto_prompt="false">
+          </div>
+          <div class="g_id_signin"
+               style="display: flex; justify-content: center; margin-bottom: 20px;"
+               data-type="standard"
+               data-shape="rectangular"
+               data-theme="outline"
+               data-text="signin_with"
+               data-size="large"
+               data-logo_alignment="left">
+          </div>
+          <div style="text-align: center; margin-bottom: 15px; font-size: 13px; color: var(--t3);">— OR —</div>
           <div id="loginForm">
             <div class="fg">
               <label class="fl">Email</label

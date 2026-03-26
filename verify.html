@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Verify Email - Tirth Sutra</title>
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Playfair+Display:ital,wght@0,600;1,600&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="Style.css">
+    <style>
+        body {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            background-color: var(--bg);
+            margin: 0;
+            font-family: 'Plus Jakarta Sans', sans-serif;
+            text-align: center;
+        }
+        .verify-box {
+            background-color: var(--ca);
+            padding: 40px;
+            border-radius: 20px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.05);
+            max-width: 400px;
+            width: 90%;
+        }
+        .verify-box h1 {
+            color: var(--p);
+            font-family: 'Playfair Display', serif;
+            margin-bottom: 20px;
+        }
+        .spinner {
+            border: 4px solid rgba(0, 0, 0, 0.1);
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            border-left-color: var(--p);
+            animation: spin 1s linear infinite;
+            margin: 0 auto 20px;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        .btn {
+            display: inline-block;
+            margin-top: 20px;
+            padding: 12px 24px;
+            background: linear-gradient(135deg, var(--p), var(--p-h));
+            color: white;
+            text-decoration: none;
+            border-radius: 10px;
+            font-weight: 600;
+            transition: transform 0.2s, opacity 0.2s;
+        }
+        .btn:hover {
+            transform: translateY(-2px);
+            opacity: 0.9;
+        }
+    </style>
+</head>
+<body>
+
+<div class="verify-box" id="verifyBox">
+    <div class="spinner" id="spinner"></div>
+    <h1 id="title">Verifying your email...</h1>
+    <p id="message">Please wait while we verify your spiritual journey.</p>
+    <a href="index2.html" class="btn" id="homeBtn" style="display: none;">Go to Mandir</a>
+</div>
+
+<script>
+    async function verifyToken() {
+        const API_BASE = (window.location.protocol === 'file:' || window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
+            ? 'http://localhost:5000/api'
+            : 'https://tirth-sutra-backend.onrender.com/api';
+
+        const urlParams = new URLSearchParams(window.location.search);
+        const token = urlParams.get('token');
+        
+        const titleEl = document.getElementById('title');
+        const messageEl = document.getElementById('message');
+        const spinnerEl = document.getElementById('spinner');
+        const homeBtn = document.getElementById('homeBtn');
+
+        if (!token) {
+            spinnerEl.style.display = 'none';
+            titleEl.textContent = 'Invalid Link';
+            messageEl.textContent = 'No verification token was found in the URL. Om Shanti.';
+            homeBtn.style.display = 'inline-block';
+            return;
+        }
+
+        try {
+            const res = await fetch(`${API_BASE}/auth/verify-email/${token}`);
+            const data = await res.json();
+            
+            spinnerEl.style.display = 'none';
+
+            if (res.ok) {
+                titleEl.textContent = 'Verification Successful! 🙏';
+                messageEl.textContent = 'Welcome to Tirth Sutra. Your path is now open.';
+                
+                // Store token and user details to log them in automatically
+                localStorage.setItem('ts_currentUser', JSON.stringify(data.user));
+                localStorage.setItem('ts_token', JSON.stringify(data.token));
+                
+                homeBtn.style.display = 'inline-block';
+                // Automatically redirect after 3 seconds
+                setTimeout(() => {
+                    window.location.href = 'index2.html';
+                }, 3000);
+            } else {
+                titleEl.textContent = 'Verification Failed';
+                messageEl.textContent = data.error || 'The link may have expired or is invalid.';
+                homeBtn.style.display = 'inline-block';
+            }
+        } catch (err) {
+            spinnerEl.style.display = 'none';
+            titleEl.textContent = 'Network Error';
+            messageEl.textContent = 'Could not connect to the server. Please try again later.';
+            homeBtn.style.display = 'inline-block';
+        }
+    }
+
+    verifyToken();
+</script>
+
+</body>
+</html>

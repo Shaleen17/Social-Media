@@ -3,8 +3,10 @@ const jwt = require("jsonwebtoken");
 const crypto = require("crypto");
 const User = require("../models/User");
 const sendEmail = require("../utils/sendEmail");
+const { OAuth2Client } = require("google-auth-library");
 
 const router = express.Router();
+const client = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
 
 // POST /api/auth/signup
 router.post("/signup", async (req, res) => {
@@ -148,8 +150,6 @@ router.get("/me", async (req, res) => {
   }
 });
 
-module.exports = router;
-
 // GET /api/auth/verify-email/:token
 router.get("/verify-email/:token", async (req, res) => {
   try {
@@ -182,3 +182,54 @@ router.get("/verify-email/:token", async (req, res) => {
     res.status(500).json({ error: "Server error during verification" });
   }
 });
+
+// POST /api/auth/google
+router.post("/google", async (req, res) => {
+  try {
+    const { token } = req.body;
+    if (!token) {
+      return res.status(400).json({ error: "Token is required" });
+    }
+
+    const ticket = await client.verifyIdToken({
+      idToken: token,
+      audience: process.env.GOOGLE_CLIENT_ID,
+    });
+    
+    const payload = ticket.getPayload();
+    const { email, name, picture, sub } = payload;
+    
+    let user = await User.findOne({ email: email.toLowerCase() });
+
+    if (!user) {
+      // Create user instantly
+      const cleanHandle = name.toLowerCase().replace(/\s+/g, "") + Math.floor(Math.random() * 1000);
+      user = await User.create({
+        name,
+        handle: cleanHandle,
+        email: email.toLowerCase(),
+        password: crypto.randomBytes(16).toString("hex"), // Random secure password
+        avatar: picture,
+        verified: true,
+      });
+    } else if (!user.verified) {
+      // If user signed up previously via email but never verified, Google login auto-verifies them
+      user.verified = true;
+      user.emailVerificationToken = undefined;
+      user.emailVerificationTokenExpires = undefined;
+      if (!user.avatar && picture) user.avatar = picture;
+      await user.save({ validateBeforeSave: false });
+    }
+
+    const jwtToken = jwt.sign({ id: user._id }, process.env.JWT_SECRET, {
+      expiresIn: "30d",
+    });
+
+    res.json({ user: user.toJSON(), token: jwtToken });
+  } catch (error) {
+    console.error("Google auth error:", error);
+    res.status(401).json({ error: "Invalid Google token" });
+  }
+});
+
+module.exports = router;
