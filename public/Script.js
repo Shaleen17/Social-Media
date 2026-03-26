@@ -729,7 +729,7 @@ function authToggle(mode) {
   );
 }
 
-function doLogin() {
+async function doLogin() {
   const em = (document.getElementById("liEml")?.value || "").trim();
   const pw = document.getElementById("liPw")?.value || "";
   let ok = true;
@@ -745,31 +745,45 @@ function doLogin() {
   se("liPE", !pw);
   if (!pw) ok = false;
   if (!ok) return;
-  const user = getUsers().find((u) => u.email === em && u.pass === btoa(pw));
-  if (!user) {
+
+  try {
+    const res = await fetch("/api/auth/login", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email: em, password: pw }),
+    });
+    const data = await res.json();
     const e = document.getElementById("liErr");
-    if (e) {
-      e.textContent = "❌ Invalid email or password";
-      e.style.display = "block";
+
+    if (!res.ok) {
+      if (e) {
+        e.textContent = "❌ " + (data.error || "Invalid email or password");
+        e.style.display = "block";
+      }
+      MC.error(data.error || "Invalid email or password. Please try again.");
+      return;
     }
-    MC.error("Invalid email or password. Please try again.");
-    return;
+
+    if (e) e.style.display = "none";
+    const { user, token } = data;
+    CU = user;
+    Store.s("currentUser", user);
+    Store.s("token", token);
+    ["liEml", "liPw"].forEach((id) => {
+      const el = document.getElementById(id);
+      if (el) el.value = "";
+    });
+    closeOvl("authOvl");
+    initUI();
+    MC.success(`Welcome back, ${user.name.split(" ")[0]}! 🙏`);
+    gp("home");
+  } catch (err) {
+    console.error(err);
+    MC.error("Network error. Please try again.");
   }
-  const e = document.getElementById("liErr");
-  if (e) e.style.display = "none";
-  CU = user;
-  Store.s("currentUser", user);
-  ["liEml", "liPw"].forEach((id) => {
-    const el = document.getElementById(id);
-    if (el) el.value = "";
-  });
-  closeOvl("authOvl");
-  initUI();
-  MC.success(`Welcome back, ${user.name.split(" ")[0]}! 🙏`);
-  gp("home");
 }
 
-function doSignup() {
+async function doSignup() {
   const nm = (document.getElementById("suNm")?.value || "").trim();
   const em = (document.getElementById("suEml")?.value || "").trim();
   const hdl = (document.getElementById("suHdl")?.value || "")
@@ -795,56 +809,36 @@ function doSignup() {
   se("suPE", !pw || pw.length < 6);
   if (!pw || pw.length < 6) ok = false;
   if (!ok) return;
-  const users = getUsers();
-  const err = document.getElementById("suErr");
-  if (users.find((u) => u.email === em)) {
-    if (err) {
-      err.textContent = "❌ Email already registered";
-      err.style.display = "block";
+
+  try {
+    const res = await fetch("/api/auth/signup", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name: nm, handle: hdl, email: em, password: pw }),
+    });
+    const data = await res.json();
+    const err = document.getElementById("suErr");
+
+    if (!res.ok) {
+      if (err) {
+        err.textContent = "❌ " + (data.error || "Signup failed");
+        err.style.display = "block";
+      }
+      MC.error(data.error || "Signup failed");
+      return;
     }
-    MC.error("Email already registered.");
-    return;
+
+    if (err) err.style.display = "none";
+    ["suNm", "suEml", "suHdl", "suPw"].forEach((id) => {
+      const el = document.getElementById(id);
+      if (el) el.value = "";
+    });
+    closeOvl("authOvl");
+    MC.success(data.message || "Account created! Please check your email. 🕉");
+  } catch (err) {
+    console.error(err);
+    MC.error("Network error. Please try again.");
   }
-  if (users.find((u) => u.handle === hdl)) {
-    if (err) {
-      err.textContent = "❌ Username taken";
-      err.style.display = "block";
-    }
-    MC.error("Username taken. Try another.");
-    return;
-  }
-  if (err) err.style.display = "none";
-  const nu = {
-    id: "u" + Date.now(),
-    name: nm,
-    handle: hdl,
-    email: em,
-    pass: btoa(pw),
-    bio: "",
-    location: "",
-    website: "",
-    avatar: null,
-    banner: null,
-    followers: [],
-    following: [],
-    joined: new Date().toLocaleDateString("en", {
-      month: "short",
-      year: "numeric",
-    }),
-    verified: false,
-  };
-  users.push(nu);
-  Store.s("users", users);
-  CU = nu;
-  Store.s("currentUser", nu);
-  ["suNm", "suEml", "suHdl", "suPw"].forEach((id) => {
-    const el = document.getElementById(id);
-    if (el) el.value = "";
-  });
-  closeOvl("authOvl");
-  initUI();
-  MC.success(`Welcome to Tirth Sutra, ${nm}! 🕉`);
-  gp("home");
 }
 function logout() {
   CU = null;

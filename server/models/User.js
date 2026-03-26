@@ -27,6 +27,8 @@ const userSchema = new mongoose.Schema(
     followers: [{ type: mongoose.Schema.Types.ObjectId, ref: "User" }],
     following: [{ type: mongoose.Schema.Types.ObjectId, ref: "User" }],
     verified: { type: Boolean, default: false },
+    emailVerificationToken: { type: String },
+    emailVerificationTokenExpires: { type: Date },
     mandirId: { type: String, default: null },
     joined: { type: String, default: "" },
   },
