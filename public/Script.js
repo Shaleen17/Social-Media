@@ -13,12 +13,12 @@ const Store = {
   s(k, v) {
     try {
       localStorage.setItem("ts_" + k, JSON.stringify(v));
-    } catch {}
+    } catch { }
   },
   d(k) {
     try {
       localStorage.removeItem("ts_" + k);
-    } catch {}
+    } catch { }
   },
 };
 
@@ -31,7 +31,7 @@ function openIDB() {
       r.onupgradeneeded = (e) => {
         try {
           e.target.result.createObjectStore("videos", { keyPath: "id" });
-        } catch {}
+        } catch { }
       };
       r.onsuccess = (e) => {
         idb = e.target.result;
@@ -522,14 +522,233 @@ const EVENTS = [
     tag: "Mela",
   },
 ];
+/* ============================================================
+   ★ VERIFIED SANTS DATA
+   HOW TO ADD PHOTOS:
+   1. Create a folder: images/sants/
+      (place it next to this HTML file, same level as index.html)
+   2. Add photos inside that folder, e.g.:
+        images/sants/shrigaurdas.jpg
+        images/sants/shrinaresh.jpg   etc.
+   3. Update the src: "" field in each sant entry below
+   4. Recommended: 400×400px square, .jpg / .png / .webp
+   ============================================================ */
 const SANTS = [
-  { uid: "u1", title: "Vedanta Acharya", followers: "48.2k followers" },
-  { uid: "u3", title: "Vedic Scholar", followers: "32.1k followers" },
-  { uid: "u2", title: "Pilgrimage Guide", followers: "12.4k followers" },
+  /* ── 1 ── */
   {
-    uid: "u4",
-    title: "Teerth Photographer",
-    followers: "9.8k followers",
+    id: "s1",
+    uid: null,
+    handle: "shrigaurdasjimaharaj",
+    name: "Shri Gaurdas Ji Maharaj",
+    title: "Sant & Katha Vachak",
+    followers: "154k",
+    followersNum: 154000,
+    following: "2",
+    posts: "0",
+    verified: true,
+    bio: "Shri Gaurdas Ji Maharaj 🙏\nKatha, kirtan and spiritual discourses.\nSpread the message of devotion and dharma.",
+    category: "Sant & Katha Vachak",
+    location: "India",
+    website: "",
+    /*
+      ★ SANT 1 IMAGE PATH:
+      src: "images/sants/shrigaurdas.jpg"
+    */
+    src: "images/sants/shrigaurdas.jpg",
+    emoji: "🕉",
+    highlights: ["Katha", "Kirtan", "Satsang", "Bhajans", "Pravachan"],
+  },
+  /* ── 2 ── */
+  {
+    id: "s2",
+    uid: null,
+    handle: "shrinareshbhaiyaji",
+    name: "Shri Naresh Bhaiya Ji",
+    title: "Spiritual Speaker",
+    followers: "19k",
+    followersNum: 19000,
+    following: "1",
+    posts: "0",
+    verified: true,
+    bio: "Shri Naresh Bhaiya Ji 🙏\nSpiritual speaker and devotee.\nGuiding seekers on the path of bhakti.",
+    category: "Spiritual Speaker",
+    location: "India",
+    website: "",
+    /*
+      ★ SANT 2 IMAGE PATH:
+      src: "images/sants/shrinaresh.jpg"
+    */
+    src: "images/sants/shrinaresh.jpg",
+    emoji: "🙏",
+    highlights: ["Bhakti", "Satsang", "Katha", "Pravachan", "Events"],
+  },
+  /* ── 3 ── */
+  {
+    id: "s3",
+    uid: null,
+    handle: "hitaambrish",
+    name: "Hita Ambrish",
+    title: "Vaishnava Saint",
+    followers: "237K",
+    followersNum: 237000,
+    following: "2",
+    posts: "0",
+    verified: true,
+    bio: "Hita Ambrish ✅\nVaishnava saint and kirtaniya.\n237K devotees spreading the love of Radha-Krishna.",
+    category: "Vaishnava Saint",
+    location: "Vrindavan, UP",
+    website: "",
+    /*
+      ★ SANT 3 IMAGE PATH:
+      src: "images/sants/hitaambrish.jpg"
+    */
+    src: "images/sants/hitaambrish.jpg",
+    emoji: "🔱",
+    highlights: ["Kirtan", "Vrindavan", "Radha-Krishna", "Bhajan", "Satsang"],
+  },
+  /* ── 4 ── */
+  {
+    id: "s4",
+    uid: null,
+    handle: "pujya__prembhushanjimaharaj__",
+    name: "Pujya Prembhushan Ji Maharaj",
+    title: "Sant & Pravachankaar",
+    followers: "403k",
+    followersNum: 403000,
+    following: "3",
+    posts: "0",
+    verified: true,
+    bio: "Pujya Prembhushan Ji Maharaj 🙏\nSpread love, devotion and dharma.\nJoin us for daily satsang and pravachan.",
+    category: "Sant & Pravachankaar",
+    location: "India",
+    website: "",
+    /*
+      ★ SANT 4 IMAGE PATH:
+      src: "images/sants/prembhushan.jpg"
+    */
+    src: "images/sants/prembhushan.jpg",
+    emoji: "🪔",
+    highlights: ["Pravachan", "Bhakti", "Katha", "Satsang", "Events"],
+  },
+  /* ── 5 ── */
+  {
+    id: "s5",
+    uid: null,
+    handle: "rajendradasjimaharaj",
+    name: "Shri Rajendra Das Ji Maharaj",
+    title: "Vaishnava Acharya",
+    followers: "765K",
+    followersNum: 765000,
+    following: "6",
+    posts: "1.2k",
+    verified: true,
+    bio: "Shri Rajendra Das Ji Maharaj 🔱\nVrindavan Dham · Vaishnava tradition.\nSpread love of Lord Hari through kirtan and katha.",
+    category: "Vaishnava Acharya",
+    location: "Vrindavan, UP",
+    website: "",
+    /*
+      ★ SANT 5 IMAGE PATH:
+      src: "images/sants/rajendradas.jpg"
+    */
+    src: "images/sants/rajendradas.jpg",
+    emoji: "🔱",
+    highlights: ["Katha", "Kirtan", "Vrindavan", "Bhajan", "Lectures"],
+  },
+  /* ── 6 ── */
+  {
+    id: "s6",
+    uid: null,
+    handle: "bhajanmarg_official",
+    name: "Bhajan Marg Official",
+    title: "Spiritual Organisation",
+    followers: "40.3M",
+    followersNum: 40300000,
+    following: "0",
+    posts: "8.7k",
+    verified: true,
+    bio: "🎶 Bhajan Marg — Connecting souls through devotion.\nOfficial spiritual platform. Daily satsang, bhajans & pravachans.",
+    category: "Spiritual Organisation",
+    location: "Pan India",
+    website: "bhajanmarg.com",
+    /*
+      ★ SANT 6 IMAGE PATH:
+      src: "images/sants/bhajanmarg.jpg"
+    */
+    src: "images/sants/bhajanmarg.jpg",
+    emoji: "🎶",
+    highlights: ["Daily Satsang", "Bhajans", "Pravachan", "Events", "Community"],
+  },
+  /* ── 7 ── */
+  {
+    id: "s7",
+    uid: null,
+    handle: "radhanathswami",
+    name: "Radhanath Swami",
+    title: "ISKCON Monk & Author",
+    followers: "524k",
+    followersNum: 524000,
+    following: "3",
+    posts: "3.4k",
+    verified: true,
+    bio: "ISKCON monk, author & spiritual teacher 🌿\nAuthor of The Journey Home.\nTeaching bhakti yoga to millions worldwide.",
+    category: "Monk & Author",
+    location: "Mumbai / USA",
+    website: "radhanathswami.com",
+    /*
+      ★ SANT 7 IMAGE PATH:
+      src: "images/sants/radhanathswami.jpg"
+    */
+    src: "images/sants/radhanathswami.jpg",
+    emoji: "🌿",
+    highlights: ["ISKCON", "The Journey Home", "Bhakti Yoga", "Kirtan", "Talks"],
+  },
+  /* ── 8 ── */
+  {
+    id: "s8",
+    uid: null,
+    handle: "sripundrik",
+    name: "Pundrik Goswami",
+    title: "Dharmacharya",
+    followers: "1.5M",
+    followersNum: 1500000,
+    following: "75",
+    posts: "934",
+    verified: true,
+    bio: "Pundrik Goswami Ji 🙏\nSri Dhama Vrindavan · Radhavallabh tradition.\nGyan, bhakti and kirtan for the modern seeker.",
+    category: "Dharmacharya",
+    location: "Vrindavan, UP",
+    website: "",
+    /*
+      ★ SANT 8 IMAGE PATH:
+      src: "images/sants/sripundrik.jpg"
+    */
+    src: "images/sants/sripundrik.jpg",
+    emoji: "🌺",
+    highlights: ["Vrindavan", "Kirtan", "Radhavallabh", "Gyan", "Pravachan"],
+  },
+  /* ── 9 ── */
+  {
+    id: "s9",
+    uid: null,
+    handle: "bhaktipath",
+    name: "Indresh Upadhyay",
+    title: "Bhakti Path",
+    followers: "2.6M",
+    followersNum: 2600000,
+    following: "92",
+    posts: "0",
+    verified: true,
+    bio: "Indresh Upadhyay 🙏\nBhaktipath — guiding seekers on the path of devotion.\nSpiritual content, pravachans and more.",
+    category: "Spiritual Guide",
+    location: "India",
+    website: "",
+    /*
+      ★ SANT 9 IMAGE PATH:
+      src: "images/sants/bhaktipath.jpg"
+    */
+    src: "images/sants/bhaktipath.jpg",
+    emoji: "🪔",
+    highlights: ["Bhakti", "Pravachan", "Katha", "Satsang", "Events"],
   },
 ];
 const MANDIR_DISCUSSIONS = [
@@ -853,6 +1072,8 @@ const PAGE_IDS = [
   "home",
   "mandir",
   "mandirCommunity",
+  "santAll",
+  "santProfile",
   "video",
   "search",
   "notifs",
@@ -898,7 +1119,9 @@ function gp(page) {
       renderWidgets();
     },
     mandir: () => renderMandir(),
-    mandirCommunity: () => {}, // rendered by openMandirCommunity
+    mandirCommunity: () => { }, // rendered by openMandirCommunity
+    santAll: () => renderSantAll(),
+    santProfile: () => { }, // rendered by openSantProfile
     video: () => renderVideoPage(),
     search: () => {
       doSearch("");
@@ -1102,7 +1325,7 @@ function showSV(stories, i) {
     vid.volume = 1.0;
     vid.play().catch(() => {
       vid.muted = true;
-      vid.play().catch(() => {});
+      vid.play().catch(() => { });
     });
   } else if (s.type === "image" && s.src)
     cont.innerHTML = `<img src="${s.src}" alt="" style="max-width:100%;max-height:100%;border-radius:12px">`;
@@ -1323,7 +1546,7 @@ function submitCmt(id) {
 }
 function openRP(id, e) {
   if (e) e.stopPropagation();
-  if (!auth(() => {})) return;
+  if (!auth(() => { })) return;
   activeRP = id;
   document.getElementById("rpSheet").classList.add("show");
   document.getElementById("rpOvl").style.display = "block";
@@ -1391,12 +1614,12 @@ function openLikes(id, e) {
   c.innerHTML = !p.likes.length
     ? `<div class="empty"><div class="empty-ico">🙏</div><div class="empty-sub">No Pranams yet</div></div>`
     : p.likes
-        .map((uid) => {
-          const u = getUser(uid);
-          if (!u) return "";
-          return `<div class="fol-item">${avHTML(uid, "av36")}<div style="flex:1;min-width:0;margin-left:10px"><div style="font-weight:600;font-size:14px" onclick="vpro('${u.id}')">${u.name}</div><div style="font-size:12px;color:var(--t3)">@${u.handle}</div></div><button class="btn btn-sm ${CU && (CU.following || []).includes(uid) ? "btn-o" : "btn-p"}" onclick="toggleFollow('${uid}',this)">${CU && (CU.following || []).includes(uid) ? "Following" : "Follow"}</button></div>`;
-        })
-        .join("");
+      .map((uid) => {
+        const u = getUser(uid);
+        if (!u) return "";
+        return `<div class="fol-item">${avHTML(uid, "av36")}<div style="flex:1;min-width:0;margin-left:10px"><div style="font-weight:600;font-size:14px" onclick="vpro('${u.id}')">${u.name}</div><div style="font-size:12px;color:var(--t3)">@${u.handle}</div></div><button class="btn btn-sm ${CU && (CU.following || []).includes(uid) ? "btn-o" : "btn-p"}" onclick="toggleFollow('${uid}',this)">${CU && (CU.following || []).includes(uid) ? "Following" : "Follow"}</button></div>`;
+      })
+      .join("");
   openOvl("likesOvl");
 }
 function openPD(id) {
@@ -1658,14 +1881,27 @@ function renderMandir() {
       (ev) =>
         `<div class="event-item"><div class="event-date"><div class="ed-day">${ev.day}</div><div class="ed-mon">${ev.mon}</div></div><div class="event-info"><div class="event-title">${ev.title}</div><div class="event-sub">${ev.sub}</div></div><span class="event-tag">${ev.tag}</span></div>`,
     ).join("");
-  // Sants
+  // Sants — show first 4 in grid
   const sg = document.getElementById("santGrid");
   if (sg)
-    sg.innerHTML = SANTS.map((s) => {
-      const u = getUser(s.uid);
-      if (!u) return "";
-      const ini = getIni(u.name);
-      return `<div class="sant-card" onclick="vpro('${u.id}')"><div class="av av40">${u.avatar ? `<img src="${u.avatar}" alt="">` : ini}</div><div class="sant-info"><div class="sant-name">${u.name}${u.verified ? " 🔱" : ""}</div><div class="sant-title">${s.title}</div><div class="sant-followers">${s.followers}</div></div></div>`;
+    sg.innerHTML = SANTS.slice(0, 4).map((s, idx) => {
+      const u = s.uid ? getUser(s.uid) : null;
+      const name = u ? u.name : (s.name || s.handle);
+      const isVerified = (s.verified !== undefined) ? s.verified : (u ? u.verified : true);
+      const avatarSrc = s.src || (u && u.avatar ? u.avatar : "");
+      const ini = getIni(name);
+      const imgHtml = avatarSrc
+        ? `<img src="${avatarSrc}" alt="${name}" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'">
+           <span class="av-ini-fb" style="display:none">${ini}</span>`
+        : `<span>${ini}</span>`;
+      return `<div class="sant-card" onclick="openSantProfile(${idx})">
+        <div class="sant-avatar-wrap">${imgHtml}</div>
+        <div class="sant-info">
+          <div class="sant-name">${name}${isVerified ? ` <svg class="sant-chk" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" fill="#1877f2"/><path d="M9 12l2 2 4-4" stroke="#fff" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" fill="none"/></svg>` : ""}</div>
+          <div class="sant-title">${s.title}</div>
+          <div class="sant-followers">${s.followers} followers</div>
+        </div>
+      </div>`;
     }).join("");
   // Discussions
   const disc = document.getElementById("mandirDiscussions");
@@ -1676,6 +1912,127 @@ function renderMandir() {
       const ini = getIni(u.name);
       return `<div class="disc-post"><div class="av av36">${u.avatar ? `<img src="${u.avatar}" alt="">` : ini}</div><div class="disc-body"><div class="disc-meta">${u.name}${u.verified ? " 🔱" : ""} · ${d.t}</div><div class="disc-text">${esc(d.txt)}</div><div class="disc-acts"><button class="disc-btn" onclick="auth(()=>MC.success('Pranam given! 🙏'))"><svg viewBox="0 0 24 24"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>${d.likes}</button><button class="disc-btn" onclick="auth(()=>openOvl('compOvl'))"><svg viewBox="0 0 24 24"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>${d.cmts}</button><button class="disc-btn" onclick="openSH('d1',event)"><svg viewBox="0 0 24 24"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg>Share</button></div></div></div>`;
     }).join("");
+}
+
+/* ── SANT ALL LIST PAGE ── */
+let currentSantFilter = "";
+function renderSantAll(filter) {
+  if (filter !== undefined) currentSantFilter = filter;
+  const f = (currentSantFilter || "").toLowerCase();
+  const list = document.getElementById("santAllList");
+  if (!list) return;
+  const filtered = SANTS.filter(s => {
+    const u = s.uid ? getUser(s.uid) : null;
+    const name = u ? u.name : (s.name || s.handle || "");
+    return !f || name.toLowerCase().includes(f) ||
+      (s.title || "").toLowerCase().includes(f) ||
+      (s.handle || "").toLowerCase().includes(f);
+  });
+  if (filtered.length === 0) {
+    list.innerHTML = '<div class="sant-all-empty">🔍 No Sants found</div>';
+    return;
+  }
+  list.innerHTML = filtered.map((s) => {
+    const realIdx = SANTS.indexOf(s);
+    const u = s.uid ? getUser(s.uid) : null;
+    const name = u ? u.name : (s.name || s.handle);
+    const isVerified = (s.verified !== undefined) ? s.verified : (u ? u.verified : true);
+    const avatarSrc = s.src || (u && u.avatar ? u.avatar : "");
+    const ini = getIni(name);
+    const imgHtml = avatarSrc
+      ? `<img src="${avatarSrc}" alt="${name}" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'"><span class="av-ini-fb" style="display:none">${ini}</span>`
+      : `<span class="av-ini-fb-only">${ini}</span>`;
+    // Sub-line: show "@handle · Xk followers" or "@handle · Following"
+    const followersTxt = (s.followers === "Following" || s.followers === "0" || !s.followers)
+      ? "Following" : `${s.followers} followers`;
+    return `<div class="sant-list-item" onclick="openSantProfile(${realIdx})">
+      <div class="sant-list-avatar">${imgHtml}</div>
+      <div class="sant-list-info">
+        <div class="sant-list-name">${name}${isVerified ? ` <svg class="sant-chk" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" fill="#1877f2"/><path d="M9 12l2 2 4-4" stroke="#fff" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" fill="none"/></svg>` : ""}</div>
+        <div class="sant-list-sub">@${s.handle} · ${followersTxt}</div>
+        <div class="sant-list-title">${s.title}</div>
+      </div>
+      <button class="sant-list-follow" onclick="event.stopPropagation();this.classList.toggle('following');this.textContent=this.classList.contains('following')?'Following ✓':'Follow';">Follow</button>
+    </div>`;
+  }).join("");
+}
+
+/* ── SANT PROFILE PAGE ── */
+let curSantIdx = 0;
+function openSantProfile(idx) {
+  curSantIdx = idx;
+  const s = SANTS[idx];
+  if (!s) return;
+  const u = s.uid ? getUser(s.uid) : null;
+  const name = u ? u.name : (s.name || s.handle);
+  const isVerified = (s.verified !== undefined) ? s.verified : (u ? u.verified : true);
+  const avatarSrc = s.src || (u && u.avatar ? u.avatar : "");
+  const ini = getIni(name);
+  const bio = s.bio || (u ? u.bio : "");
+  const loc = s.location || (u ? u.location : "");
+  const website = s.website || (u ? u.website : "");
+
+  // Set avatar
+  const avImg = document.getElementById("spAvatar");
+  const avFb = document.getElementById("spAvatarFb");
+  if (avatarSrc) {
+    avImg.src = avatarSrc;
+    avImg.style.display = "block";
+    avImg.onerror = () => { avImg.style.display = "none"; avFb.style.display = "flex"; avFb.textContent = ini; };
+    avFb.style.display = "none";
+  } else {
+    avImg.style.display = "none";
+    avFb.style.display = "flex";
+    avFb.textContent = ini;
+  }
+
+  // Header
+  document.getElementById("spHandle").textContent = "@" + (s.handle || (u ? u.handle : ""));
+  document.getElementById("spName").textContent = name;
+  const spVBadge = document.getElementById("spVerifiedBadge");
+  if (spVBadge) spVBadge.style.display = isVerified ? "inline-flex" : "none";
+  document.getElementById("spCategory").textContent = s.category || s.title || "";
+
+  // Bio
+  const bioEl = document.getElementById("spBio");
+  if (bioEl) bioEl.textContent = bio || "";
+
+  // Stats
+  document.getElementById("spPosts").textContent = s.posts || "0";
+  document.getElementById("spFollowers").textContent = s.followers || "0";
+  document.getElementById("spFollowing").textContent = s.following || "0";
+
+  // Location
+  const locWrap = document.getElementById("spLocationWrap");
+  const locEl = document.getElementById("spLocation");
+  if (locWrap && locEl) {
+    locWrap.style.display = loc ? "flex" : "none";
+    locEl.textContent = loc || "";
+  }
+
+  // Website
+  const webWrap = document.getElementById("spWebsiteWrap");
+  const webEl = document.getElementById("spWebsite");
+  if (webWrap && webEl) {
+    webWrap.style.display = website ? "flex" : "none";
+    webEl.textContent = website || "";
+    webEl.href = website ? (website.startsWith("http") ? website : "https://" + website) : "#";
+  }
+
+  // Highlights
+  const hlContainer = document.getElementById("spHighlights");
+  if (hlContainer) {
+    const highlights = s.highlights || [];
+    hlContainer.innerHTML = highlights.map(hl =>
+      `<div class="sp-hl-item">
+        <div class="sp-hl-circle">${s.emoji || "🙏"}</div>
+        <div class="sp-hl-label">${hl}</div>
+      </div>`
+    ).join("");
+  }
+
+  // Navigate to page
+  gp("santProfile");
 }
 
 /* ── MANDIR COMMUNITY CONFIG ── */
@@ -1791,7 +2148,7 @@ function openMandirCommunity(slug) {
     hlEl.innerHTML = config.highlights.map((h, i) =>
       `<div class="mc-hl-item">
         <div class="mc-hl-circle">
-          <span>${["🕉","🔱","🛕","📿","🪷"][i % 5]}</span>
+          <span>${["🕉", "🔱", "🛕", "📿", "🪷"][i % 5]}</span>
         </div>
         <div class="mc-hl-label">${h}</div>
       </div>`
@@ -2019,7 +2376,7 @@ function removeMandirCompMedia() {
   document.getElementById("mandirCompImgPreview").classList.add("hide");
   document.getElementById("mandirCompImg").src = "";
   const vidEl = document.getElementById("mandirCompVid");
-  if (vidEl && vidEl.src) { try { URL.revokeObjectURL(vidEl.src); } catch(e){} vidEl.src = ""; }
+  if (vidEl && vidEl.src) { try { URL.revokeObjectURL(vidEl.src); } catch (e) { } vidEl.src = ""; }
   document.getElementById("mandirCompVidPreview").classList.add("hide");
   document.querySelectorAll("#mandirCompOvl input[type=file]").forEach(inp => { inp.value = ""; });
 }
@@ -2106,7 +2463,7 @@ function renderCurrentShort() {
   const container = document.getElementById("mcShortsContainer");
   container.innerHTML = `<video id="mcShortsVideo" src="${p.video}" ${shortsMuted ? 'muted' : ''} autoplay loop playsinline webkit-playsinline class="mc-shorts-video" onclick="toggleShortsPlayPause()"></video>`;
   const vid = document.getElementById("mcShortsVideo");
-  if (vid) vid.play().catch(() => {});
+  if (vid) vid.play().catch(() => { });
   const u = p.user || {};
   document.getElementById("mcShortsInfo").innerHTML = `
     <div class="mc-shorts-user"><strong>@${u.handle || "user"}</strong>${u.verified ? ' 🔱' : ''}</div>
@@ -2122,7 +2479,7 @@ function renderCurrentShort() {
 function toggleShortsPlayPause() {
   const vid = document.getElementById("mcShortsVideo");
   if (!vid) return;
-  if (vid.paused) vid.play().catch(() => {});
+  if (vid.paused) vid.play().catch(() => { });
   else vid.pause();
 }
 
@@ -2166,13 +2523,13 @@ function commentShortsPost() {
     const avatarHtml = u.avatar ? `<img src="${u.avatar}" alt="">` : ini;
     let commentsHtml = (p.cmts || []).map(c => {
       const cu = c.user || {};
-      return `<div style="display:flex;gap:8px;padding:8px 0;border-top:1px solid var(--bd)"><div class="av av28">${cu.avatar?`<img src="${cu.avatar}">`:(getIni(cu.name||"U"))}</div><div style="flex:1"><strong style="font-size:13px">${cu.name||'User'}</strong> <span style="font-size:12px;color:var(--t3)">${c.t}</span><div style="font-size:13px;margin-top:2px">${esc(c.txt)}</div></div></div>`;
+      return `<div style="display:flex;gap:8px;padding:8px 0;border-top:1px solid var(--bd)"><div class="av av28">${cu.avatar ? `<img src="${cu.avatar}">` : (getIni(cu.name || "U"))}</div><div style="flex:1"><strong style="font-size:13px">${cu.name || 'User'}</strong> <span style="font-size:12px;color:var(--t3)">${c.t}</span><div style="font-size:13px;margin-top:2px">${esc(c.txt)}</div></div></div>`;
     }).join("");
     document.getElementById("mandirPostDetail").innerHTML = `
-      <div style="display:flex;gap:10px;align-items:center;margin-bottom:12px"><div class="av av40">${avatarHtml}</div><div><strong>${u.name||'Unknown'}</strong>${u.verified?' 🔱':''}<div style="font-size:12px;color:var(--t3)">@${u.handle||'user'} · ${p.t}</div></div></div>
-      ${p.txt?`<div style="font-size:15px;line-height:1.5;margin-bottom:12px;white-space:pre-wrap">${esc(p.txt)}</div>`:''}
+      <div style="display:flex;gap:10px;align-items:center;margin-bottom:12px"><div class="av av40">${avatarHtml}</div><div><strong>${u.name || 'Unknown'}</strong>${u.verified ? ' 🔱' : ''}<div style="font-size:12px;color:var(--t3)">@${u.handle || 'user'} · ${p.t}</div></div></div>
+      ${p.txt ? `<div style="font-size:15px;line-height:1.5;margin-bottom:12px;white-space:pre-wrap">${esc(p.txt)}</div>` : ''}
       <video src="${p.video}" controls playsinline style="width:100%;border-radius:10px;margin-bottom:12px;max-height:400px"></video>
-      <div style="display:flex;gap:16px;padding:10px 0;border-top:1px solid var(--bd);border-bottom:1px solid var(--bd)"><button class="disc-btn" onclick="toggleMandirPostLike('${p.id}', ${mainIdx})">❤ ${p.likes.length}</button><button class="disc-btn">💬 ${p.cmts?p.cmts.length:0}</button></div>
+      <div style="display:flex;gap:16px;padding:10px 0;border-top:1px solid var(--bd);border-bottom:1px solid var(--bd)"><button class="disc-btn" onclick="toggleMandirPostLike('${p.id}', ${mainIdx})">❤ ${p.likes.length}</button><button class="disc-btn">💬 ${p.cmts ? p.cmts.length : 0}</button></div>
       ${commentsHtml}
       <div style="display:flex;gap:8px;margin-top:12px"><input type="text" id="mcCommentInput" placeholder="Add a comment..." style="flex:1;padding:8px 12px;border-radius:20px;border:1px solid var(--bd);background:var(--bg2);color:var(--t1);font-size:13px"><button class="btn btn-p btn-sm" onclick="addMandirPostComment('${p.id}', ${mainIdx})">Post</button></div>
     `;
@@ -2181,7 +2538,7 @@ function commentShortsPost() {
 }
 
 // Touch swipe for shorts
-(function() {
+(function () {
   let touchStartY = 0;
   document.addEventListener("touchstart", (e) => {
     if (!document.getElementById("mcShortsOvl")?.classList.contains("hide")) touchStartY = e.touches[0].clientY;
@@ -2562,7 +2919,7 @@ function handleLiveFile(e) {
   if (vid) {
     vid.src = url;
     vid.style.display = "block";
-    vid.play().catch(() => {});
+    vid.play().catch(() => { });
   }
   const ph = document.getElementById("livePreviewPlaceholder");
   if (ph) ph.style.display = "none";
@@ -2735,12 +3092,12 @@ function openFolModal(uid, type) {
   fc.innerHTML = !ids.length
     ? `<div class="empty"><div class="empty-sub">No ${type} yet</div></div>`
     : ids
-        .map((id) => {
-          const fu = getUser(id);
-          if (!fu) return "";
-          return `<div class="fol-item">${avHTML(id, "av36")}<div style="flex:1;min-width:0;margin-left:10px"><div style="font-weight:600;font-size:14px;cursor:pointer" onclick="vpro('${fu.id}')">${fu.name}</div><div style="font-size:12px;color:var(--t3)">@${fu.handle}</div></div><button class="btn btn-sm ${CU && (CU.following || []).includes(id) ? "btn-o" : "btn-p"}" onclick="toggleFollow('${id}',this)">${CU && (CU.following || []).includes(id) ? "Following" : "Follow"}</button></div>`;
-        })
-        .join("");
+      .map((id) => {
+        const fu = getUser(id);
+        if (!fu) return "";
+        return `<div class="fol-item">${avHTML(id, "av36")}<div style="flex:1;min-width:0;margin-left:10px"><div style="font-weight:600;font-size:14px;cursor:pointer" onclick="vpro('${fu.id}')">${fu.name}</div><div style="font-size:12px;color:var(--t3)">@${fu.handle}</div></div><button class="btn btn-sm ${CU && (CU.following || []).includes(id) ? "btn-o" : "btn-p"}" onclick="toggleFollow('${id}',this)">${CU && (CU.following || []).includes(id) ? "Following" : "Follow"}</button></div>`;
+      })
+      .join("");
   openOvl("folOvl");
 }
 function openEP() {
@@ -2923,9 +3280,9 @@ function filterConvs(q) {
   const convs = Store.g("convs", SEED_CONVS);
   const filtered = q
     ? convs.filter((c) => {
-        const u = getUser(c.uid);
-        return u && u.name.toLowerCase().includes(q.toLowerCase());
-      })
+      const u = getUser(c.uid);
+      return u && u.name.toLowerCase().includes(q.toLowerCase());
+    })
     : convs;
   const cl = document.getElementById("convsList");
   if (!cl) return;
@@ -3074,11 +3431,11 @@ function doSearch(q) {
     c.innerHTML = !users.length
       ? `<div class="empty"><div class="empty-sub">No users found</div></div>`
       : users
-          .map((u) => {
-            const ini = getIni(u.name);
-            return `<div class="s-result" onclick="vpro('${u.id}')"><div class="av av40">${u.avatar ? `<img src="${u.avatar}" alt="">` : ini}</div><div style="flex:1;min-width:0;margin-left:8px"><div class="who-name">${u.name}${u.verified ? " 🔱" : ""}</div><div class="who-hdl">@${u.handle}</div><div style="font-size:13px;color:var(--t2);margin-top:2px">${u.bio || ""}</div></div><button class="btn btn-sm ${CU && (CU.following || []).includes(u.id) ? "btn-o" : "btn-p"}" onclick="event.stopPropagation();toggleFollow('${u.id}',this)">${CU && (CU.following || []).includes(u.id) ? "Following" : "Follow"}</button></div>`;
-          })
-          .join("");
+        .map((u) => {
+          const ini = getIni(u.name);
+          return `<div class="s-result" onclick="vpro('${u.id}')"><div class="av av40">${u.avatar ? `<img src="${u.avatar}" alt="">` : ini}</div><div style="flex:1;min-width:0;margin-left:8px"><div class="who-name">${u.name}${u.verified ? " 🔱" : ""}</div><div class="who-hdl">@${u.handle}</div><div style="font-size:13px;color:var(--t2);margin-top:2px">${u.bio || ""}</div></div><button class="btn btn-sm ${CU && (CU.following || []).includes(u.id) ? "btn-o" : "btn-p"}" onclick="event.stopPropagation();toggleFollow('${u.id}',this)">${CU && (CU.following || []).includes(u.id) ? "Following" : "Follow"}</button></div>`;
+        })
+        .join("");
   }
   if (curSTabVal === "posts") {
     const posts = getPosts().filter((p) => p.txt.toLowerCase().includes(ql));
@@ -3119,11 +3476,11 @@ function renderWidgets() {
     wf.innerHTML = !sug.length
       ? `<div style="font-size:13px;color:var(--t3)">You're following everyone!</div>`
       : sug
-          .map((u) => {
-            const ini = getIni(u.name);
-            return `<div class="who-item"><div class="av av36" onclick="vpro('${u.id}')" style="cursor:pointer">${u.avatar ? `<img src="${u.avatar}" alt="">` : ini}</div><div style="flex:1;min-width:0;margin-left:8px;cursor:pointer" onclick="vpro('${u.id}')"><div class="who-name">${u.name}${u.verified ? " 🔱" : ""}</div><div class="who-hdl">@${u.handle}</div></div><button class="btn btn-p btn-sm" onclick="toggleFollow('${u.id}',this)">Follow</button></div>`;
-          })
-          .join("");
+        .map((u) => {
+          const ini = getIni(u.name);
+          return `<div class="who-item"><div class="av av36" onclick="vpro('${u.id}')" style="cursor:pointer">${u.avatar ? `<img src="${u.avatar}" alt="">` : ini}</div><div style="flex:1;min-width:0;margin-left:8px;cursor:pointer" onclick="vpro('${u.id}')"><div class="who-name">${u.name}${u.verified ? " 🔱" : ""}</div><div class="who-hdl">@${u.handle}</div></div><button class="btn btn-p btn-sm" onclick="toggleFollow('${u.id}',this)">Follow</button></div>`;
+        })
+        .join("");
   }
 }
 
@@ -3230,7 +3587,7 @@ async function init() {
   // Step 7 — IDB in background, never blocks render
   try {
     await openIDB();
-  } catch {}
+  } catch { }
 }
 
 // Call init immediately when DOM is ready
@@ -4110,10 +4467,10 @@ function renderChatMessages(chatId) {
           : dateStr === yest.toDateString()
             ? "Yesterday"
             : d.toLocaleDateString([], {
-                day: "numeric",
-                month: "long",
-                year: "numeric",
-              });
+              day: "numeric",
+              month: "long",
+              year: "numeric",
+            });
       html += `<div class="msg-date-sep"><span>${label}</span></div>`;
       lastDate = dateStr;
     }
@@ -4328,10 +4685,10 @@ function filterDMSearch(q) {
   const all = getUsers();
   const filtered = q
     ? all.filter(
-        (u) =>
-          u.name.toLowerCase().includes(q.toLowerCase()) ||
-          u.handle.toLowerCase().includes(q.toLowerCase()),
-      )
+      (u) =>
+        u.name.toLowerCase().includes(q.toLowerCase()) ||
+        u.handle.toLowerCase().includes(q.toLowerCase()),
+    )
     : all;
   c.innerHTML = filtered
     .map(

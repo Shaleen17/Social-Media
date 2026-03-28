@@ -2790,7 +2790,9 @@ video {
   flex-shrink: 0;
 }
 
-/* Sants grid */
+/* ============================================================
+   ★ SANTS GRID — Mandir Community Section
+   ============================================================ */
 .sant-grid {
   display: grid;
   grid-template-columns: repeat(2, 1fr);
@@ -2798,40 +2800,399 @@ video {
 }
 .sant-card {
   background: var(--bg2);
-  border-radius: 12px;
-  padding: 14px;
+  border-radius: 14px;
+  padding: 14px 12px;
   display: flex;
   gap: 10px;
   align-items: center;
   border: 1px solid var(--bd);
   cursor: pointer;
-  transition: all 0.18s;
+  transition: all 0.2s;
+  overflow: hidden;
 }
 .sant-card:hover {
   background: var(--a);
-  border-color: var(--bd2);
+  border-color: var(--p);
+  transform: translateY(-2px);
+  box-shadow: var(--sh2);
+}
+/* Sant avatar with photo support */
+.sant-avatar-wrap {
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, var(--p), var(--pl));
+  flex-shrink: 0;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 2px solid var(--p);
+  position: relative;
+}
+.sant-avatar-wrap img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  border-radius: 50%;
+}
+.sant-avatar-wrap span {
+  font-size: 16px;
+  font-weight: 700;
+  color: #fff;
+}
+.av-ini-fb {
+  font-size: 16px;
+  font-weight: 700;
+  color: #fff;
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 .sant-info {
   flex: 1;
   min-width: 0;
 }
 .sant-name {
-  font-size: 14px;
-  font-weight: 600;
+  font-size: 13px;
+  font-weight: 700;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.sant-chk {
+  width: 15px;
+  height: 15px;
+  flex-shrink: 0;
+  vertical-align: middle;
 }
 .sant-title {
-  font-size: 12px;
+  font-size: 11px;
   color: var(--t3);
   margin-top: 1px;
 }
 .sant-followers {
   font-size: 11px;
   color: var(--p);
-  margin-top: 4px;
+  margin-top: 3px;
+  font-weight: 600;
+}
+
+/* ============================================================
+   ★ SANT ALL LIST PAGE  (pgSantAll)
+   ============================================================ */
+/* Search Bar */
+.sant-all-search-wrap {
+  padding: 12px 14px 8px;
+  background: var(--bg);
+  border-bottom: 1px solid var(--bd);
+}
+.sant-all-search-inner {
+  position: relative;
+}
+.sant-search-icon {
+  position: absolute;
+  left: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 16px;
+  height: 16px;
+  stroke: var(--t3);
+  fill: none;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  pointer-events: none;
+}
+.sant-all-search {
+  width: 100%;
+  background: var(--bg3);
+  border: 1.5px solid var(--bd);
+  border-radius: 22px;
+  padding: 10px 16px 10px 38px;
+  font-size: 14px;
+  color: var(--t);
+  outline: none;
+  font-family: inherit;
+  transition: border-color 0.18s, background 0.18s;
+  box-sizing: border-box;
+}
+.sant-all-search::placeholder { color: var(--t3); }
+.sant-all-search:focus {
+  border-color: var(--p);
+  background: var(--bg2);
+}
+
+/* Stats Bar */
+.sant-all-stats-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 16px;
+  border-bottom: 1px solid var(--bd);
+  background: var(--bg2);
+}
+.sant-all-badge {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--p);
+  background: var(--a);
+  padding: 3px 10px;
+  border-radius: 12px;
+}
+.sant-all-count {
+  font-size: 13px;
+  color: var(--t3);
   font-weight: 500;
+}
+
+/* Sant List Item */
+.sant-list-item {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 14px 16px;
+  border-bottom: 1px solid var(--bd);
+  cursor: pointer;
+  transition: background 0.15s;
+}
+.sant-list-item:last-child { border-bottom: none; }
+.sant-list-item:hover { background: var(--bg2); }
+.sant-list-item:active { background: var(--a); }
+
+/* List Avatar with gradient ring */
+.sant-list-avatar {
+  width: 54px;
+  height: 54px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  position: relative;
+  background: linear-gradient(135deg, #f09433, #e6683c, #dc2743, #cc2366, #bc1888);
+  padding: 2.5px;
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.sant-list-avatar img {
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  object-fit: cover;
+  border: 2px solid var(--bg);
+  display: block;
+}
+.av-ini-fb-only {
+  width: 46px;
+  height: 46px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, var(--p), var(--pl));
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 17px;
+  font-weight: 700;
+  color: #fff;
+  border: 2px solid var(--bg);
+}
+
+.sant-list-info {
+  flex: 1;
+  min-width: 0;
+}
+.sant-list-name {
+  font-size: 14px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--t);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.sant-list-sub {
+  font-size: 12px;
+  color: var(--t3);
+  margin-top: 2px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.sant-list-title {
+  font-size: 11px;
+  color: var(--t2);
+  margin-top: 1px;
+  font-weight: 500;
+}
+
+/* Follow Button */
+.sant-list-follow {
+  flex-shrink: 0;
+  padding: 7px 16px;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+  background: var(--p);
+  color: #fff;
+  border: none;
+  transition: all 0.18s;
+  white-space: nowrap;
+}
+.sant-list-follow:hover { opacity: 0.88; }
+.sant-list-follow.following {
+  background: var(--bg3);
+  color: var(--t);
+  border: 1.5px solid var(--bd);
+}
+
+/* Empty state */
+.sant-all-empty {
+  text-align: center;
+  padding: 48px 16px;
+  font-size: 15px;
+  color: var(--t3);
+}
+
+/* ============================================================
+   ★ SANT PROFILE PAGE  (pgSantProfile)
+   ============================================================ */
+/* Large avatar with fallback */
+.sp-avatar-wrap {
+  width: 84px !important;
+  height: 84px !important;
+}
+.sp-avatar-img {
+  width: 84px !important;
+  height: 84px !important;
+  object-fit: cover !important;
+}
+.sp-avatar-fb {
+  width: 80px;
+  height: 80px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, var(--p), var(--pl));
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 28px;
+  font-weight: 700;
+  color: #fff;
+  border: 3px solid var(--p);
+}
+
+/* Verified checkmark SVG in name row */
+.sp-verified-svg {
+  width: 18px;
+  height: 18px;
+  flex-shrink: 0;
+  vertical-align: middle;
+}
+
+/* Website link row */
+.mc-website a {
+  color: var(--p);
+  text-decoration: none;
+  font-weight: 500;
+}
+.mc-website a:hover { text-decoration: underline; }
+.mc-website svg {
+  width: 13px;
+  height: 13px;
+  stroke: var(--p);
+  fill: none;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+/* Follow button on profile page */
+.sp-follow-btn {
+  background: var(--p) !important;
+  color: #fff !important;
+  border: none !important;
+}
+.sp-follow-btn:hover { opacity: 0.88 !important; }
+.sp-follow-btn.sp-following {
+  background: var(--bg3) !important;
+  color: var(--t) !important;
+  border: 1.5px solid var(--bd) !important;
+}
+
+/* Story Highlights for sant profile */
+.sp-hl-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+}
+.sp-hl-circle {
+  width: 62px;
+  height: 62px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, var(--p), var(--pl));
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 24px;
+  cursor: pointer;
+  border: 2px solid var(--bd2);
+  transition: transform 0.18s, border-color 0.18s;
+}
+.sp-hl-circle:hover {
+  transform: scale(1.06);
+  border-color: var(--p);
+}
+.sp-hl-label {
+  font-size: 11px;
+  color: var(--t3);
+  max-width: 64px;
+  text-align: center;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Empty Post Grid placeholder */
+.sp-post-grid-placeholder {
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  min-height: 200px;
+  background: var(--bg2);
+}
+.sp-empty-grid {
+  text-align: center;
+  padding: 40px 16px;
+}
+.sp-empty-icon {
+  font-size: 3rem;
+  margin-bottom: 12px;
+}
+.sp-empty-grid p {
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--t);
+  margin: 0 0 4px;
+}
+.sp-empty-grid span {
+  font-size: 13px;
+  color: var(--t3);
+}
+
+/* Responsive tweaks */
+@media (max-width: 480px) {
+  .sant-grid { grid-template-columns: 1fr; }
+  .sant-list-avatar { width: 46px; height: 46px; }
+  .av-ini-fb-only { width: 38px; height: 38px; font-size: 14px; }
+  .sant-list-follow { padding: 7px 12px; font-size: 12px; }
 }
 
 /* Discussion feed */

@@ -1777,7 +1777,7 @@
             <div class="mandir-section">
               <div class="mandir-section-title">
                 <h3>Verified Sants</h3>
-                <button class="btn btn-sm btn-o" onclick="gp('search')">
+                <button class="btn btn-sm btn-o" onclick="gp('santAll')">
                   See All →
                 </button>
               </div>
@@ -1816,6 +1816,148 @@
 
             <!-- Padding bottom -->
             <div style="height: 24px"></div>
+          </div>
+
+          <!-- ★ VERIFIED SANTS — ALL LIST PAGE -->
+          <div class="page hide" id="pgSantAll">
+            <!-- Top Bar -->
+            <div class="mc-topbar">
+              <button class="mc-back-btn" onclick="gp('mandir')" aria-label="Back to Mandir">
+                <svg viewBox="0 0 24 24"><polyline points="15 18 9 12 15 6"/></svg>
+              </button>
+              <span class="mc-topbar-title">Verified Sants</span>
+              <div style="width:34px"></div>
+            </div>
+
+            <!-- Search Bar -->
+            <div class="sant-all-search-wrap">
+              <div class="sant-all-search-inner">
+                <svg class="sant-search-icon" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+                <input
+                  id="santSearchInput"
+                  class="sant-all-search"
+                  type="text"
+                  placeholder="Search Sants…"
+                  oninput="renderSantAll(this.value)"
+                  aria-label="Search verified sants"
+                />
+              </div>
+            </div>
+
+            <!-- Stats bar -->
+            <div class="sant-all-stats-bar">
+              <span class="sant-all-badge">✅ All Verified</span>
+              <span class="sant-all-count" id="santAllCount">9 Sants</span>
+            </div>
+
+            <!-- Sant List -->
+            <div id="santAllList"></div>
+
+            <div style="height:80px"></div>
+          </div>
+
+          <!-- ★ SANT DETAIL PROFILE PAGE -->
+          <div class="page hide" id="pgSantProfile">
+            <!-- Top bar -->
+            <div class="mc-topbar">
+              <button class="mc-back-btn" aria-label="Back" onclick="gp('santAll')">
+                <svg viewBox="0 0 24 24"><polyline points="15 18 9 12 15 6"/></svg>
+              </button>
+              <span class="mc-topbar-title" id="spHandle">@sant_handle</span>
+              <button class="mc-more-btn" onclick="MC.info('More options coming soon')">
+                <svg viewBox="0 0 24 24"><circle cx="12" cy="5" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="12" cy="19" r="1"/></svg>
+              </button>
+            </div>
+
+            <!-- Profile Header -->
+            <div class="mc-profile-header">
+              <div class="mc-profile-top">
+                <!-- Avatar -->
+                <div class="mc-avatar-wrap sp-avatar-wrap">
+                  <img id="spAvatar" src="" alt="Sant" class="mc-avatar-img sp-avatar-img" style="display:none">
+                  <div id="spAvatarFb" class="sp-avatar-fb"></div>
+                </div>
+                <!-- Stats row -->
+                <div class="mc-stats-row">
+                  <div class="mc-stat-item">
+                    <strong id="spPosts">0</strong>
+                    <span>posts</span>
+                  </div>
+                  <div class="mc-stat-item">
+                    <strong id="spFollowers">0</strong>
+                    <span>followers</span>
+                  </div>
+                  <div class="mc-stat-item">
+                    <strong id="spFollowing">0</strong>
+                    <span>following</span>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Profile Info -->
+              <div class="mc-profile-info">
+                <div class="mc-name-row">
+                  <h2 id="spName">Sant Name</h2>
+                  <svg id="spVerifiedBadge" class="sp-verified-svg" viewBox="0 0 24 24" style="display:inline-flex">
+                    <circle cx="12" cy="12" r="10" fill="#1877f2"/>
+                    <path d="M9 12l2 2 4-4" stroke="#fff" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+                  </svg>
+                </div>
+                <div class="mc-category" id="spCategory">Spiritual Teacher</div>
+                <p class="mc-bio" id="spBio">Bio goes here</p>
+
+                <!-- Location -->
+                <div class="mc-location" id="spLocationWrap" style="display:none">
+                  <svg viewBox="0 0 24 24"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
+                  <span id="spLocation"></span>
+                </div>
+
+                <!-- Website -->
+                <div class="mc-location mc-website" id="spWebsiteWrap" style="display:none">
+                  <svg viewBox="0 0 24 24"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
+                  <a id="spWebsite" href="#" target="_blank" rel="noopener noreferrer"></a>
+                </div>
+              </div>
+
+              <!-- Action Buttons -->
+              <div class="mc-action-btns">
+                <button class="mc-btn sp-follow-btn" id="spFollowBtn"
+                  onclick="this.classList.toggle('sp-following');this.textContent=this.classList.contains('sp-following')?'Following ▾':'Follow';">
+                  Follow
+                </button>
+                <button class="mc-btn mc-btn-message" onclick="MC.info('Messages coming soon! 🙏')">Message</button>
+                <button class="mc-btn mc-btn-add" onclick="MC.info('Suggest feature coming soon!')">
+                  <svg viewBox="0 0 24 24"><path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="8.5" cy="7" r="4"/><line x1="20" y1="8" x2="20" y2="14"/><line x1="23" y1="11" x2="17" y2="11"/></svg>
+                </button>
+              </div>
+            </div>
+
+            <!-- Story Highlights -->
+            <div class="mc-highlights" id="spHighlights"></div>
+
+            <!-- Tab Bar -->
+            <div class="mc-tab-bar">
+              <button class="mc-tab on" id="spTabAll">
+                <svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
+              </button>
+              <button class="mc-tab" id="spTabVideo">
+                <svg viewBox="0 0 24 24"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2"/></svg>
+              </button>
+              <button class="mc-tab" id="spTabTagged">
+                <svg viewBox="0 0 24 24"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+              </button>
+            </div>
+
+            <!-- Post Grid placeholder -->
+            <div class="mc-post-grid sp-post-grid-placeholder">
+              <div class="sp-empty-grid">
+                <div class="sp-empty-icon">🙏</div>
+                <p>No posts yet</p>
+                <span>Follow this Sant for spiritual updates</span>
+              </div>
+            </div>
+
+            <div style="height:80px"></div>
           </div>
 
           <!-- ★ MANDIR COMMUNITY DETAIL PAGE (Instagram-style) -->
