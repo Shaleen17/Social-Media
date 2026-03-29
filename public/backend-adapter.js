@@ -1801,6 +1801,9 @@
 
     // Check notifications
     checkNotifications();
+    if (typeof window.hideBrandSplash === "function") {
+      window.hideBrandSplash();
+    }
   };
 
   // =============================================

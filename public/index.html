@@ -8,6 +8,7 @@
     />
     <title>Tirth Sutra — Mandir Community</title>
     <link rel="icon" type="image/png" href="Brand_Logo.jpg" />
+    <link rel="preload" as="image" href="Brand_Logo.jpg" />
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
@@ -29,6 +30,22 @@
     gtag("config", "G-BE8S0K4L9H");
   </script>
   <body>
+    <div id="brandSplash" aria-hidden="true">
+      <div class="brand-splash-inner">
+        <div class="brand-splash-logo-wrap">
+          <img
+            src="Brand_Logo.jpg"
+            alt="Tirth Sutra"
+            class="brand-splash-logo"
+          />
+        </div>
+        <div class="brand-splash-copy">
+          <span class="brand-splash-from">from</span>
+          <strong class="brand-splash-name">Tirth Sutra</strong>
+        </div>
+      </div>
+    </div>
+
     <!-- ============================================================
      MANDIR COMMUNITY TOAST CONTAINER
      ============================================================ -->
@@ -2966,6 +2983,44 @@
     <!-- ============================================================
      JAVASCRIPT
      ============================================================ -->
+    <script>
+      (function () {
+        const splashStart = performance.now();
+        let hidden = false;
+
+        function finalizeHide() {
+          const splash = document.getElementById("brandSplash");
+          if (!splash || hidden) return;
+          hidden = true;
+          splash.classList.add("is-hidden");
+          window.setTimeout(() => splash.remove(), 480);
+        }
+
+        window.hideBrandSplash = function () {
+          const minVisibleMs = 420;
+          const elapsed = performance.now() - splashStart;
+          window.clearTimeout(window.__tsSplashTimer);
+          window.__tsSplashTimer = window.setTimeout(
+            finalizeHide,
+            Math.max(0, minVisibleMs - elapsed)
+          );
+        };
+
+        window.addEventListener(
+          "load",
+          function () {
+            window.setTimeout(window.hideBrandSplash, 80);
+          },
+          { once: true }
+        );
+
+        window.setTimeout(function () {
+          if (typeof window.hideBrandSplash === "function") {
+            window.hideBrandSplash();
+          }
+        }, 1500);
+      })();
+    </script>
     <script src="Script.js"></script>
     <script src="https://cdn.socket.io/4.7.4/socket.io.min.js"></script>
     <!-- Vercel Config & API Backend Scripts -->

@@ -3684,6 +3684,9 @@ async function init() {
   renderFeed();
   renderStories();
   renderWidgets();
+  if (typeof window.hideBrandSplash === "function") {
+    window.hideBrandSplash();
+  }
 
   // Step 6 — notification dots
   const notifs = Store.g("notifs", SEED_NOTIFS);
