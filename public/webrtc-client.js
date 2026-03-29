@@ -290,6 +290,7 @@ const WebRTCClient = (() => {
     if (els.localVideo) {
       els.localVideo.srcObject = localStream;
       els.localVideo.style.display = video ? "block" : "none";
+      els.localVideo.play?.().catch(() => {});
     }
     
     // Set UI states for buttons
@@ -305,7 +306,6 @@ const WebRTCClient = (() => {
   }
 
   function createPeerConnection(targetUserId) {
-    pendingIceCandidates = [];
     peerConnection = new RTCPeerConnection(config);
     remoteStream = new MediaStream();
     
@@ -332,6 +332,7 @@ const WebRTCClient = (() => {
       } else if (els.remoteVideo) {
         els.remoteVideo.style.display = "block";
       }
+      els.remoteVideo?.play?.().catch(() => {});
     };
 
     // Send ICE candidates to remote peer
