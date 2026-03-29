@@ -61,6 +61,107 @@
     };
   }
 
+  function consumeOpenChatParam() {
+    const url = new URL(window.location.href);
+    const convId = url.searchParams.get("openChat");
+    if (!convId) return "";
+    url.searchParams.delete("openChat");
+    history.replaceState(null, document.title, url.toString());
+    return convId;
+  }
+
+  let _chatPushSetupPromise = null;
+  let _pendingOpenChatId = consumeOpenChatParam();
+
+  function urlBase64ToUint8Array(base64String) {
+    const padding = "=".repeat((4 - (base64String.length % 4)) % 4);
+    const base64 = (base64String + padding).replace(/-/g, "+").replace(/_/g, "/");
+    const rawData = window.atob(base64);
+    const outputArray = new Uint8Array(rawData.length);
+    for (let i = 0; i < rawData.length; ++i) {
+      outputArray[i] = rawData.charCodeAt(i);
+    }
+    return outputArray;
+  }
+
+  async function disableChatPushNotifications() {
+    if (!("serviceWorker" in navigator)) return;
+    try {
+      const reg = await navigator.serviceWorker.getRegistration();
+      if (!reg) return;
+      const subscription = await reg.pushManager.getSubscription();
+      if (!subscription) return;
+      await API.deletePushSubscription(subscription.endpoint).catch(() => {});
+      await subscription.unsubscribe().catch(() => {});
+    } catch {}
+  }
+
+  async function ensureChatPushNotifications(askPermission) {
+    if (
+      _chatPushSetupPromise &&
+      (Notification.permission === "granted" || !askPermission)
+    ) {
+      return _chatPushSetupPromise;
+    }
+
+    if (
+      !CU ||
+      !API.getToken() ||
+      !("serviceWorker" in navigator) ||
+      !("PushManager" in window) ||
+      !("Notification" in window)
+    ) {
+      return null;
+    }
+
+    _chatPushSetupPromise = (async () => {
+      let permission = Notification.permission;
+      if (permission === "default" && askPermission) {
+        permission = await Notification.requestPermission();
+      }
+
+      if (permission !== "granted") return null;
+
+      const reg = await navigator.serviceWorker.register("/sw.js");
+      const existing = await reg.pushManager.getSubscription();
+      if (existing) {
+        await API.savePushSubscription(existing.toJSON()).catch(() => {});
+        return existing;
+      }
+
+      const { publicKey } = await API.getPushPublicKey();
+      if (!publicKey) return null;
+
+      const subscription = await reg.pushManager.subscribe({
+        userVisibleOnly: true,
+        applicationServerKey: urlBase64ToUint8Array(publicKey),
+      });
+
+      await API.savePushSubscription(subscription.toJSON());
+      return subscription;
+    })();
+
+    try {
+      return await _chatPushSetupPromise;
+    } catch (err) {
+      console.warn("Push setup skipped:", err.message);
+      _chatPushSetupPromise = null;
+      return null;
+    }
+  }
+
+  function openPendingChatIfNeeded() {
+    const convId = _pendingOpenChatId;
+    if (!convId || !CU) return;
+    _pendingOpenChatId = "";
+    gp("chats");
+    setTimeout(() => {
+      loadConversations().then(() => {
+        openChatWindow(convId).catch(() => {});
+      });
+    }, 160);
+  }
+
   // =============================================
   // Override getUsers/getPosts/etc to use cache
   // =============================================
@@ -197,6 +298,7 @@
       closeOvl("authOvl");
       // Connect socket
       SocketClient.connect((CU.id || CU._id).toString());
+      ensureChatPushNotifications(true).catch(() => {});
       await loadAllData();
       initUI();
       MC.success("Welcome back, " + CU.name.split(" ")[0] + "! 🙏");
@@ -270,6 +372,7 @@
   };
 
   window.logout = function () {
+    disableChatPushNotifications().catch(() => {});
     CU = null;
     API.logout();
     SocketClient.disconnect();
@@ -1775,6 +1878,7 @@
       try {
         CU = await API.getMe();
         SocketClient.connect((CU.id || CU._id).toString());
+        ensureChatPushNotifications(false).catch(() => {});
       } catch {
         CU = null;
         API.logout();
@@ -1801,6 +1905,7 @@
 
     // Check notifications
     checkNotifications();
+    openPendingChatIfNeeded();
     if (typeof window.hideBrandSplash === "function") {
       window.hideBrandSplash();
     }

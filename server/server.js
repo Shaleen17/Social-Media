@@ -36,6 +36,7 @@ const messageRoutes = require("./routes/messages");
 const storyRoutes = require("./routes/stories");
 const videoRoutes = require("./routes/videos");
 const notificationRoutes = require("./routes/notifications");
+const pushSubscriptionRoutes = require("./routes/pushSubscriptions");
 const uploadRoutes = require("./routes/upload");
 const mandirRoutes = require("./routes/mandir");
 
@@ -102,6 +103,7 @@ app.use("/api/messages", messageRoutes);
 app.use("/api/stories", storyRoutes);
 app.use("/api/videos", videoRoutes);
 app.use("/api/notifications", notificationRoutes);
+app.use("/api/push-subscriptions", pushSubscriptionRoutes);
 app.use("/api/upload", uploadRoutes);
 app.use("/api/mandir", mandirRoutes);
 

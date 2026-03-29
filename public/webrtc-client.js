@@ -6,6 +6,8 @@ const WebRTCClient = (() => {
   let peerConnection = null;
   let localStream = null;
   let remoteStream = null;
+  let pendingIceCandidates = [];
+  let boundSocket = null;
 
   // Call State
   let isInCall = false;
@@ -80,10 +82,19 @@ const WebRTCClient = (() => {
       setTimeout(setupSocketListeners, 1000); // Retry if socket not ready
       return;
     }
-    
-    // Only bind once
-    if (socket.__webrtcBound) return;
-    socket.__webrtcBound = true;
+
+    // Rebind if Socket.io recreated the socket instance after reconnect/login
+    if (boundSocket === socket) return;
+    if (boundSocket) {
+      boundSocket.off("callUser", handleIncomingCall);
+      boundSocket.off("callAccepted", handleCallAccepted);
+      boundSocket.off("iceCandidate", handleIceCandidate);
+      boundSocket.off("callRejected", handleCallRejected);
+      boundSocket.off("callEnded", handleCallEnded);
+      boundSocket.off("callRinging", handleCallRinging);
+    }
+
+    boundSocket = socket;
 
     socket.on("callUser", handleIncomingCall);
     socket.on("callAccepted", handleCallAccepted);
@@ -155,6 +166,7 @@ const WebRTCClient = (() => {
     isVideoEnabled = data.isVideo;
     isCaller = false;
     pendingOffer = data.signal;
+    pendingIceCandidates = [];
     
     showOverlay("Incoming Call...", currentCallUser, false);
     // Try to play ringtone
@@ -171,6 +183,7 @@ const WebRTCClient = (() => {
       createPeerConnection(currentCallUser.id);
       
       await peerConnection.setRemoteDescription(new RTCSessionDescription(pendingOffer));
+      await flushPendingIceCandidates();
       const answer = await peerConnection.createAnswer();
       await peerConnection.setLocalDescription(answer);
       
@@ -196,16 +209,40 @@ const WebRTCClient = (() => {
   async function handleCallAccepted(signal) {
     clearTimeout(callTimeout);
     showActiveUi();
+    if (!peerConnection) return;
     await peerConnection.setRemoteDescription(new RTCSessionDescription(signal));
+    await flushPendingIceCandidates();
   }
 
   // 6. Handle ICE Candidates
   async function handleIceCandidate(candidate) {
-    if (peerConnection) {
+    if (!candidate) return;
+
+    // ICE often arrives before the peer connection or remote description is ready.
+    if (!peerConnection || !peerConnection.remoteDescription) {
+      pendingIceCandidates.push(candidate);
+      return;
+    }
+
+    try {
+      await peerConnection.addIceCandidate(new RTCIceCandidate(candidate));
+    } catch (e) {
+      console.error("Error adding received ICE candidate", e);
+      pendingIceCandidates.push(candidate);
+    }
+  }
+
+  async function flushPendingIceCandidates() {
+    if (!peerConnection || !peerConnection.remoteDescription || !pendingIceCandidates.length) {
+      return;
+    }
+
+    const queued = pendingIceCandidates.splice(0, pendingIceCandidates.length);
+    for (const candidate of queued) {
       try {
         await peerConnection.addIceCandidate(new RTCIceCandidate(candidate));
       } catch (e) {
-        console.error("Error adding received ICE candidate", e);
+        console.error("Error flushing ICE candidate", e);
       }
     }
   }
@@ -268,6 +305,7 @@ const WebRTCClient = (() => {
   }
 
   function createPeerConnection(targetUserId) {
+    pendingIceCandidates = [];
     peerConnection = new RTCPeerConnection(config);
     remoteStream = new MediaStream();
     
@@ -345,6 +383,7 @@ const WebRTCClient = (() => {
     currentCallUser = null;
     isCaller = false;
     pendingOffer = null;
+    pendingIceCandidates = [];
     clearTimeout(callTimeout);
     callTimeout = null;
     

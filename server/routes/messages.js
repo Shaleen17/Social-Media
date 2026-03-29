@@ -1,6 +1,8 @@
 const express = require("express");
 const Conversation = require("../models/Message");
+const Notification = require("../models/Notification");
 const { auth } = require("../middleware/auth");
+const { sendPushToUsers } = require("../utils/push");
 
 const router = express.Router();
 
@@ -122,32 +124,85 @@ router.post("/:convId", auth, async (req, res) => {
     if (!conv) return res.status(404).json({ error: "Conversation not found" });
 
     const newMsg = conv.messages[conv.messages.length - 1];
+    const recipientIds = conv.participants
+      .filter((pid) => pid.toString() !== req.user._id.toString())
+      .map((pid) => pid.toString());
+
+    if (recipientIds.length) {
+      await Notification.insertMany(
+        recipientIds.map((recipientId) => ({
+          recipient: recipientId,
+          sender: req.user._id,
+          type: "message",
+          text: conv.isGroup
+            ? `${req.user.name} sent a message in ${conv.groupName || "your group"}`
+            : "sent you a message",
+        }))
+      );
+    }
 
     // Emit via Socket.io
     const io = req.app.get("io");
     if (io) {
-      conv.participants.forEach((pid) => {
-        if (pid.toString() !== req.user._id.toString()) {
-          io.to(pid.toString()).emit("newMessage", {
-            convId: conv._id,
-            message: {
-              id: newMsg._id,
-              from: req.user._id,
-              sender: {
-                _id: req.user._id,
-                name: req.user.name,
-                handle: req.user.handle,
-                avatar: req.user.avatar,
-              },
-              txt: text,
-              t: "Just now",
-              read: false,
-              isMe: false,
+      recipientIds.forEach((pid) => {
+        io.to(pid).emit("newMessage", {
+          convId: conv._id,
+          message: {
+            id: newMsg._id,
+            from: req.user._id,
+            sender: {
+              _id: req.user._id,
+              name: req.user.name,
+              handle: req.user.handle,
+              avatar: req.user.avatar,
             },
-          });
-        }
+            txt: text,
+            t: "Just now",
+            read: false,
+            isMe: false,
+          },
+        });
+        io.to(pid).emit("messageNotification", {
+          convId: conv._id.toString(),
+          from: {
+            _id: req.user._id,
+            name: req.user.name,
+            handle: req.user.handle,
+            avatar: req.user.avatar,
+          },
+          text,
+        });
+        io.to(pid).emit("notification", {
+          type: "message",
+          from: req.user._id,
+          sender: {
+            _id: req.user._id,
+            name: req.user.name,
+            handle: req.user.handle,
+            avatar: req.user.avatar,
+          },
+          txt: conv.isGroup
+            ? `${req.user.name} sent a message in ${conv.groupName || "your group"}`
+            : "sent you a message",
+          t: "Just now",
+          unread: true,
+        });
       });
     }
+
+    await sendPushToUsers(recipientIds, {
+      title: conv.isGroup ? conv.groupName || "New group message" : req.user.name,
+      body: text.length > 120 ? text.slice(0, 117) + "..." : text,
+      icon: req.user.avatar || "/Brand_Logo.jpg",
+      badge: "/Brand_Logo.jpg",
+      tag: `chat-${conv._id}`,
+      data: {
+        type: "chat-message",
+        convId: conv._id.toString(),
+        senderId: req.user._id.toString(),
+        url: `/?openChat=${encodeURIComponent(conv._id.toString())}`,
+      },
+    });
 
     res.json({
       id: newMsg._id,

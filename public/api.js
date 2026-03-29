@@ -339,6 +339,25 @@ const API = (() => {
       return request("/notifications/unread-count");
     },
 
+    // Push subscriptions
+    async getPushPublicKey() {
+      return request("/push-subscriptions/public-key");
+    },
+
+    async savePushSubscription(subscription) {
+      return request("/push-subscriptions", {
+        method: "POST",
+        body: JSON.stringify({ subscription }),
+      });
+    },
+
+    async deletePushSubscription(endpoint) {
+      return request("/push-subscriptions", {
+        method: "DELETE",
+        body: JSON.stringify({ endpoint }),
+      });
+    },
+
     // Upload
     uploadFile,
     uploadBase64,
