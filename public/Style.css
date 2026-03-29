@@ -37,6 +37,46 @@
   --a: #2e1c19;
   --am: #3d2520;
   --ad: #c9955a;
+  --dark-accent-text: #e1c0b0;
+  --dark-muted-text: #c9a393;
+}
+
+/* Improve dark-mode readability without changing light mode layout or palette */
+[data-dark] .topbar-logo-text,
+[data-dark] .sidebar-logo-text strong,
+[data-dark] .drawer-logo-info strong,
+[data-dark] .ftab.on,
+[data-dark] #prTabs .tab.on,
+[data-dark] .ps strong,
+[data-dark] .mandir-stat strong,
+[data-dark] .bnb.on,
+[data-dark] .sb.on,
+[data-dark] .drawer-item.on,
+[data-dark] .drawer-item.mandir-item {
+  color: var(--dark-accent-text);
+}
+
+[data-dark] .sidebar-logo-text span,
+[data-dark] .drawer-logo-info span,
+[data-dark] .ftab,
+[data-dark] #prTabs .tab,
+[data-dark] .ps span,
+[data-dark] .mandir-stat span,
+[data-dark] .bnb,
+[data-dark] .sb,
+[data-dark] .drawer-item {
+  color: var(--dark-muted-text);
+}
+
+[data-dark] .ftab.on,
+[data-dark] #prTabs .tab.on {
+  border-bottom-color: var(--dark-accent-text);
+}
+
+[data-dark] .bnb.on::after,
+[data-dark] .sb.on::before,
+[data-dark] .drawer-item.on::before {
+  background: var(--dark-accent-text);
 }
 
 /* ============================================================
@@ -2443,6 +2483,37 @@ video {
   padding: 20px 16px;
   border-bottom: 1px solid var(--bd);
 }
+.mandir-seeker-cta {
+  background: #6f4b42;
+  color: #fff;
+  border-radius: 28px;
+  padding: 28px 20px;
+  text-align: center;
+  box-shadow: var(--sh);
+}
+.mandir-seeker-cta h3 {
+  font-size: 20px;
+  font-weight: 800;
+  margin-bottom: 10px;
+}
+.mandir-seeker-cta p {
+  max-width: 860px;
+  margin: 0 auto 18px;
+  color: rgba(255, 255, 255, 0.88);
+  font-size: 15px;
+  line-height: 1.6;
+}
+.mandir-seeker-btn {
+  min-width: 220px;
+  background: #fff;
+  color: var(--p);
+  font-weight: 800;
+  border: none;
+  box-shadow: none;
+}
+.mandir-seeker-btn:hover {
+  background: #fff8f2;
+}
 .mandir-section-title {
   display: flex;
   align-items: center;
@@ -2613,6 +2684,19 @@ video {
 @media (max-width: 400px) {
   .temple-img-grid {
     grid-template-columns: 1fr;
+  }
+}
+@media (max-width: 640px) {
+  .mandir-seeker-cta {
+    border-radius: 22px;
+    padding: 22px 16px;
+  }
+  .mandir-seeker-cta h3 {
+    font-size: 18px;
+  }
+  .mandir-seeker-btn {
+    width: 100%;
+    min-width: 0;
   }
 }
 

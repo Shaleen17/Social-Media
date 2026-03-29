@@ -18,7 +18,17 @@ const userSchema = new mongoose.Schema(
       lowercase: true,
       trim: true,
     },
-    password: { type: String, required: true, minlength: 6 },
+    password: { type: String, minlength: 6, select: false },
+    authProvider: {
+      type: String,
+      enum: ["local", "google"],
+      default: "local",
+    },
+    googleId: {
+      type: String,
+      sparse: true,
+      index: true,
+    },
     bio: { type: String, default: "" },
     location: { type: String, default: "" },
     website: { type: String, default: "" },
@@ -27,8 +37,10 @@ const userSchema = new mongoose.Schema(
     followers: [{ type: mongoose.Schema.Types.ObjectId, ref: "User" }],
     following: [{ type: mongoose.Schema.Types.ObjectId, ref: "User" }],
     verified: { type: Boolean, default: false },
+    emailVerified: { type: Boolean, default: false },
     emailVerificationToken: { type: String },
     emailVerificationTokenExpires: { type: Date },
+    emailVerificationRedirectUrl: { type: String },
     mandirId: { type: String, default: null },
     joined: { type: String, default: "" },
   },
@@ -37,13 +49,14 @@ const userSchema = new mongoose.Schema(
 
 // Hash password before save
 userSchema.pre("save", async function (next) {
-  if (!this.isModified("password")) return next();
+  if (!this.password || !this.isModified("password")) return next();
   this.password = await bcrypt.hash(this.password, 12);
   next();
 });
 
 // Compare password
 userSchema.methods.comparePassword = async function (candidate) {
+  if (!this.password) return false;
   return bcrypt.compare(candidate, this.password);
 };
 
@@ -62,6 +75,9 @@ userSchema.pre("save", function (next) {
 userSchema.set("toJSON", {
   transform: (doc, ret) => {
     delete ret.password;
+    delete ret.emailVerificationToken;
+    delete ret.emailVerificationTokenExpires;
+    delete ret.emailVerificationRedirectUrl;
     ret.id = ret._id;
     return ret;
   },

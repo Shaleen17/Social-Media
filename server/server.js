@@ -7,6 +7,7 @@ const path = require("path");
 const cloudinary = require("cloudinary").v2;
 const connectDB = require("./config/db");
 const setupSocket = require("./socket/chat");
+const AppError = require("./utils/appError");
 
 // ─── Validate Required Environment Variables ───
 const REQUIRED_ENV = [
@@ -40,6 +41,8 @@ const mandirRoutes = require("./routes/mandir");
 
 const app = express();
 const server = http.createServer(app);
+
+app.set("trust proxy", 1);
 
 // ─── Allowed origins for CORS ───
 const ALLOWED_ORIGINS = [
@@ -114,8 +117,17 @@ app.get("*", (req, res) => {
 
 // Error handling middleware
 app.use((err, req, res, next) => {
-  console.error("Server error:", err);
-  res.status(500).json({ error: "Internal server error" });
+  const statusCode =
+    err instanceof AppError ? err.statusCode : err.statusCode || 500;
+
+  if (statusCode >= 500) {
+    console.error("Server error:", err);
+  }
+
+  res.status(statusCode).json({
+    error: err.message || "Internal server error",
+    ...(err.details ? { details: err.details } : {}),
+  });
 });
 
 // Connect DB (Mongoose handles connection pooling automatically)

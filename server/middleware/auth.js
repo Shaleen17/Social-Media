@@ -1,35 +1,34 @@
 const jwt = require("jsonwebtoken");
 const User = require("../models/User");
 
-// Required auth — rejects if no valid token
+async function resolveUserFromHeader(header) {
+  if (!header || !header.startsWith("Bearer ")) {
+    return null;
+  }
+
+  const token = header.split(" ")[1];
+  const decoded = jwt.verify(token, process.env.JWT_SECRET);
+  return User.findById(decoded.id);
+}
+
 const auth = async (req, res, next) => {
   try {
-    const header = req.headers.authorization;
-    if (!header || !header.startsWith("Bearer ")) {
-      return res.status(401).json({ error: "No token provided" });
-    }
-    const token = header.split(" ")[1];
-    const decoded = jwt.verify(token, process.env.JWT_SECRET);
-    const user = await User.findById(decoded.id).select("-password");
+    const user = await resolveUserFromHeader(req.headers.authorization);
     if (!user) {
-      return res.status(401).json({ error: "User not found" });
+      return res.status(401).json({ error: "No token provided" });
     }
     req.user = user;
     next();
-  } catch (err) {
+  } catch (error) {
     return res.status(401).json({ error: "Invalid token" });
   }
 };
 
-// Optional auth — attaches user if valid token present, continues regardless
 const optionalAuth = async (req, res, next) => {
   try {
-    const header = req.headers.authorization;
-    if (header && header.startsWith("Bearer ")) {
-      const token = header.split(" ")[1];
-      const decoded = jwt.verify(token, process.env.JWT_SECRET);
-      const user = await User.findById(decoded.id).select("-password");
-      if (user) req.user = user;
+    const user = await resolveUserFromHeader(req.headers.authorization);
+    if (user) {
+      req.user = user;
     }
   } catch {}
   next();

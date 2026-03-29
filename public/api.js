@@ -101,13 +101,13 @@ const API = (() => {
     removeUser,
 
     // Auth
-    async signup(name, handle, email, password) {
+    async signup(name, handle, email, password, clientUrl) {
+      // Server returns {success, message} only — no token issued until email is verified.
+      // Do NOT call setToken/setUser here; they would store "undefined" in localStorage.
       const data = await request("/auth/signup", {
         method: "POST",
-        body: JSON.stringify({ name, handle, email, password }),
+        body: JSON.stringify({ name, handle, email, password, clientUrl }),
       });
-      setToken(data.token);
-      setUser(data.user);
       return data;
     },
 
@@ -115,6 +115,23 @@ const API = (() => {
       const data = await request("/auth/login", {
         method: "POST",
         body: JSON.stringify({ email, password }),
+      });
+      setToken(data.token);
+      setUser(data.user);
+      return data;
+    },
+
+    async resendVerification(email, clientUrl) {
+      return request("/auth/resend-verification", {
+        method: "POST",
+        body: JSON.stringify({ email, clientUrl }),
+      });
+    },
+
+    async googleAuth(token, tokenType = "access_token") {
+      const data = await request("/auth/google", {
+        method: "POST",
+        body: JSON.stringify({ token, tokenType }),
       });
       setToken(data.token);
       setUser(data.user);

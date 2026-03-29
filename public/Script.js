@@ -1,4 +1,4 @@
-"use strict";
+﻿"use strict";
 
 /* ── STORAGE ── */
 const Store = {
@@ -492,6 +492,56 @@ const TEMPLES = [
     color: "#e8f5e9",
   },
 ];
+const FEATURED_MANDIRS = [
+  {
+    slug: "kashi-vishwanath",
+    name: "Kashi Vishwanath",
+    desc: "The divine abode of Lord Shiva on the banks of the sacred Ganga in Varanasi.",
+    location: "Varanasi, UP",
+    badge: "Jyotirlinga",
+    image: "images/temples/kashi-vishwanath.jpg",
+  },
+  {
+    slug: "tirupati",
+    name: "Tirupati Balaji",
+    desc: "Venkateshwara temple, the richest and most visited pilgrimage site in the world.",
+    location: "Tirupati, AP",
+    badge: "Vaishnava",
+    image: "images/temples/tirupati.jpg",
+  },
+  {
+    slug: "kedarnath",
+    name: "Kedarnath",
+    desc: "Ancient Shiva temple nestled in the snow-capped Himalayas at 3583m altitude.",
+    location: "Rudraprayag, UK",
+    badge: "Char Dham",
+    image: "images/temples/kedarnath.jpg",
+  },
+  {
+    slug: "somnath",
+    name: "Somnath",
+    desc: "First among the 12 Jyotirlingas, standing gloriously on the shores of the Arabian Sea.",
+    location: "Veraval, Gujarat",
+    badge: "Jyotirlinga",
+    image: "images/temples/somnath.jpg",
+  },
+  {
+    slug: "meenakshi",
+    name: "Meenakshi Amman",
+    desc: "Magnificent Dravidian temple with towering gopurams and 33,000 sacred sculptures.",
+    location: "Madurai, TN",
+    badge: "Shakti Peetha",
+    image: "images/temples/meenakshi.jpg",
+  },
+  {
+    slug: "ram-mandir",
+    name: "Ram Mandir, Ayodhya",
+    desc: "The sacred birthplace of Lord Ram — the grand newly built temple at Ayodhya Dham.",
+    location: "Ayodhya, UP",
+    badge: "Ram Janmabhoomi",
+    image: "images/temples/ram-mandir.jpg",
+  },
+];
 const EVENTS = [
   {
     day: "20",
@@ -966,7 +1016,8 @@ async function doLogin() {
   if (!ok) return;
 
   try {
-    const res = await fetch("/api/auth/login", {
+    const backendBase = (typeof CONFIG !== "undefined" ? CONFIG.BACKEND_URL : "");
+    const res = await fetch(backendBase + "/api/auth/login", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ email: em, password: pw }),
@@ -1030,24 +1081,40 @@ async function doSignup() {
   if (!ok) return;
 
   try {
-    const res = await fetch("/api/auth/signup", {
+    const backendBase = (typeof CONFIG !== "undefined" ? CONFIG.BACKEND_URL : "");
+    const clientUrl = (() => {
+      const url = new URL(window.location.href);
+      url.hash = "";
+      url.search = "";
+      if (!url.pathname.endsWith("/")) {
+        url.pathname = url.pathname.substring(0, url.pathname.lastIndexOf("/") + 1);
+      }
+      return url.toString();
+    })();
+    const res = await fetch(backendBase + "/api/auth/signup", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name: nm, handle: hdl, email: em, password: pw }),
+      body: JSON.stringify({
+        name: nm,
+        handle: hdl,
+        email: em,
+        password: pw,
+        clientUrl,
+      }),
     });
     const data = await res.json();
-    const err = document.getElementById("suErr");
+    const errEl = document.getElementById("suErr");
 
     if (!res.ok) {
-      if (err) {
-        err.textContent = "❌ " + (data.error || "Signup failed");
-        err.style.display = "block";
+      if (errEl) {
+        errEl.textContent = "❌ " + (data.error || "Signup failed");
+        errEl.style.display = "block";
       }
       MC.error(data.error || "Signup failed");
       return;
     }
 
-    if (err) err.style.display = "none";
+    if (errEl) errEl.style.display = "none";
     ["suNm", "suEml", "suHdl", "suPw"].forEach((id) => {
       const el = document.getElementById(id);
       if (el) el.value = "";
@@ -1062,9 +1129,26 @@ async function doSignup() {
 function logout() {
   CU = null;
   Store.d("currentUser");
+  // Also clear the JWT token so stale auth doesn't persist
+  localStorage.removeItem("ts_token");
+  localStorage.removeItem("ts_currentUser");
   initUI();
   gp("home");
   MC.info("Signed out. Jai Shri Ram 🙏");
+}
+
+function doGoogleLogin() {
+  const backendBase = (typeof CONFIG !== "undefined" ? CONFIG.BACKEND_URL : "");
+  const url = new URL(window.location.href);
+  url.hash = "";
+  url.search = "";
+  if (!url.pathname.endsWith("/")) {
+    url.pathname = url.pathname.substring(0, url.pathname.lastIndexOf("/") + 1);
+  }
+  window.location.href =
+    backendBase +
+    "/api/auth/google/start?returnTo=" +
+    encodeURIComponent(url.toString());
 }
 
 /* ── NAVIGATION ── */
@@ -1180,15 +1264,7 @@ function gpAndClose(page) {
   gp(page);
   closeDrawer();
 }
-function handleDrawerAuth() {
-  if (CU) {
-    logout();
-    closeDrawer();
-  } else {
-    closeDrawer();
-    setTimeout(() => openOvl("authOvl"), 200);
-  }
-}
+// handleDrawerAuth is defined below (single canonical version)
 function updateDrawer() {
   const nameEl = document.getElementById("drawerUserName");
   const hdlEl = document.getElementById("drawerUserHandle");
@@ -1873,6 +1949,25 @@ function renderMandir() {
     ts.innerHTML = TEMPLES.map(
       (t) =>
         `<div class="temple-card" onclick="MC.info('${t.name} — Live Darshan coming soon! 🛕')"><div class="temple-thumb" style="background:${t.color}">${t.emoji}</div><div class="temple-info"><div class="temple-name">${t.name}</div><div class="temple-loc">${t.loc}</div></div></div>`,
+    ).join("");
+  const featuredGrid = document.getElementById("featuredTempleGrid");
+  if (featuredGrid)
+    featuredGrid.innerHTML = FEATURED_MANDIRS.map(
+      (temple) =>
+        `<article class="temple-img-card" onclick="openMandirCommunity('${temple.slug}')">
+          <div class="temple-img-wrap">
+            <img src="${temple.image}" alt="${temple.name}" loading="lazy">
+            <span class="temple-img-badge">${temple.badge}</span>
+          </div>
+          <div class="temple-img-body">
+            <div class="temple-img-name">${temple.name}</div>
+            <div class="temple-img-desc">${temple.desc}</div>
+            <div class="temple-img-loc">
+              <svg viewBox="0 0 24 24"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"></path><circle cx="12" cy="10" r="3"></circle></svg>
+              <span>${temple.location}</span>
+            </div>
+          </div>
+        </article>`,
     ).join("");
   // Events
   const el = document.getElementById("eventsList");
@@ -3532,17 +3627,32 @@ async function init() {
   // Step 1 — seed data immediately (no delay)
   seedData();
 
-  // Step 2 — restore logged in user
-  const saved = Store.g("currentUser");
-  if (saved) {
-    const users = getUsers();
-    const found = users.find((u) => u.id === saved.id);
-    if (found) {
-      CU = found;
-      Store.s("currentUser", found);
-    } else {
-      CU = null;
-      Store.d("currentUser");
+  // Step 2 — restore logged-in user
+  // Priority 1: Real backend user stored from login/verify (ts_currentUser)
+  const backendUser = (() => {
+    try { return JSON.parse(localStorage.getItem("ts_currentUser")); }
+    catch { return null; }
+  })();
+  const backendToken = localStorage.getItem("ts_token");
+
+  if (backendUser && backendToken && backendToken !== "undefined" && backendToken !== "null") {
+    // Real authenticated user — use directly without matching against seed data
+    CU = backendUser;
+    // Also persist into Store so the rest of the app can find them
+    Store.s("currentUser", backendUser);
+  } else {
+    // Fallback: local guest/seed user session
+    const saved = Store.g("currentUser");
+    if (saved) {
+      const users = getUsers();
+      const found = users.find((u) => u.id === saved.id);
+      if (found) {
+        CU = found;
+        Store.s("currentUser", found);
+      } else {
+        CU = null;
+        Store.d("currentUser");
+      }
     }
   }
 

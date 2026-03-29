@@ -20,6 +20,47 @@
   let _cachedVidStories = [];
   let _dataLoaded = false;
 
+  function getAppBaseUrl() {
+    const url = new URL(window.location.href);
+    url.hash = "";
+    url.search = "";
+    if (!url.pathname.endsWith("/")) {
+      url.pathname = url.pathname.substring(0, url.pathname.lastIndexOf("/") + 1);
+    }
+    return url.toString();
+  }
+
+  function consumeAuthRedirectHash() {
+    const rawHash = window.location.hash.startsWith("#")
+      ? window.location.hash.slice(1)
+      : "";
+    const params = rawHash
+      ? new URLSearchParams(rawHash)
+      : new URLSearchParams(window.location.search);
+    const authToken = params.get("authToken");
+    const authError = params.get("authError");
+    const authSource = params.get("authSource");
+    const status = params.get("status");
+
+    if (!authToken && !authError && !status) {
+      return null;
+    }
+
+    history.replaceState(
+      null,
+      document.title,
+      window.location.pathname
+    );
+
+    return {
+      authToken,
+      authError,
+      authSource,
+      status,
+      verified: params.get("verified"),
+    };
+  }
+
   // =============================================
   // Override getUsers/getPosts/etc to use cache
   // =============================================
@@ -145,7 +186,9 @@
     try {
       const data = await API.login(em, pw);
       const e = document.getElementById("liErr");
+      const resendBtn = document.getElementById("resendVerificationBtn");
       if (e) e.style.display = "none";
+      if (resendBtn) resendBtn.style.display = "none";
       CU = data.user;
       ["liEml", "liPw"].forEach((id) => {
         const el = document.getElementById(id);
@@ -160,9 +203,16 @@
       gp("home");
     } catch (err) {
       const e = document.getElementById("liErr");
+      const resendBtn = document.getElementById("resendVerificationBtn");
       if (e) {
         e.textContent = "❌ " + (err.message || "Invalid email or password");
         e.style.display = "block";
+      }
+      if (resendBtn) {
+        resendBtn.style.display =
+          err?.message && err.message.toLowerCase().includes("verify your email")
+            ? "inline-block"
+            : "none";
       }
       MC.error(err.message || "Invalid email or password. Please try again.");
     }
@@ -196,18 +246,19 @@
     if (!ok) return;
 
     try {
-      const data = await API.signup(nm, hdl, em, pw);
-      CU = data.user;
+      // API.signup() returns {success, message} — NO user/token until email is verified.
+      const data = await API.signup(nm, hdl, em, pw, getAppBaseUrl());
       ["suNm", "suEml", "suHdl", "suPw"].forEach((id) => {
         const el = document.getElementById(id);
         if (el) el.value = "";
       });
       closeOvl("authOvl");
-      SocketClient.connect((CU.id || CU._id).toString());
-      await loadAllData();
-      initUI();
-      MC.success("Welcome to Tirth Sutra, " + nm + "! 🕉");
-      gp("home");
+      // Do NOT set CU, connect socket, or call loadAllData here.
+      // The user must verify their email before they can log in.
+      MC.success(data.message || "Account created! 🧱 Please check your email to verify your account.");
+      const loginEmail = document.getElementById("liEml");
+      if (loginEmail) loginEmail.value = em;
+      authToggle("login");
     } catch (err) {
       const e = document.getElementById("suErr");
       if (e) {
@@ -229,6 +280,44 @@
     // Reload data as guest
     loadAllData();
     MC.info("Signed out. Jai Shri Ram 🙏");
+  };
+
+  window.resendVerificationEmail = async function () {
+    const email =
+      (document.getElementById("liEml")?.value || "").trim() ||
+      (document.getElementById("suEml")?.value || "").trim();
+
+    if (!email || !email.includes("@")) {
+      MC.warn("Enter your email address first so we can resend the verification link.");
+      return;
+    }
+
+    const resendBtn = document.getElementById("resendVerificationBtn");
+    if (resendBtn) {
+      resendBtn.disabled = true;
+      resendBtn.textContent = "Sending verification email...";
+    }
+
+    try {
+      const data = await API.resendVerification(email, getAppBaseUrl());
+      MC.success(data.message || "A new verification email has been sent.");
+    } catch (err) {
+      MC.error(err.message || "Could not resend the verification email.");
+    } finally {
+      if (resendBtn) {
+        resendBtn.disabled = false;
+        resendBtn.textContent = "Resend verification email";
+      }
+    }
+  };
+
+  window.doGoogleLogin = function () {
+    const backendBase = (typeof CONFIG !== "undefined" ? CONFIG.BACKEND_URL : "");
+    const returnTo = getAppBaseUrl();
+    window.location.href =
+      backendBase +
+      "/api/auth/google/start?returnTo=" +
+      encodeURIComponent(returnTo);
   };
 
   // =============================================
@@ -1673,8 +1762,16 @@
       if (e.key === "Enter") doSignup();
     });
 
+    const authRedirect = consumeAuthRedirectHash();
+    if (authRedirect?.authToken) {
+      API.setToken(authRedirect.authToken);
+    }
+
     // Try to restore session from stored token
-    if (API.getToken()) {
+    const storedToken = API.getToken();
+    // Guard: reject stale "undefined" string that may have been written
+    // by a previous buggy signup call before this fix was applied.
+    if (storedToken && storedToken !== "undefined" && storedToken !== "null") {
       try {
         CU = await API.getMe();
         SocketClient.connect((CU.id || CU._id).toString());
@@ -1682,6 +1779,9 @@
         CU = null;
         API.logout();
       }
+    } else if (storedToken === "undefined" || storedToken === "null") {
+      // Clean up the stale bad value so it doesn't keep breaking
+      API.logout();
     }
 
     // Load data from backend
@@ -1692,6 +1792,12 @@
     renderFeed();
     renderStories();
     renderWidgets();
+
+    if (authRedirect?.authError) {
+      MC.error(authRedirect.authError);
+    } else if (authRedirect?.authToken && authRedirect.authSource === "google") {
+      MC.success("Google Sign-In completed successfully.");
+    }
 
     // Check notifications
     checkNotifications();
@@ -1778,4 +1884,3 @@
   // Remove the old DOMContentLoaded listener and re-fire init
   window.init();
 })();
-

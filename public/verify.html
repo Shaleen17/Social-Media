@@ -11,9 +11,10 @@
             display: flex;
             justify-content: center;
             align-items: center;
-            height: 100vh;
+            min-height: 100vh;
             background-color: var(--bg);
             margin: 0;
+            padding: 20px;
             font-family: 'Plus Jakarta Sans', sans-serif;
             text-align: center;
         }
@@ -22,8 +23,8 @@
             padding: 40px;
             border-radius: 20px;
             box-shadow: 0 10px 30px rgba(0,0,0,0.05);
-            max-width: 400px;
-            width: 90%;
+            max-width: 420px;
+            width: 100%;
         }
         .verify-box h1 {
             color: var(--p);
@@ -65,61 +66,127 @@
 <div class="verify-box" id="verifyBox">
     <div class="spinner" id="spinner"></div>
     <h1 id="title">Verifying your email...</h1>
-    <p id="message">Please wait while we verify your spiritual journey.</p>
-    <a href="index2.html" class="btn" id="homeBtn" style="display: none;">Go to Mandir</a>
+    <p id="message">Please wait while we confirm your account.</p>
+    <a href="index.html" class="btn" id="homeBtn" style="display: none;">Open Tirth Sutra</a>
 </div>
 
 <script>
-    async function verifyToken() {
-        const urlParams = new URLSearchParams(window.location.search);
-        const token = urlParams.get('token');
-        
-        const titleEl = document.getElementById('title');
-        const messageEl = document.getElementById('message');
-        const spinnerEl = document.getElementById('spinner');
-        const homeBtn = document.getElementById('homeBtn');
+    const BACKEND_URL = (
+      window.location.hostname === "localhost" ||
+      window.location.hostname === "127.0.0.1"
+    )
+      ? "http://localhost:5000"
+      : "https://tirth-sutra-backend.onrender.com";
 
-        if (!token) {
-            spinnerEl.style.display = 'none';
-            titleEl.textContent = 'Invalid Link';
-            messageEl.textContent = 'No verification token was found in the URL. Om Shanti.';
-            homeBtn.style.display = 'inline-block';
-            return;
-        }
+    const titleEl = document.getElementById("title");
+    const messageEl = document.getElementById("message");
+    const spinnerEl = document.getElementById("spinner");
+    const homeBtn = document.getElementById("homeBtn");
 
-        try {
-            const res = await fetch(`/api/auth/verify-email/${token}`);
-            const data = await res.json();
-            
-            spinnerEl.style.display = 'none';
-
-            if (res.ok) {
-                titleEl.textContent = 'Verification Successful! 🙏';
-                messageEl.textContent = 'Welcome to Tirth Sutra. Your path is now open.';
-                
-                // Store token and user details to log them in automatically
-                localStorage.setItem('ts_currentUser', JSON.stringify(data.user));
-                localStorage.setItem('ts_token', JSON.stringify(data.token));
-                
-                homeBtn.style.display = 'inline-block';
-                // Automatically redirect after 3 seconds
-                setTimeout(() => {
-                    window.location.href = 'index2.html';
-                }, 3000);
-            } else {
-                titleEl.textContent = 'Verification Failed';
-                messageEl.textContent = data.error || 'The link may have expired or is invalid.';
-                homeBtn.style.display = 'inline-block';
-            }
-        } catch (err) {
-            spinnerEl.style.display = 'none';
-            titleEl.textContent = 'Network Error';
-            messageEl.textContent = 'Could not connect to the server. Please try again later.';
-            homeBtn.style.display = 'inline-block';
-        }
+    function stopLoading() {
+      spinnerEl.style.display = "none";
+      homeBtn.style.display = "inline-block";
     }
 
-    verifyToken();
+    async function storeSessionAndRedirect(token, successMessage) {
+      localStorage.setItem("ts_token", token);
+
+      const meRes = await fetch(`${BACKEND_URL}/api/auth/me`, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
+      const meData = await meRes.json();
+
+      if (!meRes.ok) {
+        throw new Error(meData.error || "Could not load your account.");
+      }
+
+      localStorage.setItem("ts_currentUser", JSON.stringify(meData.user));
+      stopLoading();
+      titleEl.textContent = "Email verified successfully";
+      messageEl.textContent =
+        successMessage ||
+        "Your account is active now. We are signing you in and taking you back to Tirth Sutra.";
+
+      setTimeout(() => {
+        window.location.href = "index.html";
+      }, 2200);
+    }
+
+    async function handleHashRedirect() {
+      const hash = window.location.hash.startsWith("#")
+        ? window.location.hash.slice(1)
+        : "";
+      if (!hash) return false;
+
+      const params = new URLSearchParams(hash);
+      const authToken = params.get("authToken");
+      const status = params.get("status");
+      const authError = params.get("authError");
+
+      history.replaceState(null, document.title, window.location.pathname + window.location.search);
+
+      if (authError || status === "error") {
+        stopLoading();
+        titleEl.textContent = "Verification Failed";
+        messageEl.textContent = authError || params.get("message") || "The verification link may have expired or is invalid.";
+        return true;
+      }
+
+      if (!authToken) return false;
+
+      await storeSessionAndRedirect(authToken);
+      return true;
+    }
+
+    async function handleLegacyToken() {
+      const urlParams = new URLSearchParams(window.location.search);
+      const token = urlParams.get("token");
+      const status = urlParams.get("status");
+      const message = urlParams.get("message");
+
+      if (status === "error") {
+        stopLoading();
+        titleEl.textContent = "Verification Failed";
+        messageEl.textContent = message || "The verification link may have expired or is invalid.";
+        return true;
+      }
+
+      if (!token) {
+        stopLoading();
+        titleEl.textContent = "Invalid Link";
+        messageEl.textContent = "No verification token was found in the URL.";
+        return true;
+      }
+
+      const res = await fetch(`${BACKEND_URL}/api/auth/verify-email/${token}`, {
+        method: "POST",
+      });
+      const data = await res.json();
+
+      if (!res.ok) {
+        stopLoading();
+        titleEl.textContent = "Verification Failed";
+        messageEl.textContent = data.error || "The verification link may have expired or is invalid.";
+        return true;
+      }
+
+      await storeSessionAndRedirect(data.token);
+      return true;
+    }
+
+    (async function verifyToken() {
+      try {
+        const handledHash = await handleHashRedirect();
+        if (handledHash) return;
+        await handleLegacyToken();
+      } catch (err) {
+        stopLoading();
+        titleEl.textContent = "Network Error";
+        messageEl.textContent = err.message || "Could not connect to the server. Please try again later.";
+      }
+    })();
 </script>
 
 </body>

@@ -6,5 +6,5 @@ const CONFIG = {
     window.location.hostname === "localhost" ||
       window.location.hostname === "127.0.0.1"
       ? "http://localhost:5000"
-      : "https://tirth-sutra-backend.onrender.com", // <-- UPDATE THIS AFTER DEPLOYING TO RENDER
+      : "https://tirth-sutra-backend.onrender.com", // Update this if your backend URL changes
 };
