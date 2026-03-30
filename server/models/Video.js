@@ -1,8 +1,15 @@
 const mongoose = require("mongoose");
 
+const videoReplySchema = new mongoose.Schema({
+  user: { type: mongoose.Schema.Types.ObjectId, ref: "User", required: true },
+  text: { type: String, required: true },
+  createdAt: { type: Date, default: Date.now },
+});
+
 const videoCommentSchema = new mongoose.Schema({
   user: { type: mongoose.Schema.Types.ObjectId, ref: "User", required: true },
   text: { type: String, required: true },
+  replies: [videoReplySchema],
   createdAt: { type: Date, default: Date.now },
 });
 
@@ -28,7 +35,9 @@ const videoSchema = new mongoose.Schema(
     src: { type: String, required: true },
     thumbnail: { type: String, default: null },
     likes: [{ type: mongoose.Schema.Types.ObjectId, ref: "User" }],
+    dislikes: [{ type: mongoose.Schema.Types.ObjectId, ref: "User" }],
     comments: [videoCommentSchema],
+    pinnedComment: { type: mongoose.Schema.Types.ObjectId, default: null },
     views: { type: Number, default: 0 },
     duration: { type: String, default: "0:00" },
     isLive: { type: Boolean, default: false },
