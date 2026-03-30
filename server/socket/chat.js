@@ -1,7 +1,109 @@
 // Socket.io real-time chat and notification handler
+const Conversation = require("../models/Message");
+const User = require("../models/User");
+
 module.exports = function setupSocket(io) {
   // Track online users: userId -> Set of socketIds (supports multiple devices)
   const onlineUsers = new Map();
+
+  function hasId(list = [], userId) {
+    const uid = userId ? userId.toString() : "";
+    return list.some((item) => item && item.toString() === uid);
+  }
+
+  async function rememberLastSeen(userId, seenAt = new Date()) {
+    if (!userId) return;
+    try {
+      await User.findByIdAndUpdate(userId, { lastSeen: seenAt });
+    } catch (err) {
+      console.warn("Socket lastSeen update failed:", err.message);
+    }
+  }
+
+  async function markMessageDelivered(convId, messageId, userId) {
+    if (!convId || !messageId || !userId) return null;
+
+    const conv = await Conversation.findOne({
+      _id: convId,
+      participants: userId,
+      "messages._id": messageId,
+    });
+    if (!conv) return null;
+
+    const msg = conv.messages.id(messageId);
+    if (
+      !msg ||
+      msg.deletedForEveryone ||
+      msg.sender.toString() === userId.toString() ||
+      hasId(msg.deletedFor, userId)
+    ) {
+      return null;
+    }
+
+    if (!hasId(msg.deliveredTo, userId)) {
+      msg.deliveredTo.push(userId);
+      await conv.save();
+    }
+
+    return {
+      convId: conv._id.toString(),
+      messageId: msg._id.toString(),
+      userId: userId.toString(),
+      senderId: msg.sender.toString(),
+    };
+  }
+
+  async function markConversationRead(convId, userId) {
+    if (!convId || !userId) return null;
+
+    const conv = await Conversation.findOne({
+      _id: convId,
+      participants: userId,
+    });
+    if (!conv) return null;
+
+    const changedMessageIds = [];
+    const senderIds = new Set();
+
+    conv.messages.forEach((msg) => {
+      if (
+        msg.sender.toString() !== userId.toString() &&
+        !msg.deletedForEveryone &&
+        !hasId(msg.deletedFor, userId)
+      ) {
+        let changed = false;
+
+        if (!hasId(msg.deliveredTo, userId)) {
+          msg.deliveredTo.push(userId);
+          changed = true;
+        }
+        if (!hasId(msg.readBy, userId)) {
+          msg.readBy.push(userId);
+          changed = true;
+        }
+        if (!msg.read) {
+          msg.read = true;
+          changed = true;
+        }
+
+        if (changed) {
+          changedMessageIds.push(msg._id.toString());
+          senderIds.add(msg.sender.toString());
+        }
+      }
+    });
+
+    if (!changedMessageIds.length) return null;
+
+    await conv.save();
+
+    return {
+      convId: conv._id.toString(),
+      userId: userId.toString(),
+      messageIds: changedMessageIds,
+      senderIds: Array.from(senderIds),
+    };
+  }
 
   function addOnlineUser(userId, socketId) {
     if (!onlineUsers.has(userId)) {
@@ -15,7 +117,7 @@ module.exports = function setupSocket(io) {
       onlineUsers.get(userId).delete(socketId);
       if (onlineUsers.get(userId).size === 0) {
         onlineUsers.delete(userId);
-        return true; // truly offline now
+        return true;
       }
     }
     return false;
@@ -30,119 +132,130 @@ module.exports = function setupSocket(io) {
   }
 
   io.on("connection", (socket) => {
-    console.log("🔌 Socket connected:", socket.id);
+    console.log("Socket connected:", socket.id);
 
-    // User joins — register their userId
     socket.on("join", (userId) => {
-      if (userId) {
-        socket.userId = userId;
-        addOnlineUser(userId, socket.id);
-        socket.join(userId); // Join a room named after userId
-        // Broadcast online status to everyone
-        io.emit("userOnline", { userId, online: true });
-        // Send the full online users list to this socket
-        socket.emit("onlineUsers", getOnlineUserIds());
-        console.log(
-          `👤 User ${userId} is online (${onlineUsers.get(userId).size} device(s))`
-        );
-      }
+      if (!userId) return;
+
+      socket.userId = userId;
+      addOnlineUser(userId, socket.id);
+      socket.join(userId);
+      rememberLastSeen(userId).catch(() => {});
+
+      io.emit("userOnline", { userId, online: true });
+      socket.emit("onlineUsers", getOnlineUserIds());
+      console.log(
+        `User ${userId} is online (${onlineUsers.get(userId).size} device(s))`
+      );
     });
 
-    // Request online users list
     socket.on("getOnlineUsers", () => {
       socket.emit("onlineUsers", getOnlineUserIds());
     });
 
-    // Join a chat conversation room
     socket.on("joinConversation", (convId) => {
-      if (convId) {
-        socket.join("conv_" + convId);
-        console.log(
-          `💬 ${socket.userId || "?"} joined conv_${convId}`
-        );
-      }
+      if (!convId) return;
+      socket.join("conv_" + convId);
+      console.log(`Chat join: ${socket.userId || "?"} -> conv_${convId}`);
     });
 
-    // Leave conversation room
     socket.on("leaveConversation", (convId) => {
-      if (convId) {
-        socket.leave("conv_" + convId);
-      }
+      if (convId) socket.leave("conv_" + convId);
     });
 
-    // Send chat message (real-time relay)
     socket.on("chatMessage", (data) => {
-      // data: { convId, message, recipients[] }
-      if (data.convId && data.message) {
-        // Broadcast to conversation room (excluding sender)
-        socket.to("conv_" + data.convId).emit("newMessage", {
-          convId: data.convId,
-          message: data.message,
-        });
+      if (!data?.convId || !data?.message) return;
 
-        // Also notify recipients who aren't in the conversation room
-        if (data.recipients) {
-          data.recipients.forEach((uid) => {
-            if (uid !== socket.userId) {
-              socket.to(uid).emit("newMessage", {
-                convId: data.convId,
-                message: data.message,
-              });
-              socket.to(uid).emit("messageNotification", {
-                convId: data.convId,
-                from: data.message.sender,
-                text: data.message.txt,
-              });
-            }
-          });
-        }
+      socket.to("conv_" + data.convId).emit("newMessage", {
+        convId: data.convId,
+        message: data.message,
+      });
+
+      if (data.recipients) {
+        data.recipients.forEach((uid) => {
+          if (uid !== socket.userId) {
+            socket.to(uid).emit("newMessage", {
+              convId: data.convId,
+              message: data.message,
+            });
+            socket.to(uid).emit("messageNotification", {
+              convId: data.convId,
+              from: data.message.sender,
+              text: data.message.txt,
+            });
+          }
+        });
       }
     });
 
-    // Typing indicator
     socket.on("typing", (data) => {
-      // data: { convId, userId, userName }
-      if (data.convId) {
-        socket.to("conv_" + data.convId).emit("userTyping", {
-          convId: data.convId,
-          userId: data.userId,
-          userName: data.userName,
-        });
-      }
+      if (!data?.convId) return;
+      socket.to("conv_" + data.convId).emit("userTyping", {
+        convId: data.convId,
+        userId: data.userId,
+        userName: data.userName,
+      });
     });
 
-    // Stop typing
     socket.on("stopTyping", (data) => {
-      if (data.convId) {
-        socket.to("conv_" + data.convId).emit("userStopTyping", {
-          convId: data.convId,
-          userId: data.userId,
-        });
-      }
+      if (!data?.convId) return;
+      socket.to("conv_" + data.convId).emit("userStopTyping", {
+        convId: data.convId,
+        userId: data.userId,
+      });
     });
 
-    // Message read receipt
     socket.on("messageRead", (data) => {
-      // data: { convId, userId }
-      if (data.convId) {
-        socket.to("conv_" + data.convId).emit("messagesRead", {
-          convId: data.convId,
-          userId: data.userId,
+      if (!data?.convId || !socket.userId) return;
+
+      markConversationRead(data.convId, socket.userId)
+        .then((result) => {
+          if (!result) return;
+
+          result.senderIds.forEach((senderId) => {
+            io.to(senderId).emit("messagesRead", {
+              convId: result.convId,
+              userId: result.userId,
+              messageIds: result.messageIds,
+            });
+          });
+
+          socket.to("conv_" + data.convId).emit("messagesRead", {
+            convId: result.convId,
+            userId: result.userId,
+            messageIds: result.messageIds,
+          });
+        })
+        .catch((err) => {
+          console.warn("Socket read receipt failed:", err.message);
         });
-      }
     });
 
-    // ==========================================
-    // WebRTC Signaling Events (Voice/Video Calls)
-    // ==========================================
+    socket.on("messageDelivered", (data) => {
+      if (!data?.convId || !data?.messageId || !socket.userId) return;
 
-    // Caller initiates a call
+      markMessageDelivered(data.convId, data.messageId, socket.userId)
+        .then((result) => {
+          if (!result) return;
+
+          io.to(result.senderId).emit("messageDelivered", {
+            convId: result.convId,
+            messageId: result.messageId,
+            userId: result.userId,
+          });
+        })
+        .catch((err) => {
+          console.warn("Socket delivered receipt failed:", err.message);
+        });
+    });
+
+    // WebRTC signaling
     socket.on("callUser", (data) => {
-      // data: { userToCall, signalData, from, name, isVideo }
-      console.log(`📞 callUser event: ${data.from} → ${data.userToCall} (online: ${isOnline(data.userToCall)})`);
-      
+      console.log(
+        `callUser: ${data.from} -> ${data.userToCall} (online: ${isOnline(data.userToCall)})`
+      );
+
       if (!isOnline(data.userToCall)) {
-        // User is offline — notify caller immediately
         socket.emit("callRejected", { reason: "User is offline" });
         return;
       }
@@ -154,49 +267,45 @@ module.exports = function setupSocket(io) {
         isVideo: data.isVideo,
       });
 
-      // Confirm delivery to the caller
       socket.emit("callRinging", { to: data.userToCall });
     });
 
-    // Callee answers the call
     socket.on("answerCall", (data) => {
-      // data: { to, signal }
       io.to(data.to).emit("callAccepted", data.signal);
     });
 
-    // Relay ICE candidates between peers
     socket.on("iceCandidate", (data) => {
-      // data: { to, candidate }
       io.to(data.to).emit("iceCandidate", data.candidate);
     });
 
-    // Callee rejects the call
     socket.on("rejectCall", (data) => {
-      // data: { to }
       io.to(data.to).emit("callRejected");
     });
 
-    // End an active call
     socket.on("endCall", (data) => {
-      // data: { to }
       if (data.to) {
         io.to(data.to).emit("callEnded");
       }
     });
 
-    // Disconnect — also notify call partner if in a call
     socket.on("disconnect", () => {
       const userId = socket.userId;
-      if (userId) {
-        const fullyOffline = removeOnlineUser(userId, socket.id);
-        if (fullyOffline) {
-          io.emit("userOnline", { userId, online: false });
-          console.log(`👤 User ${userId} went offline`);
-        } else {
-          console.log(
-            `👤 User ${userId} disconnected one device (still online on ${onlineUsers.get(userId)?.size || 0} device(s))`
-          );
-        }
+      if (!userId) return;
+
+      const fullyOffline = removeOnlineUser(userId, socket.id);
+      if (fullyOffline) {
+        const lastSeen = new Date();
+        rememberLastSeen(userId, lastSeen).catch(() => {});
+        io.emit("userOnline", {
+          userId,
+          online: false,
+          lastSeen: lastSeen.toISOString(),
+        });
+        console.log(`User ${userId} went offline`);
+      } else {
+        console.log(
+          `User ${userId} disconnected one device (still online on ${onlineUsers.get(userId)?.size || 0} device(s))`
+        );
       }
     });
   });

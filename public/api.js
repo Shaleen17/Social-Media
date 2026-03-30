@@ -246,10 +246,28 @@ const API = (() => {
       return request(`/messages/${convId}`);
     },
 
-    async sendMessage(convId, text) {
+    async sendMessage(convId, textOrPayload, extra = {}) {
+      const payload =
+        textOrPayload && typeof textOrPayload === "object"
+          ? textOrPayload
+          : { text: textOrPayload, ...extra };
       return request(`/messages/${convId}`, {
         method: "POST",
-        body: JSON.stringify({ text }),
+        body: JSON.stringify(payload),
+      });
+    },
+
+    async forwardMessage(sourceConvId, messageId, targetConvId) {
+      return request("/messages/forward/message", {
+        method: "POST",
+        body: JSON.stringify({ sourceConvId, messageId, targetConvId }),
+      });
+    },
+
+    async deleteMessage(convId, messageId, scope = "me") {
+      return request(`/messages/${convId}/${messageId}/delete`, {
+        method: "POST",
+        body: JSON.stringify({ scope }),
       });
     },
 
@@ -293,6 +311,10 @@ const API = (() => {
       return request(`/videos${q}`);
     },
 
+    async getVideo(id) {
+      return request(`/videos/${id}`);
+    },
+
     async getVideoStories() {
       return request("/videos/stories");
     },
@@ -308,10 +330,27 @@ const API = (() => {
       return request(`/videos/${videoId}/like`, { method: "PUT" });
     },
 
+    async toggleVideoDislike(videoId) {
+      return request(`/videos/${videoId}/dislike`, { method: "PUT" });
+    },
+
     async addVideoComment(videoId, text) {
       return request(`/videos/${videoId}/comment`, {
         method: "PUT",
         body: JSON.stringify({ text }),
+      });
+    },
+
+    async addVideoReply(videoId, commentId, text) {
+      return request(`/videos/${videoId}/comment/${commentId}/reply`, {
+        method: "PUT",
+        body: JSON.stringify({ text }),
+      });
+    },
+
+    async pinVideoComment(videoId, commentId) {
+      return request(`/videos/${videoId}/comment/${commentId}/pin`, {
+        method: "PUT",
       });
     },
 

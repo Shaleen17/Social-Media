@@ -5,19 +5,48 @@ const { auth } = require("../middleware/auth");
 
 const router = express.Router();
 
+function isSupportedUploadType(mimeType = "") {
+  return (
+    mimeType.startsWith("image/") ||
+    mimeType.startsWith("video/") ||
+    mimeType.startsWith("audio/") ||
+    mimeType === "application/pdf" ||
+    mimeType === "text/plain" ||
+    mimeType === "application/msword" ||
+    mimeType ===
+      "application/vnd.openxmlformats-officedocument.wordprocessingml.document" ||
+    mimeType === "application/vnd.ms-excel" ||
+    mimeType ===
+      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" ||
+    mimeType === "application/vnd.ms-powerpoint" ||
+    mimeType ===
+      "application/vnd.openxmlformats-officedocument.presentationml.presentation"
+  );
+}
+
+function getUploadTarget(mimeType = "") {
+  if (mimeType.startsWith("image/")) {
+    return { folder: "tirth-sutra/images", resourceType: "image", type: "image" };
+  }
+  if (mimeType.startsWith("video/")) {
+    return { folder: "tirth-sutra/videos", resourceType: "video", type: "video" };
+  }
+  if (mimeType.startsWith("audio/")) {
+    return { folder: "tirth-sutra/audio", resourceType: "video", type: "audio" };
+  }
+  return { folder: "tirth-sutra/documents", resourceType: "raw", type: "document" };
+}
+
 // Configure multer for memory storage
 const storage = multer.memoryStorage();
 const upload = multer({
   storage,
   limits: { fileSize: 100 * 1024 * 1024 }, // 100MB max
   fileFilter: (req, file, cb) => {
-    if (
-      file.mimetype.startsWith("image/") ||
-      file.mimetype.startsWith("video/")
-    ) {
+    if (isSupportedUploadType(file.mimetype)) {
       cb(null, true);
     } else {
-      cb(new Error("Only image and video files are allowed"), false);
+      cb(new Error("Only image, video, audio, and document files are allowed"), false);
     }
   },
 });
@@ -29,9 +58,7 @@ router.post("/", auth, upload.single("file"), async (req, res) => {
       return res.status(400).json({ error: "No file uploaded" });
     }
 
-    const isVideo = req.file.mimetype.startsWith("video/");
-    const folder = isVideo ? "tirth-sutra/videos" : "tirth-sutra/images";
-    const resourceType = isVideo ? "video" : "image";
+    const { folder, resourceType, type } = getUploadTarget(req.file.mimetype);
 
     // Upload to Cloudinary via stream
     const result = await new Promise((resolve, reject) => {
@@ -39,9 +66,10 @@ router.post("/", auth, upload.single("file"), async (req, res) => {
         {
           folder,
           resource_type: resourceType,
-          transformation: isVideo
-            ? undefined
-            : [{ quality: "auto", fetch_format: "auto" }],
+          transformation:
+            type === "image"
+              ? [{ quality: "auto", fetch_format: "auto" }]
+              : undefined,
         },
         (error, result) => {
           if (error) reject(error);
@@ -54,7 +82,10 @@ router.post("/", auth, upload.single("file"), async (req, res) => {
     res.json({
       url: result.secure_url,
       publicId: result.public_id,
-      type: resourceType,
+      type,
+      mimeType: req.file.mimetype,
+      name: req.file.originalname,
+      size: req.file.size,
       width: result.width,
       height: result.height,
       duration: result.duration || null,

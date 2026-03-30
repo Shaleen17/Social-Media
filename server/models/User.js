@@ -41,6 +41,7 @@ const userSchema = new mongoose.Schema(
     emailVerificationToken: { type: String },
     emailVerificationTokenExpires: { type: Date },
     emailVerificationRedirectUrl: { type: String },
+    lastSeen: { type: Date, default: Date.now },
     mandirId: { type: String, default: null },
     joined: { type: String, default: "" },
   },

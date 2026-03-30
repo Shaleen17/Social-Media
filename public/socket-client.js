@@ -76,7 +76,7 @@ const SocketClient = (() => {
       updateOnlineIndicators();
       // Update chat header if viewing that user's chat
       if (typeof updateChatHeaderOnline === "function") {
-        updateChatHeaderOnline(data.userId, data.online);
+        updateChatHeaderOnline(data.userId, data.online, data.lastSeen || null);
       }
     });
 
@@ -124,6 +124,18 @@ const SocketClient = (() => {
     socket.on("messagesRead", (data) => {
       if (typeof handleRemoteRead === "function") {
         handleRemoteRead(data);
+      }
+    });
+
+    socket.on("messageDelivered", (data) => {
+      if (typeof handleMessageDelivered === "function") {
+        handleMessageDelivered(data);
+      }
+    });
+
+    socket.on("messageUpdated", (data) => {
+      if (typeof handleMessageUpdated === "function") {
+        handleMessageUpdated(data);
       }
     });
 
@@ -192,6 +204,12 @@ const SocketClient = (() => {
     }
   }
 
+  function emitMessageDelivered(convId, messageId) {
+    if (socket && userId && convId && messageId) {
+      socket.emit("messageDelivered", { convId, messageId, userId });
+    }
+  }
+
   function isUserOnline(uid) {
     return _onlineUsers.has(uid);
   }
@@ -223,6 +241,7 @@ const SocketClient = (() => {
     emitTyping,
     emitStopTyping,
     emitMessageRead,
+    emitMessageDelivered,
     isUserOnline,
     getOnlineUsers,
     getSocket: () => socket,
@@ -236,4 +255,6 @@ function handleNewNotification(data) {}
 function handleRemoteTyping(data) {}
 function handleRemoteStopTyping(data) {}
 function handleRemoteRead(data) {}
-function updateChatHeaderOnline(userId, online) {}
+function handleMessageDelivered(data) {}
+function handleMessageUpdated(data) {}
+function updateChatHeaderOnline(userId, online, lastSeen) {}

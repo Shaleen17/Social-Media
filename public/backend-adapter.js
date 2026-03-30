@@ -10,6 +10,80 @@
 (function () {
   "use strict";
 
+  window.handleRemoteStopTyping = function (data) {
+    if (data.convId !== activeChatId) return;
+    const ti = document.getElementById("remoteTypingIndicator");
+    if (ti) ti.remove();
+    const sub = document.getElementById("chatWinSub");
+    const conv = getConversationById(activeChatId);
+    if (sub && conv) sub.textContent = getChatHeaderStatus(conv);
+  };
+
+  window.handleRemoteRead = function (data) {
+    const convId = (data.convId || "").toString();
+    const msgs = _conversationMessages[convId] || [];
+    msgs.forEach((m) => {
+      if (
+        (m.isMe || (m.from && m.from.toString() === myId())) &&
+        (!data.messageIds || data.messageIds.includes((m.id || "").toString()))
+      ) {
+        m.read = true;
+        m.delivered = true;
+        m.status = "read";
+      }
+    });
+    if (convId === activeChatId) renderChatMessages(activeChatId);
+  };
+
+  window.handleMessageDelivered = function (data) {
+    const convId = (data.convId || "").toString();
+    const msgs = _conversationMessages[convId] || [];
+    const target = msgs.find(
+      (m) =>
+        (m.isMe || (m.from && m.from.toString() === myId())) &&
+        (m.id || "").toString() === (data.messageId || "").toString()
+    );
+    if (target && target.status !== "read") {
+      target.delivered = true;
+      target.status = "delivered";
+    }
+    if (convId === activeChatId) renderChatMessages(activeChatId);
+  };
+
+  window.handleMessageUpdated = function (data) {
+    const convId = (data.convId || "").toString();
+    const incoming = data.message;
+    if (!incoming) return;
+    if (!_conversationMessages[convId]) _conversationMessages[convId] = [];
+    const idx = _conversationMessages[convId].findIndex(
+      (item) => (item.id || "").toString() === (incoming.id || "").toString()
+    );
+    if (idx > -1) {
+      _conversationMessages[convId][idx] = incoming;
+      updateConversationPreview(convId, incoming);
+      if (convId === activeChatId) renderChatMessages(activeChatId);
+      if (curPage === "chats") {
+        updateChatItemDOM(convId, getMessagePreview(incoming), fmtChatTs(incoming.ts), 0);
+      }
+    }
+  };
+
+  window.updateChatHeaderOnline = function (userId, online, lastSeen) {
+    const conv = _cachedConversations.find(
+      (item) => (item.uid || "").toString() === (userId || "").toString()
+    );
+    if (conv?.user && lastSeen) conv.user.lastSeen = lastSeen;
+    const sub = document.getElementById("chatWinSub");
+    if (sub) {
+      const uid = sub.getAttribute("data-chat-uid");
+      if (uid === userId) {
+        const activeConv = getConversationById(activeChatId);
+        if (activeConv) sub.textContent = getChatHeaderStatus(activeConv);
+      }
+    }
+    if (curPage === "chats") renderChatsList();
+  };
+
   // =============================================
   // CACHE: In-memory cache of data from the API
   // =============================================
@@ -907,6 +981,10 @@
   let _conversationMessages = {}; // convId -> messages array
   let _currentConvId = null; // currently open conversation
   let _typingIndicatorTimer = null;
+  let _chatReplyDraft = null;
+  let _chatMsgMenuState = null;
+  let _chatForwardMessage = null;
+  let _chatLongPressTimer = null;
 
   // ── Helper: get userId string ──
   function myId() {
@@ -938,6 +1016,244 @@
     return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
   }
 
+  function getConversationById(convId) {
+    return _cachedConversations.find(
+      (conv) => (conv.id || conv._id || "").toString() === (convId || "").toString()
+    );
+  }
+
+  function getConversationParticipants(conv) {
+    return (conv?.participants || [])
+      .map((participant) => (participant._id || participant.id || participant || "").toString())
+      .filter(Boolean);
+  }
+
+  function getAttachmentLabel(attachment) {
+    if (!attachment) return "Attachment";
+    switch (attachment.kind) {
+      case "image":
+        return "Photo";
+      case "video":
+        return "Video";
+      case "audio":
+        return "Audio";
+      default:
+        return attachment.name || "Document";
+    }
+  }
+
+  function getAttachmentKindFromMime(mimeType = "") {
+    if (mimeType.startsWith("image/")) return "image";
+    if (mimeType.startsWith("video/")) return "video";
+    if (mimeType.startsWith("audio/")) return "audio";
+    return "document";
+  }
+
+  function getReplyPreviewText(reply) {
+    if (!reply) return "";
+    if (reply.text) return reply.text;
+    if (reply.attachmentName) return reply.attachmentName;
+    if (reply.attachmentKind) return getAttachmentLabel(reply);
+    return "Message";
+  }
+
+  function getMessagePreview(m) {
+    if (!m) return "";
+    if (m.deleted) return "This message was deleted";
+    if (m.txt) return m.txt;
+    if (m.attachments?.length) {
+      return "📎 " + getAttachmentLabel(m.attachments[0]);
+    }
+    return "Message";
+  }
+
+  function formatLastSeen(dateStr) {
+    if (!dateStr) return "last seen recently";
+    const d = new Date(dateStr);
+    if (isNaN(d.getTime())) return "last seen recently";
+    const diff = Date.now() - d.getTime();
+    if (diff < 60000) return "last seen just now";
+    if (diff < 3600000) return "last seen " + Math.max(1, Math.floor(diff / 60000)) + "m ago";
+    if (diff < 86400000) return "last seen " + Math.max(1, Math.floor(diff / 3600000)) + "h ago";
+    return (
+      "last seen " +
+      d.toLocaleDateString([], {
+        day: "numeric",
+        month: "short",
+      })
+    );
+  }
+
+  function getChatHeaderStatus(conv) {
+    if (!conv || conv.isGroup) {
+      return (conv?.participants?.length || 0) + " members";
+    }
+    const uid = conv.uid ? conv.uid.toString() : "";
+    if (uid && SocketClient.isUserOnline(uid)) return "🟢 online";
+    return formatLastSeen(conv.user?.lastSeen);
+  }
+
+  function getOutgoingStatus(m, conv) {
+    if (!m) return "";
+    if (m.status) return m.status;
+    if (m.read) return "read";
+    if (m.delivered) return "delivered";
+    const participants = getConversationParticipants(conv);
+    const recipientCount = participants.filter((id) => id !== myId()).length;
+    const readCount = (m.readBy || []).length;
+    const deliveredCount = (m.deliveredTo || []).length;
+    if (recipientCount > 0 && readCount >= recipientCount) return "read";
+    if (deliveredCount > 0) return "delivered";
+    return "sent";
+  }
+
+  function renderTickHtml(status) {
+    const tickSvg =
+      '<svg class="msg-tick" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>';
+    if (status === "read") {
+      return '<span class="msg-tick-wrap">' +
+        tickSvg.replace('class="msg-tick"', 'class="msg-tick double tick-read"') +
+        tickSvg.replace('class="msg-tick"', 'class="msg-tick double tick-read"') +
+        "</span>";
+    }
+    if (status === "delivered") {
+      return '<span class="msg-tick-wrap">' +
+        tickSvg.replace('class="msg-tick"', 'class="msg-tick double tick-delivered"') +
+        tickSvg.replace('class="msg-tick"', 'class="msg-tick double tick-delivered"') +
+        "</span>";
+    }
+    return '<span class="msg-tick-wrap">' +
+      tickSvg.replace('class="msg-tick"', 'class="msg-tick tick-sent"') +
+      "</span>";
+  }
+
+  function renderReplyHtml(reply) {
+    if (!reply) return "";
+    return (
+      '<div class="msg-bubble-reply">' +
+      '<div class="msg-bubble-reply-name">' +
+      esc(reply.senderName || "Message") +
+      "</div>" +
+      '<div class="msg-bubble-reply-text">' +
+      esc(getReplyPreviewText(reply)) +
+      "</div>" +
+      "</div>"
+    );
+  }
+
+  function renderAttachmentsHtml(message) {
+    const attachments = message.attachments || [];
+    if (!attachments.length) return "";
+
+    return attachments
+      .map((attachment) => {
+        if (attachment.kind === "image") {
+          return '<img class="msg-bubble-img" src="' + attachment.url + '" alt="' + esc(attachment.name || "Photo") + '">';
+        }
+        if (attachment.kind === "video") {
+          return '<video class="msg-bubble-video" src="' + attachment.url + '" controls playsinline preload="metadata"></video>';
+        }
+        if (attachment.kind === "audio") {
+          return '<audio class="msg-bubble-audio" src="' + attachment.url + '" controls preload="metadata"></audio>';
+        }
+        return (
+          '<a class="msg-bubble-doc" href="' +
+          attachment.url +
+          '" target="_blank" rel="noopener">' +
+          '<span class="msg-bubble-doc-ico">📄</span>' +
+          '<span class="msg-bubble-doc-meta">' +
+          '<span class="msg-bubble-doc-name">' +
+          esc(attachment.name || "Document") +
+          "</span>" +
+          '<span class="msg-bubble-doc-sub">' +
+          esc((attachment.mimeType || "document").replace("application/", "")) +
+          "</span>" +
+          "</span></a>"
+        );
+      })
+      .join("");
+  }
+
+  function buildMessageRowHtml(chatId, message, prevMessage) {
+    const conv = getConversationById(chatId);
+    const isGroup = !!conv?.isGroup;
+    const isOut = message.isMe || (message.from && message.from.toString() === myId());
+    const sender = message.sender || {};
+    const senderName = sender.name || "Unknown";
+    const showAv =
+      !isOut &&
+      isGroup &&
+      (!prevMessage || (prevMessage.from?.toString() !== message.from?.toString()));
+    const ini = getIni(senderName);
+    const avHtml = `<div class="msg-av-small">${sender.avatar ? '<img src="' + sender.avatar + '">' : ini}</div>`;
+    const avOrSpacer =
+      !isOut && isGroup
+        ? showAv
+          ? avHtml
+          : '<div class="msg-av-placeholder"></div>'
+        : "";
+    const d = message.ts ? new Date(message.ts) : null;
+    const timeStr = d && !isNaN(d.getTime()) ? fmtMsgTs(d) : (message.t || "");
+    const tickHtml = isOut ? renderTickHtml(getOutgoingStatus(message, conv)) : "";
+    const bubbleHandlers =
+      ' oncontextmenu="openChatMessageMenu(event,\'' +
+      chatId +
+      "','" +
+      message.id +
+      '\');return false" onpointerdown="startChatMessagePress(event,\'' +
+      chatId +
+      "','" +
+      message.id +
+      '\')" onpointerup="endChatMessagePress()" onpointerleave="endChatMessagePress()" onpointercancel="endChatMessagePress()"';
+
+    return `<div class="msg-row ${isOut ? "out" : "in"}">
+      ${avOrSpacer}
+      <div class="msg-bubble"${bubbleHandlers}>
+        ${showAv ? '<div class="msg-sender-name">' + esc(senderName) + "</div>" : ""}
+        ${message.forwarded ? '<div class="msg-bubble-forwarded">Forwarded</div>' : ""}
+        ${renderReplyHtml(message.replyTo)}
+        ${renderAttachmentsHtml(message)}
+        ${message.txt ? '<div class="' + (message.deleted ? "msg-bubble-deleted" : "") + '">' + esc(message.txt) + "</div>" : ""}
+        <div class="msg-meta">
+          <span class="msg-time">${timeStr}</span>
+          ${tickHtml}
+        </div>
+      </div>
+    </div>`;
+  }
+
+  function syncReplyPreview() {
+    const box = document.getElementById("chatReplyPreview");
+    if (!box) return;
+    if (!_chatReplyDraft || _chatReplyDraft.chatId !== activeChatId) {
+      box.classList.add("hide");
+      box.innerHTML = "";
+      return;
+    }
+    box.classList.remove("hide");
+    box.innerHTML =
+      '<div class="chat-reply-preview-main">' +
+      '<div class="chat-reply-preview-title">Replying to ' +
+      esc(_chatReplyDraft.senderName || "message") +
+      "</div>" +
+      '<div class="chat-reply-preview-text">' +
+      esc(getReplyPreviewText(_chatReplyDraft)) +
+      "</div></div>" +
+      '<button class="chat-reply-preview-close" onclick="clearChatReply()" aria-label="Cancel reply">✕</button>';
+  }
+
+  function closeChatMessageMenu() {
+    document.getElementById("chatMsgMenu")?.classList.add("hide");
+    _chatMsgMenuState = null;
+  }
+
+  function updateConversationPreview(convId, message) {
+    const conv = getConversationById(convId);
+    if (!conv) return;
+    conv.lastMessage = getMessagePreview(message);
+    conv.lastMessageTime = message.ts || new Date().toISOString();
+  }
+
   // ── Load conversations from API ──
   async function loadConversations() {
     if (!API.getToken()) return [];
@@ -962,6 +1278,247 @@
       return { messages: [] };
     }
   }
+
+  window.clearChatReply = function () {
+    _chatReplyDraft = null;
+    syncReplyPreview();
+  };
+
+  document.addEventListener("click", (event) => {
+    if (!event.target.closest("#chatMsgMenu")) {
+      closeChatMessageMenu();
+    }
+  });
+
+  document.addEventListener(
+    "scroll",
+    () => {
+      closeChatMessageMenu();
+    },
+    true
+  );
+
+  window.startChatMessagePress = function (event, chatId, messageId) {
+    endChatMessagePress();
+    if (event.pointerType && event.pointerType !== "touch") return;
+    _chatLongPressTimer = setTimeout(() => {
+      openChatMessageMenu(event, chatId, messageId);
+    }, 420);
+  };
+
+  window.endChatMessagePress = function () {
+    if (_chatLongPressTimer) {
+      clearTimeout(_chatLongPressTimer);
+      _chatLongPressTimer = null;
+    }
+  };
+
+  window.openChatMessageMenu = function (event, chatId, messageId) {
+    const messages = _conversationMessages[chatId] || [];
+    const message = messages.find((item) => (item.id || "").toString() === messageId.toString());
+    const menu = document.getElementById("chatMsgMenu");
+    if (!message || !menu) return;
+
+    if (event?.preventDefault) event.preventDefault();
+    if (event?.stopPropagation) event.stopPropagation();
+
+    const isOut = message.isMe || (message.from && message.from.toString() === myId());
+    const canDeleteForEveryone = isOut && !message.deleted;
+
+    menu.innerHTML =
+      '<button class="chat-msg-action" onclick="replyToChatMessage(\'' +
+      chatId +
+      "','" +
+      messageId +
+      '\')">Reply</button>' +
+      '<button class="chat-msg-action" onclick="openChatForwardPicker(\'' +
+      chatId +
+      "','" +
+      messageId +
+      '\')">Forward</button>' +
+      '<button class="chat-msg-action red" onclick="deleteChatMessage(\'me\')">Delete for me</button>' +
+      (canDeleteForEveryone
+        ? '<button class="chat-msg-action red" onclick="deleteChatMessage(\'everyone\')">Delete for everyone</button>'
+        : "");
+
+    const viewportWidth = window.innerWidth;
+    const viewportHeight = window.innerHeight;
+    const x = event?.clientX ?? viewportWidth / 2;
+    const y = event?.clientY ?? viewportHeight / 2;
+    menu.style.left = Math.min(x, viewportWidth - 190) + "px";
+    menu.style.top = Math.min(y, viewportHeight - 220) + "px";
+    menu.classList.remove("hide");
+    _chatMsgMenuState = { chatId, messageId };
+  };
+
+  window.replyToChatMessage = function (chatId, messageId) {
+    closeChatMessageMenu();
+    const message = (_conversationMessages[chatId] || []).find(
+      (item) => (item.id || "").toString() === messageId.toString()
+    );
+    if (!message) return;
+
+    _chatReplyDraft = {
+      chatId,
+      messageId,
+      sender: (message.sender?._id || message.from || "").toString(),
+      senderName: message.sender?.name || (message.isMe ? CU?.name : "Message"),
+      text: message.txt || "",
+      attachmentKind: message.attachments?.[0]?.kind || "",
+      attachmentName: message.attachments?.[0]?.name || getAttachmentLabel(message.attachments?.[0]),
+    };
+    syncReplyPreview();
+    document.getElementById("chatMsgInput")?.focus();
+  };
+
+  window.openChatForwardPicker = function (chatId, messageId) {
+    closeChatMessageMenu();
+    _chatForwardMessage = { chatId, messageId };
+    const input = document.getElementById("chatForwardSearch");
+    if (input) input.value = "";
+    filterChatForwardTargets("");
+    openOvl("chatForwardModal");
+  };
+
+  window.filterChatForwardTargets = function (query) {
+    const list = document.getElementById("chatForwardList");
+    if (!list) return;
+    const q = (query || "").trim().toLowerCase();
+    const items = _cachedConversations.filter((conv) => {
+      const name = conv.isGroup ? conv.groupName || "Group" : conv.user?.name || "Unknown";
+      return !q || name.toLowerCase().includes(q);
+    });
+
+    if (!items.length) {
+      const following = new Set((CU?.following || []).map((id) => (id || "").toString()));
+      const followers = new Set((CU?.followers || []).map((id) => (id || "").toString()));
+      const suggestions = getUsers()
+        .filter((u) => (u.id || u._id || "").toString() !== myId())
+        .map((u) => {
+          const uid = (u.id || u._id || "").toString();
+          const score =
+            (following.has(uid) ? 4 : 0) +
+            (followers.has(uid) ? 3 : 0) +
+            (u.verified ? 1 : 0);
+          return { user: u, uid, score };
+        })
+        .sort((a, b) => b.score - a.score || a.user.name.localeCompare(b.user.name))
+        .slice(0, 8);
+
+      if (suggestions.length) {
+        c.innerHTML =
+          '<div style="padding:16px 14px 8px;font-size:13px;font-weight:700;color:var(--t2)">People you can message</div>' +
+          suggestions
+            .map(({ user, uid }) => {
+              const online = SocketClient.isUserOnline(uid);
+              return `<div class="dm-user-item" onclick="startDMWith('${uid}')" style="margin:0 10px">
+                <div class="av av36">${user.avatar ? '<img src="' + user.avatar + '">' : getIni(user.name)}</div>
+                <div style="min-width:0">
+                  <div style="font-weight:600;font-size:14px">${esc(user.name)}${user.verified ? " 🔱" : ""} ${online ? '<span style="color:#4caf50;font-size:11px">● online</span>' : ""}</div>
+                  <div style="font-size:12px;color:var(--t3)">@${esc(user.handle || "")}</div>
+                </div>
+              </div>`;
+            })
+            .join("");
+        return;
+      }
+      list.innerHTML = '<div class="empty-sub" style="padding:10px 0">No chats found.</div>';
+      return;
+    }
+
+    list.innerHTML = items
+      .map((conv) => {
+        const id = (conv.id || conv._id || "").toString();
+        const name = conv.isGroup ? conv.groupName || "Group" : conv.user?.name || "Unknown";
+        const sub = conv.lastMessage || "Tap to forward here";
+        const avatarHtml = conv.isGroup
+          ? '<div class="av av36">👥</div>'
+          : '<div class="av av36">' +
+            (conv.user?.avatar ? '<img src="' + conv.user.avatar + '">' : getIni(name)) +
+            "</div>";
+        return (
+          '<div class="chat-forward-item" onclick="forwardChatMessageTo(\'' +
+          id +
+          "')\">" +
+          avatarHtml +
+          '<div class="chat-forward-item-meta">' +
+          '<div class="chat-forward-item-name">' +
+          esc(name) +
+          "</div>" +
+          '<div class="chat-forward-item-sub">' +
+          esc(sub) +
+          "</div></div></div>"
+        );
+      })
+      .join("");
+  };
+
+  window.forwardChatMessageTo = async function (targetConvId) {
+    if (!_chatForwardMessage) return;
+    try {
+      const payload = await API.forwardMessage(
+        _chatForwardMessage.chatId,
+        _chatForwardMessage.messageId,
+        targetConvId
+      );
+
+      if (!_conversationMessages[targetConvId]) {
+        _conversationMessages[targetConvId] = [];
+      }
+      _conversationMessages[targetConvId].push(payload);
+      updateConversationPreview(targetConvId, payload);
+      await loadConversations();
+      if (curPage === "chats") renderChatsList();
+      if (activeChatId === targetConvId) {
+        appendChatMessageDOM(payload, targetConvId);
+        updateChatItemDOM(targetConvId, getMessagePreview(payload), "just now", 0);
+      }
+      _chatForwardMessage = null;
+      closeOvl("chatForwardModal");
+      MC.success("Message forwarded");
+    } catch (err) {
+      MC.error("Could not forward message: " + (err.message || ""));
+    }
+  };
+
+  window.deleteChatMessage = async function (scope) {
+    if (!_chatMsgMenuState) return;
+    const { chatId, messageId } = _chatMsgMenuState;
+    closeChatMessageMenu();
+
+    try {
+      await API.deleteMessage(chatId, messageId, scope);
+      if (scope === "everyone") {
+        const target = (_conversationMessages[chatId] || []).find(
+          (item) => (item.id || "").toString() === messageId.toString()
+        );
+        if (target) {
+          target.deleted = true;
+          target.txt = "This message was deleted";
+          target.attachments = [];
+          target.replyTo = null;
+          target.forwarded = false;
+          target.status = "";
+        }
+      } else {
+        _conversationMessages[chatId] = (_conversationMessages[chatId] || []).filter(
+          (item) => (item.id || "").toString() !== messageId.toString()
+        );
+        if (_chatReplyDraft?.messageId?.toString() === messageId.toString()) {
+          window.clearChatReply();
+        }
+      }
+
+      await loadConversations();
+      if (activeChatId === chatId) {
+        renderChatMessages(chatId);
+      }
+      if (curPage === "chats") renderChatsList();
+      MC.info(scope === "everyone" ? "Message deleted for everyone" : "Message deleted");
+    } catch (err) {
+      MC.error("Could not delete message: " + (err.message || ""));
+    }
+  };
 
   // =============================================
   // Override renderChatsPage
@@ -1014,7 +1571,7 @@
         avatar: user.avatar || null,
         verified: user.verified || false,
         lastMsg: conv.lastMessage || "",
-        lastTime: conv.lastMessageTime || "",
+        lastTime: fmtChatTs(conv.lastMessageTime || ""),
         unread: conv.unreadCount || 0,
         participants: conv.participants || [],
       };
@@ -1129,6 +1686,10 @@
       if (winSub) winSub.textContent = online ? "🟢 online" : "last seen recently";
       // Store uid for online status updates
       if (winSub) winSub.setAttribute("data-chat-uid", uid);
+      if (winSub) {
+        winSub.textContent = getChatHeaderStatus(conv);
+        winSub.setAttribute("data-last-seen", u.lastSeen || "");
+      }
     }
 
     // Load messages from API
@@ -1154,6 +1715,47 @@
 
     // If msgs not passed, use cached
     if (!msgs) msgs = _conversationMessages[chatId] || [];
+
+    let rendered = "";
+    let lastRenderedDate = "";
+    msgs.forEach((message, idx) => {
+      const ts = message.ts || message.t;
+      let d;
+      try {
+        d = new Date(ts);
+        if (isNaN(d.getTime())) d = null;
+      } catch {
+        d = null;
+      }
+      if (d) {
+        const dateStr = d.toDateString();
+        if (dateStr !== lastRenderedDate) {
+          const now = new Date();
+          const yest = new Date(now);
+          yest.setDate(now.getDate() - 1);
+          const label =
+            dateStr === now.toDateString()
+              ? "Today"
+              : dateStr === yest.toDateString()
+                ? "Yesterday"
+                : d.toLocaleDateString([], {
+                    day: "numeric",
+                    month: "long",
+                    year: "numeric",
+                  });
+          rendered += '<div class="msg-date-sep"><span>' + label + "</span></div>";
+          lastRenderedDate = dateStr;
+        }
+      }
+      rendered += buildMessageRowHtml(chatId, message, msgs[idx - 1]);
+    });
+
+    c.innerHTML =
+      rendered ||
+      '<div class="chat-empty-state"><div style="font-size:36px;margin-bottom:8px">ðŸ‘‹</div><div style="font-size:14px;color:var(--t3)">Say hello!</div></div>';
+    c.scrollTop = c.scrollHeight;
+    syncReplyPreview();
+    return;
 
     const conv = _cachedConversations.find(
       (cv) => (cv.id || cv._id || "").toString() === chatId
@@ -1241,6 +1843,22 @@
   // =============================================
   // Override sendChatMessage — sends via API + Socket.io
   // =============================================
+  async function sendChatPayload(payload, restoreText) {
+    const convId = activeChatId;
+    const msg = await API.sendMessage(convId, payload);
+
+    if (!_conversationMessages[convId]) {
+      _conversationMessages[convId] = [];
+    }
+    _conversationMessages[convId].push(msg);
+
+    updateConversationPreview(convId, msg);
+    appendChatMessageDOM(msg, convId);
+    updateChatItemDOM(convId, getMessagePreview(msg), "just now", 0);
+    window.clearChatReply();
+    return msg;
+  }
+
   window.sendChatMessage = async function () {
     if (!CU) {
       openOvl("authOvl");
@@ -1258,48 +1876,24 @@
     // Clear input immediately for responsiveness
     inp.value = "";
 
+    const payload = {
+      text: txt,
+      attachments: [],
+      replyTo: _chatReplyDraft
+        ? {
+            messageId: _chatReplyDraft.messageId,
+            sender: _chatReplyDraft.sender,
+            senderName: _chatReplyDraft.senderName,
+            text: _chatReplyDraft.text || "",
+            attachmentKind: _chatReplyDraft.attachmentKind || "",
+            attachmentName: _chatReplyDraft.attachmentName || "",
+          }
+        : null,
+    };
+
     try {
-      // Send to backend API (which also emits to other users via Socket.io)
-      const msg = await API.sendMessage(activeChatId, txt);
-
-      // Add to local cache
-      if (!_conversationMessages[activeChatId]) {
-        _conversationMessages[activeChatId] = [];
-      }
-      _conversationMessages[activeChatId].push(msg);
-
-      // Also emit via Socket.io for real-time delivery
-      const conv = _cachedConversations.find(
-        (c) => (c.id || c._id || "").toString() === activeChatId
-      );
-      const recipients = conv?.participants?.map((p) =>
-        (p._id || p.id || p).toString()
-      ) || [];
-
-      SocketClient.sendMessage(activeChatId, {
-        id: msg.id,
-        from: myId(),
-        sender: {
-          _id: myId(),
-          name: CU.name,
-          handle: CU.handle,
-          avatar: CU.avatar,
-        },
-        txt: txt,
-        t: "Just now",
-        read: false,
-        isMe: false, // false for recipients
-      }, recipients);
-
-      // Update conversation list data
-      if (conv) {
-        conv.lastMessage = txt;
-        conv.lastMessageTime = "Just now";
-      }
-
-      // Fast DOM update instead of full render
-      appendChatMessageDOM(msg, activeChatId);
-      updateChatItemDOM(activeChatId, txt, "Just now", 0);
+      await sendChatPayload(payload, txt);
+      return;
     } catch (err) {
       MC.error("Failed to send message: " + (err.message || ""));
       inp.value = txt; // Restore text on error
@@ -1316,6 +1910,44 @@
     }
     const f = e.target?.files?.[0];
     if (!f) return;
+
+    const input = e.target;
+    const replyTo = _chatReplyDraft
+      ? {
+          messageId: _chatReplyDraft.messageId,
+          sender: _chatReplyDraft.sender,
+          senderName: _chatReplyDraft.senderName,
+          text: _chatReplyDraft.text || "",
+          attachmentKind: _chatReplyDraft.attachmentKind || "",
+          attachmentName: _chatReplyDraft.attachmentName || "",
+        }
+      : null;
+
+    try {
+      const uploaded = await API.uploadFile(f);
+      const attachment = {
+        kind: uploaded.type || getAttachmentKindFromMime(uploaded.mimeType || f.type),
+        url: uploaded.url,
+        name: uploaded.name || f.name,
+        mimeType: uploaded.mimeType || f.type,
+        size: uploaded.size || f.size || 0,
+        duration: uploaded.duration ?? null,
+      };
+      await sendChatPayload(
+        {
+          text: "",
+          attachments: [attachment],
+          replyTo,
+        },
+        ""
+      );
+      if (input) input.value = "";
+      return;
+    } catch (err) {
+      MC.error("Failed to send attachment: " + (err.message || ""));
+      if (input) input.value = "";
+      return;
+    }
 
     const r = new FileReader();
     r.onload = async (ev) => {
@@ -1387,6 +2019,8 @@
       SocketClient.leaveConversation(_currentConvId);
       SocketClient.emitStopTyping(_currentConvId);
     }
+    closeChatMessageMenu();
+    window.clearChatReply();
     activeChatId = null;
     _currentConvId = null;
 
@@ -1630,6 +2264,7 @@
   window.handleIncomingMessage = function (data) {
     const convId = (data.convId || "").toString();
     const msg = data.message;
+    if (!msg) return;
 
     // Add to local cache
     if (!_conversationMessages[convId]) {
@@ -1642,6 +2277,7 @@
     );
     if (!existing) {
       _conversationMessages[convId].push(msg);
+      SocketClient.emitMessageDelivered(convId, msg.id);
     }
 
     // If this conversation is currently open, do fast append
@@ -1658,6 +2294,7 @@
     if (conv) {
       conv.lastMessage = msg.txt || "📷 Photo";
       conv.lastMessageTime = "Just now";
+      updateConversationPreview(convId, msg);
       let unreadInc = 0;
       if (activeChatId !== convId) {
         conv.unreadCount = (conv.unreadCount || 0) + 1;
@@ -1665,7 +2302,7 @@
       }
       
       if (curPage === "chats") {
-        updateChatItemDOM(convId, conv.lastMessage, conv.lastMessageTime, unreadInc);
+        updateChatItemDOM(convId, conv.lastMessage, fmtChatTs(conv.lastMessageTime), unreadInc);
       }
     } else {
       // New conversation — reload the list
@@ -1687,6 +2324,15 @@
     // Remove typing indicator temporarily to append above it
     const ti = document.getElementById("remoteTypingIndicator");
     if (ti) ti.remove();
+
+    const quickMsgs = _conversationMessages[convId] || [];
+    const quickPrev = quickMsgs.length > 1 ? quickMsgs[quickMsgs.length - 2] : null;
+    c.insertAdjacentHTML("beforeend", buildMessageRowHtml(convId, m, quickPrev));
+    if (ti && !(m.isMe || (m.from && m.from.toString() === myId()))) {
+      c.appendChild(ti);
+    }
+    c.scroll({ top: c.scrollHeight, behavior: "smooth" });
+    return;
 
     const isOut = m.isMe || (m.from && m.from.toString() === myId());
     const sender = m.sender || {};
@@ -1921,13 +2567,25 @@
       (c) => (c.id || c._id || "").toString() === activeChatId
     );
 
-    if (!conv || !conv.uid) {
+    if (!conv) {
+      return MC?.error("Could not find this chat.");
+    }
+
+    if (conv.isGroup) {
+      return MC?.info("Voice and video calling are available in direct chats only.");
+    }
+
+    if (!conv.uid) {
       return MC?.error("Could not find user details to call.");
     }
 
     const uid = conv.uid.toString();
     const userName = conv.user ? conv.user.name : "User";
     const avatar = conv.user ? conv.user.avatar : null;
+
+    if (!SocketClient.isUserOnline(uid)) {
+      return MC?.warn((userName || "User") + " is offline right now.");
+    }
 
     if (typeof WebRTCClient !== "undefined") {
       WebRTCClient.startCall(uid, userName, avatar, isVideo);

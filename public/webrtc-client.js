@@ -144,7 +144,7 @@ const WebRTCClient = (() => {
     } catch (err) {
       console.error("Failed to start call", err);
       resetCallUI();
-      MC?.error("Could not access camera or microphone");
+      MC?.error(getMediaErrorMessage(err, withVideo));
     }
   }
 
@@ -195,7 +195,7 @@ const WebRTCClient = (() => {
     } catch (err) {
       console.error("Failed to answer call", err);
       endCallLocally();
-      MC?.error("Could not access media devices");
+      MC?.error(getMediaErrorMessage(err, isVideoEnabled));
     }
   }
 
@@ -281,6 +281,10 @@ const WebRTCClient = (() => {
   async function setupMedia(video) {
     // Stop old streams if any
     stopMedia();
+
+    if (!navigator.mediaDevices?.getUserMedia) {
+      throw new Error("Media devices are not available");
+    }
     
     localStream = await navigator.mediaDevices.getUserMedia({
       video: video,
@@ -346,8 +350,21 @@ const WebRTCClient = (() => {
     };
     
     peerConnection.onconnectionstatechange = () => {
+      if (peerConnection.connectionState === "connected" && els.statusTxt) {
+        els.statusTxt.textContent = "Connected 🟢";
+      }
       if (peerConnection.connectionState === 'disconnected' || peerConnection.connectionState === 'failed') {
         endCallLocally();
+      }
+    };
+
+    peerConnection.oniceconnectionstatechange = () => {
+      if (!peerConnection) return;
+      if (peerConnection.iceConnectionState === "connected" || peerConnection.iceConnectionState === "completed") {
+        els.statusTxt.textContent = "Connected 🟢";
+      }
+      if (peerConnection.iceConnectionState === "failed") {
+        els.statusTxt.textContent = "Connection lost";
       }
     };
   }
@@ -443,6 +460,21 @@ const WebRTCClient = (() => {
   function getIni(name) {
     if (!name) return "U";
     return name.charAt(0).toUpperCase();
+  }
+
+  function getMediaErrorMessage(err, wantsVideo) {
+    if (!err) return wantsVideo ? "Could not access camera or microphone" : "Could not access microphone";
+    if (err.name === "NotAllowedError" || err.name === "PermissionDeniedError") {
+      return wantsVideo
+        ? "Allow camera and microphone access to start the call"
+        : "Allow microphone access to start the call";
+    }
+    if (err.name === "NotFoundError" || err.name === "DevicesNotFoundError") {
+      return wantsVideo
+        ? "Camera or microphone not found on this device"
+        : "Microphone not found on this device";
+    }
+    return wantsVideo ? "Could not access camera or microphone" : "Could not access microphone";
   }
 
   return {

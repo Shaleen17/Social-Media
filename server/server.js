@@ -66,7 +66,7 @@ const io = new Server(server, {
 app.set("io", io);
 
 // Setup Socket.io handlers
-setupSocket(io);
+app.set("socketState", setupSocket(io));
 
 // Configure Cloudinary
 cloudinary.config({

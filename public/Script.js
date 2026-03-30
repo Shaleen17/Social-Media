@@ -100,6 +100,10 @@ let svIdx = 0,
   compImg = null;
 let curVidCat = "All",
   curVidTab = "feed";
+let activeVidWatchId = null,
+  activeVidChannelId = null;
+let videoDetailHistory = [];
+let trackedVideoViews = new Set();
 let vidUploadFile = null,
   storyUploadFile = null,
   liveFile = null,
@@ -959,20 +963,79 @@ function openOvl(id) {
   const el = document.getElementById(id);
   if (el) el.classList.add("show");
 }
+function setVideoDetailTitle(title = "Tirth Tube") {
+  const el = document.getElementById("videoDetailTitle");
+  if (el) el.textContent = title;
+}
+function stopVideoDetailPlayback() {
+  const host = document.getElementById("videoDetailContent");
+  if (!host) return;
+  host.querySelectorAll("video").forEach((video) => {
+    try {
+      video.pause();
+    } catch { }
+    try {
+      video.currentTime = 0;
+    } catch { }
+    try {
+      video.removeAttribute("autoplay");
+    } catch { }
+    try {
+      video.removeAttribute("src");
+      video.load();
+    } catch { }
+  });
+}
+function resetVideoDetailState() {
+  activeVidWatchId = null;
+  activeVidChannelId = null;
+  videoDetailHistory = [];
+  setVideoDetailTitle();
+}
+function syncVideoDetailState(state, replace = false) {
+  const next = { ...state, focus: state.focus || "" };
+  const top = videoDetailHistory[videoDetailHistory.length - 1];
+  const isSame =
+    top &&
+    top.type === next.type &&
+    top.id === next.id &&
+    top.uid === next.uid &&
+    (top.focus || "") === next.focus;
+  if (replace && videoDetailHistory.length) {
+    videoDetailHistory[videoDetailHistory.length - 1] = next;
+  } else if (!isSame) {
+    videoDetailHistory.push(next);
+  }
+  setVideoDetailTitle();
+}
+function renderVideoDetailState(state) {
+  if (!state) return;
+  stopVideoDetailPlayback();
+  if (state.type === "channel") renderVideoChannelModal(state.uid);
+  else renderVideoWatchModal(state.id, state.focus || "");
+}
+function goBackVideoDetail() {
+  if (videoDetailHistory.length > 1) {
+    videoDetailHistory.pop();
+    renderVideoDetailState(videoDetailHistory[videoDetailHistory.length - 1]);
+    return;
+  }
+  closeOvl("videoDetailOvl");
+}
 function closeOvl(id) {
+  if (id === "videoDetailOvl") stopVideoDetailPlayback();
   const el = document.getElementById(id);
   if (el) el.classList.remove("show");
+  if (id === "videoDetailOvl") resetVideoDetailState();
 }
 document.addEventListener("click", (e) => {
   document.querySelectorAll(".ovl.show").forEach((o) => {
-    if (e.target === o) o.classList.remove("show");
+    if (e.target === o) closeOvl(o.id);
   });
 });
 document.addEventListener("keydown", (e) => {
   if (e.key === "Escape") {
-    document
-      .querySelectorAll(".ovl.show")
-      .forEach((o) => o.classList.remove("show"));
+    document.querySelectorAll(".ovl.show").forEach((o) => closeOvl(o.id));
     closeRP();
     closeSH();
   }
@@ -2733,80 +2796,437 @@ function renderVidFeed() {
   }
   c.innerHTML = vids.map((v) => mkVidCard(v)).join("");
 }
-function mkVidCard(v) {
-  const u = getUser(v.uid) || {
-    name: "Unknown",
-    handle: "unknown",
-    verified: false,
+function getVidCreator(v) {
+  const u = getUser(v.uid) || v.user || {};
+  return {
+    id: (u.id || u._id || v.uid || "").toString(),
+    name: u.name || "Unknown",
+    handle: u.handle || "unknown",
+    avatar: u.avatar || null,
+    verified: !!u.verified,
+    bio: u.bio || "",
+    followers: Array.isArray(u.followers) ? u.followers : [],
+    following: Array.isArray(u.following) ? u.following : [],
+    banner: u.banner || null,
   };
+}
+function isVidSubscribed(uid) {
+  if (!CU || !uid) return false;
+  return (CU.following || []).includes(uid);
+}
+function fmtVidSubs(uid) {
+  const u = getUser(uid);
+  const count = (u?.followers || []).length;
+  return `${fmtV(count)} subscriber${count === 1 ? "" : "s"}`;
+}
+function getVidReactionState(v) {
+  const me = CU ? (CU.id || CU._id || "") : "";
+  return {
+    liked: !!(me && (v.likes || []).includes(me)),
+    disliked: !!(me && (v.dislikes || []).includes(me)),
+  };
+}
+function getVidComments(v) {
+  return [...(v.cmts || [])]
+    .map((cm, idx) => ({
+      ...cm,
+      id: cm.id || `${v.id}_c_${idx}`,
+      replies: cm.replies || [],
+      pinned: !!cm.pinned,
+    }))
+    .sort((a, b) => Number(!!b.pinned) - Number(!!a.pinned));
+}
+function fmtVideoAge(ts) {
+  const t = Number(ts) || new Date(ts || 0).getTime();
+  if (!t) return "Recently";
+  const diff = Math.max(0, Date.now() - t);
+  if (diff < 3600000) return Math.max(1, Math.floor(diff / 60000)) + "m ago";
+  if (diff < 86400000) return Math.max(1, Math.floor(diff / 3600000)) + "h ago";
+  if (diff < 2592000000) return Math.max(1, Math.floor(diff / 86400000)) + "d ago";
+  if (diff < 31536000000) return Math.max(1, Math.floor(diff / 2592000000)) + "mo ago";
+  return Math.max(1, Math.floor(diff / 31536000000)) + "y ago";
+}
+function fmtVideoDesc(text, fallback = "") {
+  const copy = (text || fallback || "").trim();
+  return esc(copy).replace(/\n/g, "<br>");
+}
+function getVideoBrowseChips(v, u) {
+  const chips = ["All"];
+  if (u?.name) chips.push(`From ${u.name.split(" ").slice(0, 2).join(" ")}`);
+  if (v?.cat) chips.push(v.cat);
+  chips.push((v?.views || 0) > 10000 ? "Popular" : "Fresh");
+  chips.push("Bhakti");
+  return chips.slice(0, 5);
+}
+function mkVidCard(v) {
+  const u = getVidCreator(v);
   const ini = getIni(u.name);
   const avH = u.avatar ? `<img src="${u.avatar}" alt="">` : ini;
-  const liked = CU && (v.likes || []).includes(CU.id);
+  const rx = getVidReactionState(v);
   const cmts = v.cmts || [];
-  return `<div class="vid-card" id="vc_${v.id}"><div class="vid-card-thumb"><video src="${v.src}" controls preload="metadata" playsinline style="width:100%;max-height:340px;object-fit:contain;background:#000" onplay="trackVidView('${v.id}')" onerror="this.style.background='#1a1a1a'"></video><div class="vid-overlay"><span class="vid-duration">${v.dur || "--:--"}</span></div></div><div class="vid-card-body"><div class="vid-card-meta"><div class="av av40" onclick="vpro('${u.id}')" style="cursor:pointer">${avH}</div><div class="vid-card-info"><div class="vid-card-title">${esc(v.title)}</div><div class="vid-card-channel" onclick="vpro('${u.id}')">${u.name}${u.verified ? " 🔱" : ""}</div><div class="vid-card-stats">${fmtV(v.views)} views · ${v.cat}</div></div><div class="more-wrap"><button class="sb" style="width:26px;height:26px;border-radius:6px" onclick="toggleVidMore('${v.id}',event)"><svg style="width:15px;height:15px" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/><circle cx="5" cy="12" r="1"/></svg></button><div class="more-menu" id="vm_${v.id}">${CU && v.uid === CU.id ? `<button class="mi red" onclick="deleteVid('${v.id}')"><svg viewBox="0 0 24 24"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>Delete</button>` : ""}<button class="mi" onclick="shareVid('${v.id}')"><svg viewBox="0 0 24 24"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg>Share</button></div></div></div></div><div class="vid-card-actions"><button class="va${liked ? " vliked" : ""}" onclick="toggleVidLike('${v.id}',this)"><svg viewBox="0 0 24 24" ${liked ? 'style="fill:#e53935;stroke:#e53935"' : ""}><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg><span id="vlc_${v.id}">${(v.likes || []).length}</span></button><button class="va" onclick="toggleVCmts('${v.id}')"><svg viewBox="0 0 24 24"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>${cmts.length}</button><button class="va" onclick="shareVid('${v.id}')"><svg viewBox="0 0 24 24"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg>Share</button></div><div class="vcmts" id="vcm_${v.id}">${cmts
-    .map((cm) => {
-      const cu = getUser(cm.uid);
-      return `<div class="vcmt">${avHTML(cm.uid, "av28")}<div class="vcmt-body" style="margin-left:8px"><span class="vcmt-name">${cu?.name || "User"}</span><br>${esc(cm.txt)}</div></div>`;
-    })
-    .join(
-      "",
-    )}<div class="cmt-row" style="margin-top:10px">${avHTML(CU ? CU.id : "u1", "av28")}<input class="cmt-in" id="vci_${v.id}" placeholder="Add a comment…" onkeydown="if(event.key==='Enter'){event.preventDefault();submitVidCmt('${v.id}')}"><button class="btn btn-p btn-sm" onclick="submitVidCmt('${v.id}')">Post</button></div></div></div>`;
+  const mediaH = v.thumb
+    ? `<img src="${v.thumb}" alt="${esc(v.title)}" style="width:100%;max-height:340px;object-fit:cover;background:#000">`
+    : `<video src="${v.src}" muted preload="metadata" playsinline style="width:100%;max-height:340px;object-fit:contain;background:#000" onmouseenter="this.play().catch(()=>{})" onmouseleave="this.pause();try{this.currentTime=0}catch(e){}" onerror="this.style.background='#1a1a1a'"></video>`;
+  return `<div class="vid-card" id="vc_${v.id}"><div class="vid-card-thumb" onclick="openVideoWatch('${v.id}')">${mediaH}<div class="vid-overlay"><span class="vid-duration">${v.dur || "--:--"}</span></div><div class="vid-card-play">▶ Watch on Tirth Tube</div></div><div class="vid-card-body"><div class="vid-card-meta"><div class="av av40" onclick="openVideoChannel('${u.id}')" style="cursor:pointer">${avH}</div><div class="vid-card-info"><div class="vid-card-title" onclick="openVideoWatch('${v.id}')">${esc(v.title)}</div><div class="vid-card-channel" onclick="openVideoChannel('${u.id}')">${u.name}${u.verified ? " 🔱" : ""}</div><div class="vid-card-stats">${fmtV(v.views)} views · ${v.cat} · ${fmtVidSubs(u.id)}</div></div><div class="more-wrap"><button class="sb" style="width:26px;height:26px;border-radius:6px" onclick="toggleVidMore('${v.id}',event)"><svg style="width:15px;height:15px" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/><circle cx="5" cy="12" r="1"/></svg></button><div class="more-menu" id="vm_${v.id}">${CU && v.uid === CU.id ? `<button class="mi red" onclick="deleteVid('${v.id}')"><svg viewBox="0 0 24 24"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>Delete</button>` : ""}<button class="mi" onclick="shareVid('${v.id}')"><svg viewBox="0 0 24 24"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg>Share</button></div></div></div></div><div class="vid-card-actions"><button class="va${rx.liked ? " vliked" : ""}" onclick="toggleVidLike('${v.id}',this,event)"><svg viewBox="0 0 24 24" ${rx.liked ? 'style="fill:#e53935;stroke:#e53935"' : ""}><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg><span id="vlc_${v.id}">${(v.likes || []).length}</span></button><button class="va" onclick="openVideoWatch('${v.id}','comments')"><svg viewBox="0 0 24 24"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>${cmts.length}</button><button class="va" onclick="shareVid('${v.id}')"><svg viewBox="0 0 24 24"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg>Share</button></div></div>`;
 }
-function toggleVidLike(id, btn) {
+async function syncVideoForDetail(id) {
+  if (window.API && API.getVideo) {
+    try {
+      const fresh = await API.getVideo(id);
+      if (getVideo(id)) saveVideo(id, fresh);
+      return fresh;
+    } catch { }
+  }
+  return getVideo(id);
+}
+function renderVidSideItem(v) {
+  const u = getVidCreator(v);
+  const media = v.thumb
+    ? `<img src="${v.thumb}" alt="${esc(v.title)}">`
+    : `<video src="${v.src}" muted playsinline preload="metadata"></video>`;
+  return `<div class="video-side-item" onclick="openVideoWatch('${v.id}')"><div class="video-side-thumb">${media}<span class="vid-duration">${v.dur || "--:--"}</span></div><div class="video-side-copy"><strong>${esc(v.title)}</strong><span class="video-side-channel">${u.name}${u.verified ? " 🔱" : ""}</span><span class="video-side-meta">${fmtV(v.views)} views · ${fmtVideoAge(v.ts)}</span></div></div>`;
+}
+function renderVidComment(videoId, ownerId, cm) {
+  const cu = cm.user || getUser(cm.uid) || { name: "User", handle: "user" };
+  const av = cu.avatar ? `<img src="${cu.avatar}" alt="">` : getIni(cu.name);
+  const replies = (cm.replies || [])
+    .map((r) => {
+      const ru = r.user || getUser(r.uid) || { name: "User", handle: "user" };
+      const rav = ru.avatar ? `<img src="${ru.avatar}" alt="">` : getIni(ru.name);
+      return `<div class="video-reply-item"><div class="av av28">${rav}</div><div class="video-reply-copy"><div class="video-comment-meta"><strong>${ru.name}</strong><span>@${ru.handle || "user"}</span><span>${r.t || ""}</span></div><div class="video-comment-text">${esc(r.txt || "")}</div></div></div>`;
+    })
+    .join("");
+  const isOwner = CU && (CU.id || CU._id) === ownerId;
+  return `<div class="video-comment-card"><div class="video-comment-top"><div class="av av36">${av}</div><div class="video-comment-copy"><div class="video-comment-meta"><strong>${cu.name}</strong><span>@${cu.handle || "user"}</span><span>${cm.t || ""}</span>${cm.pinned ? '<span class="video-pinned-pill">Pinned</span>' : ""}</div><div class="video-comment-text">${esc(cm.txt || "")}</div><div class="video-comment-actions"><button class="video-text-btn" onclick="toggleVideoReplyBox('${videoId}','${cm.id}')">Reply</button>${isOwner ? `<button class="video-text-btn" onclick="pinVidComment('${videoId}','${cm.id}')">${cm.pinned ? "Unpin" : "Pin"}</button>` : ""}</div><div class="video-reply-box hide" id="vreply_${videoId}_${cm.id}"><input class="fi" id="vreplyin_${videoId}_${cm.id}" placeholder="Write a reply..." onkeydown="if(event.key==='Enter'){event.preventDefault();submitVidReply('${videoId}','${cm.id}')}"><button class="btn btn-p btn-sm" onclick="submitVidReply('${videoId}','${cm.id}')">Reply</button></div>${replies ? `<div class="video-replies">${replies}</div>` : ""}</div></div></div>`;
+}
+function renderVideoWatchModal(id, focus = "") {
+  const c = document.getElementById("videoDetailContent");
+  const v = getVideo(id);
+  if (!c || !v) return;
+  activeVidWatchId = id;
+  activeVidChannelId = null;
+  const u = getVidCreator(v);
+  const rx = getVidReactionState(v);
+  const comments = getVidComments(v);
+  const related = getVideos()
+    .filter((x) => x.id !== v.id)
+    .sort((a, b) => {
+      const catBoost = Number(b.cat === v.cat) - Number(a.cat === v.cat);
+      if (catBoost) return catBoost;
+      return b.views + (b.likes || []).length - (a.views + (a.likes || []).length);
+    })
+    .slice(0, 6);
+  const isOwnChannel = CU && (CU.id || CU._id) === u.id;
+  const published = fmtVideoAge(v.ts);
+  const chipHtml = getVideoBrowseChips(v, u)
+    .map(
+      (chip, idx) =>
+        `<button class="video-chip${idx === 0 ? " on" : ""}" type="button">${esc(chip)}</button>`,
+    )
+    .join("");
+  const descHtml = fmtVideoDesc(
+    v.desc,
+    `${u.name} shares ${String(v.cat || "devotional").toLowerCase()} moments, satsang clips, and spiritual stories on Tirth Tube.`,
+  );
+  const mediaH = `<video src="${v.src}" controls autoplay playsinline style="width:100%;max-height:520px;object-fit:contain;background:#000" onplay="trackVidView('${v.id}')"></video>`;
+  c.innerHTML = `<div class="video-watch-layout"><div class="video-watch-main"><div class="video-watch-player">${mediaH}</div><div class="video-watch-meta"><div class="video-watch-title">${esc(v.title)}</div><div class="video-watch-sub">${fmtV(v.views)} views · ${published}</div><div class="video-channel-row"><div class="video-channel-main"><div class="av av48" onclick="openVideoChannel('${u.id}')">${u.avatar ? `<img src="${u.avatar}" alt="">` : getIni(u.name)}</div><div class="video-channel-copy"><strong onclick="openVideoChannel('${u.id}')" style="cursor:pointer">${u.name}${u.verified ? " 🔱" : ""}</strong><span>@${u.handle} · ${fmtVidSubs(u.id)}</span></div></div>${u.id ? `<button class="video-sub-btn${isVidSubscribed(u.id) || isOwnChannel ? " subbed" : ""}" ${isOwnChannel ? "disabled" : `onclick="toggleVideoSubscribe('${u.id}')"`}>${isOwnChannel ? "Your channel" : isVidSubscribed(u.id) ? "Subscribed" : "Subscribe"}</button>` : ""}</div><div class="video-react-row"><div class="video-pill-group"><button class="video-react-btn like${rx.liked ? " on" : ""}" onclick="toggleVidLike('${v.id}',this,event)"><svg viewBox="0 0 24 24"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg><span>${fmtV((v.likes || []).length)}</span></button><span class="video-pill-divider"></span><button class="video-react-btn dislike${rx.disliked ? " on" : ""}" onclick="toggleVidDislike('${v.id}',this,event)"><svg viewBox="0 0 24 24"><path d="M10 14V5a3 3 0 0 1 3-3h4a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2h-5l1 7-6-9z"/></svg><span>${fmtV((v.dislikes || []).length)}</span></button></div><button class="video-react-btn" onclick="openVideoWatch('${v.id}','comments')"><svg viewBox="0 0 24 24"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg><span>${comments.length} Comments</span></button><button class="video-react-btn" onclick="shareVid('${v.id}')"><svg viewBox="0 0 24 24"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg><span>Share</span></button><button class="video-react-btn" onclick="openVideoChannel('${u.id}')"><svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="15" rx="2"/><path d="M8 21h8"/><path d="M12 19v2"/></svg><span>Channel</span></button></div><div class="video-meta-card"><div class="video-meta-top"><strong>${fmtV(v.views)} views</strong><span>${published}</span><span class="video-meta-badge">${esc(v.cat)}</span></div><div class="video-meta-desc">${descHtml}</div></div><div class="video-comments-card" id="videoCommentsBlock"><div class="video-comments-head"><div class="video-section-title">${comments.length} comment${comments.length === 1 ? "" : "s"}</div><button class="video-chip on" type="button">Community</button></div>${comments.length ? comments.map((cm) => renderVidComment(v.id, u.id, cm)).join("") : `<div class="empty-sub">No comments yet. Start the conversation.</div>`}<div class="video-comment-box">${avHTML(CU ? CU.id : "u1", "av36")}<input class="fi" id="watchVidCommentIn" placeholder="Add a public comment..." onkeydown="if(event.key==='Enter'){event.preventDefault();submitVidCmt('${v.id}')}"><button class="btn btn-p btn-sm" onclick="submitVidCmt('${v.id}')">Comment</button></div></div></div></div><div class="video-watch-side"><div class="video-chip-row">${chipHtml}</div><div class="video-side-card"><div class="video-side-header"><div class="video-section-title">Up next</div><span>${u.name.split(" ")[0]} and similar</span></div><div class="video-side-list">${related.length ? related.map((rv) => renderVidSideItem(rv)).join("") : `<div class="empty-sub">More videos will appear here.</div>`}</div></div></div></div>`;
+  openOvl("videoDetailOvl");
+  if (focus === "comments") {
+    setTimeout(() => {
+      document.getElementById("videoCommentsBlock")?.scrollIntoView({
+        behavior: "smooth",
+        block: "start",
+      });
+    }, 80);
+  }
+}
+async function openVideoWatch(id, focus = "") {
+  await syncVideoForDetail(id);
+  if (!document.getElementById("videoDetailOvl")?.classList.contains("show")) {
+    videoDetailHistory = [];
+  }
+  stopVideoDetailPlayback();
+  syncVideoDetailState({ type: "watch", id, focus });
+  renderVideoWatchModal(id, focus);
+}
+function renderVideoChannelModal(uid) {
+  const c = document.getElementById("videoDetailContent");
+  const u = getUser(uid);
+  if (!c || !u) return;
+  activeVidChannelId = uid;
+  const vids = getVideos()
+    .filter((v) => v.uid === uid)
+    .sort((a, b) => b.ts - a.ts);
+  const isOwnChannel = CU && (CU.id || CU._id) === uid;
+  const totalViews = vids.reduce((sum, vid) => sum + (vid.views || 0), 0);
+  const tabs = ["Home", "Videos", u.verified ? "Official" : "Community"];
+  c.innerHTML = `<div class="video-channel-hero"><div class="video-channel-banner" ${u.banner ? `style="background-image:url('${u.banner}');background-size:cover;background-position:center"` : ""}></div><div class="video-channel-body"><div class="video-channel-top"><div style="display:flex;gap:14px;align-items:flex-end"><div class="av av96">${u.avatar ? `<img src="${u.avatar}" alt="">` : getIni(u.name)}</div><div><div class="video-channel-name">${u.name}${u.verified ? " 🔱" : ""}</div><div class="video-channel-handle">@${u.handle}</div><div class="video-channel-stats">${fmtVidSubs(uid)} · ${fmtV(vids.length)} video${vids.length === 1 ? "" : "s"} · ${fmtV(totalViews)} views</div></div></div>${uid ? `<button class="video-sub-btn${isVidSubscribed(uid) || isOwnChannel ? " subbed" : ""}" ${isOwnChannel ? "disabled" : `onclick="toggleVideoSubscribe('${uid}')"`}>${isOwnChannel ? "Your channel" : isVidSubscribed(uid) ? "Subscribed" : "Subscribe"}</button>` : ""}</div><div class="video-channel-bio">${esc(u.bio || `${u.name} shares spiritual clips, yatra moments, and Tirth Tube updates for the community.`)}</div></div></div><div class="video-chip-row video-channel-tabs">${tabs.map((tab, idx) => `<button class="video-chip${idx === 0 ? " on" : ""}" type="button">${tab}</button>`).join("")}</div><div class="video-side-card video-channel-panel"><div class="video-side-header"><div class="video-section-title">Uploads</div><span>${fmtV(totalViews)} total views</span></div><div class="video-channel-list">${vids.length ? vids.map((video) => renderVidSideItem(video)).join("") : `<div class="empty-sub">No videos uploaded yet.</div>`}</div></div>`;
+  openOvl("videoDetailOvl");
+}
+function openVideoChannel(uid) {
+  if (!document.getElementById("videoDetailOvl")?.classList.contains("show")) {
+    activeVidWatchId = null;
+    videoDetailHistory = [];
+  }
+  stopVideoDetailPlayback();
+  syncVideoDetailState({ type: "channel", uid });
+  renderVideoChannelModal(uid);
+}
+function rerenderVideoDetail() {
+  if (document.getElementById("videoDetailOvl")?.classList.contains("show")) {
+    if (activeVidChannelId) renderVideoChannelModal(activeVidChannelId);
+    else if (activeVidWatchId) renderVideoWatchModal(activeVidWatchId);
+  }
+}
+async function toggleVidLike(id, btn, e) {
   if (!CU) {
     openOvl("authOvl");
     return;
   }
+  if (e) e.stopPropagation();
   const v = getVideo(id);
   if (!v) return;
-  const likes = v.likes || [];
-  const i = likes.indexOf(CU.id);
-  if (i > -1) likes.splice(i, 1);
-  else likes.push(CU.id);
-  saveVideo(id, { likes });
-  const liked = likes.includes(CU.id);
-  if (btn) {
-    btn.className = `va${liked ? " vliked" : ""}`;
-    const sv = btn.querySelector("svg");
-    if (sv) {
-      sv.style.fill = liked ? "#e53935" : "";
-      sv.style.stroke = liked ? "#e53935" : "";
+  let likes = [...(v.likes || [])];
+  let dislikes = [...(v.dislikes || [])];
+  if (window.API && API.getToken && API.getToken() && API.toggleVideoLike) {
+    try {
+      const result = await API.toggleVideoLike(id);
+      likes = result.likes || likes;
+      dislikes = result.dislikes || dislikes;
+    } catch (err) {
+      MC.error(err.message || "Failed to react to video");
+      return;
+    }
+  } else {
+    const me = CU.id || CU._id;
+    const idx = likes.indexOf(me);
+    if (idx > -1) likes.splice(idx, 1);
+    else {
+      likes.push(me);
+      dislikes = dislikes.filter((x) => x !== me);
     }
   }
-  const sp = document.getElementById("vlc_" + id);
-  if (sp) sp.textContent = likes.length;
+  saveVideo(id, { likes, dislikes });
+  renderVidFeed();
+  rerenderVideoDetail();
 }
 function toggleVCmts(id) {
-  const el = document.getElementById("vcm_" + id);
-  if (el) el.style.display = el.style.display === "block" ? "none" : "block";
+  openVideoWatch(id, "comments");
 }
-function submitVidCmt(id) {
+async function toggleVidDislike(id, btn, e) {
   if (!CU) {
     openOvl("authOvl");
     return;
   }
-  const inp = document.getElementById("vci_" + id);
+  if (e) e.stopPropagation();
+  const v = getVideo(id);
+  if (!v) return;
+  let likes = [...(v.likes || [])];
+  let dislikes = [...(v.dislikes || [])];
+  if (window.API && API.getToken && API.getToken() && API.toggleVideoDislike) {
+    try {
+      const result = await API.toggleVideoDislike(id);
+      likes = result.likes || likes;
+      dislikes = result.dislikes || dislikes;
+    } catch (err) {
+      MC.error(err.message || "Failed to react to video");
+      return;
+    }
+  } else {
+    const me = CU.id || CU._id;
+    const idx = dislikes.indexOf(me);
+    if (idx > -1) dislikes.splice(idx, 1);
+    else {
+      dislikes.push(me);
+      likes = likes.filter((x) => x !== me);
+    }
+  }
+  saveVideo(id, { likes, dislikes });
+  renderVidFeed();
+  rerenderVideoDetail();
+}
+async function submitVidCmt(id) {
+  if (!CU) {
+    openOvl("authOvl");
+    return;
+  }
+  const inp =
+    document.getElementById("watchVidCommentIn") ||
+    document.getElementById("vci_" + id);
   const text = inp?.value?.trim() || "";
   if (!text) return;
   const v = getVideo(id);
   if (!v) return;
-  const cmts = v.cmts || [];
-  cmts.push({ uid: CU.id, txt: text, t: "Just now" });
-  saveVideo(id, { cmts });
-  const vcm = document.getElementById("vcm_" + id);
-  if (vcm) {
-    const d = document.createElement("div");
-    d.className = "vcmt";
-    d.innerHTML = `${avHTML(CU.id, "av28")}<div class="vcmt-body" style="margin-left:8px"><span class="vcmt-name">${CU.name}</span><br>${esc(text)}</div>`;
-    vcm.insertBefore(d, vcm.lastElementChild);
+  let newComment = null;
+  if (window.API && API.getToken && API.getToken() && API.addVideoComment) {
+    try {
+      newComment = await API.addVideoComment(id, text);
+    } catch (err) {
+      MC.error(err.message || "Failed to post comment");
+      return;
+    }
+  } else {
+    newComment = {
+      id: "vcm" + Date.now(),
+      uid: CU.id || CU._id,
+      user: {
+        id: CU.id || CU._id,
+        name: CU.name,
+        handle: CU.handle,
+        avatar: CU.avatar,
+        verified: CU.verified,
+      },
+      txt: text,
+      t: "Just now",
+      pinned: false,
+      replies: [],
+    };
   }
+  const cmts = [...(v.cmts || []), newComment];
+  saveVideo(id, { cmts });
   if (inp) inp.value = "";
+  renderVidFeed();
+  rerenderVideoDetail();
   MC.success("Comment posted 🙏");
+}
+function toggleVideoReplyBox(videoId, commentId) {
+  const el = document.getElementById(`vreply_${videoId}_${commentId}`);
+  if (el) el.classList.toggle("hide");
+}
+async function submitVidReply(videoId, commentId) {
+  if (!CU) {
+    openOvl("authOvl");
+    return;
+  }
+  const inp = document.getElementById(`vreplyin_${videoId}_${commentId}`);
+  const text = inp?.value?.trim() || "";
+  if (!text) return;
+  const v = getVideo(videoId);
+  if (!v) return;
+  let reply = null;
+  if (window.API && API.getToken && API.getToken() && API.addVideoReply) {
+    try {
+      reply = await API.addVideoReply(videoId, commentId, text);
+    } catch (err) {
+      MC.error(err.message || "Failed to post reply");
+      return;
+    }
+  } else {
+    reply = {
+      id: "vr" + Date.now(),
+      uid: CU.id || CU._id,
+      user: {
+        id: CU.id || CU._id,
+        name: CU.name,
+        handle: CU.handle,
+        avatar: CU.avatar,
+        verified: CU.verified,
+      },
+      txt: text,
+      t: "Just now",
+    };
+  }
+  const cmts = (v.cmts || []).map((cm) =>
+    cm.id === commentId
+      ? { ...cm, replies: [...(cm.replies || []), reply] }
+      : cm,
+  );
+  saveVideo(videoId, { cmts });
+  if (inp) inp.value = "";
+  rerenderVideoDetail();
+  MC.success("Reply posted 🙏");
+}
+async function pinVidComment(videoId, commentId) {
+  if (!CU) {
+    openOvl("authOvl");
+    return;
+  }
+  const v = getVideo(videoId);
+  if (!v) return;
+  let pinnedId = commentId;
+  if (window.API && API.getToken && API.getToken() && API.pinVideoComment) {
+    try {
+      const result = await API.pinVideoComment(videoId, commentId);
+      pinnedId = result.pinnedCommentId;
+    } catch (err) {
+      MC.error(err.message || "Could not pin comment");
+      return;
+    }
+  } else {
+    const current = (v.cmts || []).find((cm) => cm.pinned);
+    pinnedId = current && current.id === commentId ? null : commentId;
+  }
+  const cmts = (v.cmts || []).map((cm) => ({
+    ...cm,
+    pinned: !!pinnedId && cm.id === pinnedId,
+  }));
+  saveVideo(videoId, { cmts });
+  rerenderVideoDetail();
+}
+async function toggleVideoSubscribe(uid) {
+  if (!CU) {
+    openOvl("authOvl");
+    return;
+  }
+  const myId = CU.id || CU._id;
+  if (!uid || uid === myId) return;
+  const u = getUser(uid);
+  let following = [...(CU.following || [])];
+  let followers = [...(u?.followers || [])];
+  let subscribed = false;
+  if (window.API && API.getToken && API.getToken() && API.toggleFollow) {
+    try {
+      const result = await API.toggleFollow(uid);
+      following = result.myFollowing || following;
+      followers = result.targetFollowers || followers;
+      subscribed = !!result.following;
+    } catch (err) {
+      MC.error(err.message || "Could not subscribe");
+      return;
+    }
+  } else {
+    const idx = following.indexOf(uid);
+    if (idx > -1) {
+      following.splice(idx, 1);
+      followers = followers.filter((f) => f !== myId);
+      subscribed = false;
+    } else {
+      following.push(uid);
+      followers.push(myId);
+      subscribed = true;
+    }
+  }
+  updateUser(myId, { following });
+  if (u) updateUser(uid, { followers });
+  CU.following = following;
+  const vids = getVideos();
+  let didUpdateVideos = false;
+  vids.forEach((video) => {
+    if (video.uid === uid && video.user) {
+      video.user.followers = followers;
+      didUpdateVideos = true;
+    }
+  });
+  if (didUpdateVideos) Store.s("videos", vids);
+  if (window.API && API.setUser) API.setUser(CU);
+  Store.s("currentUser", CU);
+  renderVidFeed();
+  rerenderVideoDetail();
+  MC.info(
+    subscribed
+      ? `Subscribed to @${u?.handle || "channel"}`
+      : "Subscription removed",
+  );
 }
 function trackVidView(id) {
   const v = getVideo(id);
   if (!v) return;
+  if (trackedVideoViews.has(id)) return;
+  trackedVideoViews.add(id);
   saveVideo(id, { views: (v.views || 0) + 1 });
+  if (window.API && API.viewVideo) {
+    API.viewVideo(id).catch(() => { });
+  }
 }
 function toggleVidMore(id, e) {
   if (e) e.stopPropagation();
