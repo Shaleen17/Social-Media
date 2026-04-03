@@ -8,6 +8,32 @@ const SocketClient = (() => {
   let _onlineUsers = new Set();
   let _typingTimers = {};
   let reconnectTimer = null; // Added reconnectTimer
+  const _socketReadyListeners = new Set();
+
+  function notifySocketReady(activeSocket) {
+    _socketReadyListeners.forEach((listener) => {
+      try {
+        listener(activeSocket);
+      } catch (err) {
+        console.error("SocketClient listener error:", err);
+      }
+    });
+  }
+
+  function onSocketReady(listener) {
+    if (typeof listener !== "function") return () => {};
+    _socketReadyListeners.add(listener);
+    if (socket) {
+      try {
+        listener(socket);
+      } catch (err) {
+        console.error("SocketClient listener error:", err);
+      }
+    }
+    return () => {
+      _socketReadyListeners.delete(listener);
+    };
+  }
 
   function connect(uid) {
     const token = typeof API !== "undefined" ? API.getToken() : null; // Safely get token
@@ -34,6 +60,7 @@ const SocketClient = (() => {
     if (socket && socket.connected) {
       console.log("Socket already connected.");
       socket.emit("join", uid);
+      notifySocketReady(socket);
       return;
     }
     
@@ -52,12 +79,14 @@ const SocketClient = (() => {
       reconnectionAttempts: 10, // Changed from Infinity
       reconnectionDelay: 2000, // Changed from 1000
     });
+    notifySocketReady(socket);
 
     socket.on("connect", () => {
       console.log("🔌 Socket connected:", socket.id);
       if (userId) {
         socket.emit("join", userId);
       }
+      notifySocketReady(socket);
     });
 
     // Receive full online users list
@@ -146,6 +175,11 @@ const SocketClient = (() => {
     socket.on("reconnect", () => {
       console.log("🔌 Socket reconnected");
       if (userId) socket.emit("join", userId);
+      notifySocketReady(socket);
+    });
+
+    socket.on("connect_error", (err) => {
+      console.error("Socket connect error:", err?.message || err);
     });
   }
 
@@ -246,6 +280,8 @@ const SocketClient = (() => {
     getOnlineUsers,
     getSocket: () => socket,
     getUserId: () => userId,
+    isConnected: () => !!(socket && socket.connected),
+    onSocketReady,
   };
 })();
 

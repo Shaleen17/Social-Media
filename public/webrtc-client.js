@@ -8,6 +8,7 @@ const WebRTCClient = (() => {
   let remoteStream = null;
   let pendingIceCandidates = [];
   let boundSocket = null;
+  let removeSocketReadyListener = null;
 
   // Call State
   let isInCall = false;
@@ -72,7 +73,15 @@ const WebRTCClient = (() => {
     els.btnMute?.addEventListener("click", toggleMute);
     els.btnCam?.addEventListener("click", toggleCamera);
 
-    setupSocketListeners();
+    if (
+      typeof SocketClient !== "undefined" &&
+      typeof SocketClient.onSocketReady === "function"
+    ) {
+      if (removeSocketReadyListener) removeSocketReadyListener();
+      removeSocketReadyListener = SocketClient.onSocketReady(bindSocketListeners);
+    } else {
+      setupSocketListeners();
+    }
   }
 
   // Bind Socket.io events
@@ -82,7 +91,11 @@ const WebRTCClient = (() => {
       setTimeout(setupSocketListeners, 1000); // Retry if socket not ready
       return;
     }
+    bindSocketListeners(socket);
+  }
 
+  function bindSocketListeners(socket) {
+    if (!socket) return;
     // Rebind if Socket.io recreated the socket instance after reconnect/login
     if (boundSocket === socket) return;
     if (boundSocket) {
@@ -106,6 +119,54 @@ const WebRTCClient = (() => {
     console.log("WebRTC Client: Socket listeners attached successfully.");
   }
 
+  async function waitForConnectedSocket(timeoutMs = 7000) {
+    const startedAt = Date.now();
+
+    while (Date.now() - startedAt < timeoutMs) {
+      const socket = typeof SocketClient !== "undefined" ? SocketClient.getSocket() : null;
+      if (socket && socket.connected) {
+        bindSocketListeners(socket);
+        return socket;
+      }
+      await new Promise((resolve) => setTimeout(resolve, 150));
+    }
+
+    throw new Error("Real-time connection is not ready");
+  }
+
+  async function emitWithAck(eventName, payload, timeoutMs = 5000) {
+    const socket = await waitForConnectedSocket(timeoutMs);
+
+    return new Promise((resolve, reject) => {
+      let settled = false;
+      const timer = setTimeout(() => {
+        if (settled) return;
+        settled = true;
+        reject(new Error(`${eventName} timed out`));
+      }, timeoutMs);
+
+      try {
+        socket.emit(eventName, payload, (response) => {
+          if (settled) return;
+          settled = true;
+          clearTimeout(timer);
+
+          if (response && response.ok === false) {
+            reject(new Error(response.error || `${eventName} failed`));
+            return;
+          }
+
+          resolve(response || { ok: true });
+        });
+      } catch (err) {
+        clearTimeout(timer);
+        if (settled) return;
+        settled = true;
+        reject(err);
+      }
+    });
+  }
+
   // 1. Initializer: Start a call (from UI)
   async function startCall(userToCallUid, userName, userAvatar, withVideo) {
     if (isInCall) return MC?.info("You are already in a call");
@@ -123,14 +184,14 @@ const WebRTCClient = (() => {
       const offer = await peerConnection.createOffer();
       await peerConnection.setLocalDescription(offer);
       
-      const socket = SocketClient.getSocket();
-      socket.emit("callUser", {
+      await emitWithAck("callUser", {
         userToCall: userToCallUid,
         signalData: offer,
         from: SocketClient.getUserId(),
         name: (typeof CU !== "undefined" && CU) ? CU.name : "Someone",
         isVideo: withVideo,
       });
+      if (els.statusTxt) els.statusTxt.textContent = "Ringing...";
 
       // Start 30-second call timeout
       callTimeout = setTimeout(() => {
@@ -144,7 +205,7 @@ const WebRTCClient = (() => {
     } catch (err) {
       console.error("Failed to start call", err);
       resetCallUI();
-      MC?.error(getMediaErrorMessage(err, withVideo));
+      MC?.error(getCallErrorMessage(err, withVideo));
     }
   }
 
@@ -158,7 +219,7 @@ const WebRTCClient = (() => {
     // data: { signal, from, name, isVideo }
     if (isInCall) {
       console.log("WebRTC: Busy, rejecting call");
-      SocketClient.getSocket().emit("rejectCall", { to: data.from });
+      emitWithAck("rejectCall", { to: data.from }, 3000).catch(() => {});
       return;
     }
     
@@ -187,7 +248,7 @@ const WebRTCClient = (() => {
       const answer = await peerConnection.createAnswer();
       await peerConnection.setLocalDescription(answer);
       
-      SocketClient.getSocket().emit("answerCall", {
+      await emitWithAck("answerCall", {
         to: currentCallUser.id,
         signal: answer
       });
@@ -195,13 +256,13 @@ const WebRTCClient = (() => {
     } catch (err) {
       console.error("Failed to answer call", err);
       endCallLocally();
-      MC?.error(getMediaErrorMessage(err, isVideoEnabled));
+      MC?.error(getCallErrorMessage(err, isVideoEnabled));
     }
   }
 
   // 4. Reject Call
   function rejectCall() {
-    SocketClient.getSocket().emit("rejectCall", { to: currentCallUser.id });
+    emitWithAck("rejectCall", { to: currentCallUser.id }, 3000).catch(() => {});
     resetCallUI();
   }
 
@@ -272,7 +333,7 @@ const WebRTCClient = (() => {
   // 9. End Call Locally
   function endCallLocally() {
     if (currentCallUser) {
-      SocketClient.getSocket().emit("endCall", { to: currentCallUser.id });
+      emitWithAck("endCall", { to: currentCallUser.id }, 3000).catch(() => {});
     }
     resetCallUI();
   }
@@ -342,9 +403,11 @@ const WebRTCClient = (() => {
     // Send ICE candidates to remote peer
     peerConnection.onicecandidate = (event) => {
       if (event.candidate) {
-        SocketClient.getSocket().emit("iceCandidate", {
+        emitWithAck("iceCandidate", {
           to: targetUserId,
           candidate: event.candidate,
+        }, 3000).catch((err) => {
+          console.warn("ICE candidate signaling failed:", err.message);
         });
       }
     };
@@ -475,6 +538,19 @@ const WebRTCClient = (() => {
         : "Microphone not found on this device";
     }
     return wantsVideo ? "Could not access camera or microphone" : "Could not access microphone";
+  }
+
+  function getCallErrorMessage(err, wantsVideo) {
+    const msg = err?.message || "";
+    if (
+      msg.includes("timed out") ||
+      msg.includes("Real-time connection is not ready") ||
+      msg.includes("User is offline") ||
+      msg.includes("Invalid")
+    ) {
+      return msg;
+    }
+    return getMediaErrorMessage(err, wantsVideo);
   }
 
   return {

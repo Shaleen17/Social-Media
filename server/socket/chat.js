@@ -250,13 +250,23 @@ module.exports = function setupSocket(io) {
     });
 
     // WebRTC signaling
-    socket.on("callUser", (data) => {
+    socket.on("callUser", (data, ack) => {
+      if (!data?.userToCall || !data?.from || !data?.signalData) {
+        if (typeof ack === "function") {
+          ack({ ok: false, error: "Invalid call payload" });
+        }
+        return;
+      }
+
       console.log(
         `callUser: ${data.from} -> ${data.userToCall} (online: ${isOnline(data.userToCall)})`
       );
 
       if (!isOnline(data.userToCall)) {
         socket.emit("callRejected", { reason: "User is offline" });
+        if (typeof ack === "function") {
+          ack({ ok: false, error: "User is offline" });
+        }
         return;
       }
 
@@ -268,23 +278,59 @@ module.exports = function setupSocket(io) {
       });
 
       socket.emit("callRinging", { to: data.userToCall });
+      if (typeof ack === "function") {
+        ack({ ok: true, ringing: true, to: data.userToCall });
+      }
     });
 
-    socket.on("answerCall", (data) => {
+    socket.on("answerCall", (data, ack) => {
+      if (!data?.to || !data?.signal) {
+        if (typeof ack === "function") {
+          ack({ ok: false, error: "Invalid answer payload" });
+        }
+        return;
+      }
+
       io.to(data.to).emit("callAccepted", data.signal);
+      if (typeof ack === "function") {
+        ack({ ok: true });
+      }
     });
 
-    socket.on("iceCandidate", (data) => {
+    socket.on("iceCandidate", (data, ack) => {
+      if (!data?.to || !data?.candidate) {
+        if (typeof ack === "function") {
+          ack({ ok: false, error: "Invalid ICE payload" });
+        }
+        return;
+      }
+
       io.to(data.to).emit("iceCandidate", data.candidate);
+      if (typeof ack === "function") {
+        ack({ ok: true });
+      }
     });
 
-    socket.on("rejectCall", (data) => {
+    socket.on("rejectCall", (data, ack) => {
+      if (!data?.to) {
+        if (typeof ack === "function") {
+          ack({ ok: false, error: "Invalid reject payload" });
+        }
+        return;
+      }
+
       io.to(data.to).emit("callRejected");
+      if (typeof ack === "function") {
+        ack({ ok: true });
+      }
     });
 
-    socket.on("endCall", (data) => {
+    socket.on("endCall", (data, ack) => {
       if (data.to) {
         io.to(data.to).emit("callEnded");
+      }
+      if (typeof ack === "function") {
+        ack({ ok: true });
       }
     });
 
