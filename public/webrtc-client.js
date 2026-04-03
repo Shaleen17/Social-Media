@@ -167,6 +167,24 @@ const WebRTCClient = (() => {
     });
   }
 
+  function serializeSessionDescription(desc) {
+    if (!desc) return null;
+    return {
+      type: desc.type,
+      sdp: desc.sdp,
+    };
+  }
+
+  function serializeIceCandidate(candidate) {
+    if (!candidate) return null;
+    return {
+      candidate: candidate.candidate,
+      sdpMid: candidate.sdpMid,
+      sdpMLineIndex: candidate.sdpMLineIndex,
+      usernameFragment: candidate.usernameFragment,
+    };
+  }
+
   // 1. Initializer: Start a call (from UI)
   async function startCall(userToCallUid, userName, userAvatar, withVideo) {
     if (isInCall) return MC?.info("You are already in a call");
@@ -186,7 +204,7 @@ const WebRTCClient = (() => {
       
       await emitWithAck("callUser", {
         userToCall: userToCallUid,
-        signalData: offer,
+        signalData: serializeSessionDescription(offer),
         from: SocketClient.getUserId(),
         name: (typeof CU !== "undefined" && CU) ? CU.name : "Someone",
         isVideo: withVideo,
@@ -250,7 +268,7 @@ const WebRTCClient = (() => {
       
       await emitWithAck("answerCall", {
         to: currentCallUser.id,
-        signal: answer
+        signal: serializeSessionDescription(answer)
       });
       
     } catch (err) {
@@ -405,7 +423,7 @@ const WebRTCClient = (() => {
       if (event.candidate) {
         emitWithAck("iceCandidate", {
           to: targetUserId,
-          candidate: event.candidate,
+          candidate: serializeIceCandidate(event.candidate),
         }, 3000).catch((err) => {
           console.warn("ICE candidate signaling failed:", err.message);
         });
