@@ -134,22 +134,40 @@ const WebRTCClient = (() => {
     throw new Error("Real-time connection is not ready");
   }
 
-  async function emitWithAck(eventName, payload, timeoutMs = 5000) {
+  async function emitWithAck(eventName, payload, options = {}) {
+    const {
+      timeoutMs = 5000,
+      requireAck = true,
+      fallbackResolveMs = 1200,
+    } = typeof options === "number" ? { timeoutMs: options } : options;
+
     const socket = await waitForConnectedSocket(timeoutMs);
 
     return new Promise((resolve, reject) => {
       let settled = false;
+      let fallbackTimer = null;
       const timer = setTimeout(() => {
         if (settled) return;
         settled = true;
+        if (fallbackTimer) clearTimeout(fallbackTimer);
         reject(new Error(`${eventName} timed out`));
       }, timeoutMs);
+
+      const resolveOptimistically = () => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        if (fallbackTimer) clearTimeout(fallbackTimer);
+        console.warn(`WebRTC signaling ack missing for ${eventName}; continuing with compatibility fallback.`);
+        resolve({ ok: true, fallback: true });
+      };
 
       try {
         socket.emit(eventName, payload, (response) => {
           if (settled) return;
           settled = true;
           clearTimeout(timer);
+          if (fallbackTimer) clearTimeout(fallbackTimer);
 
           if (response && response.ok === false) {
             reject(new Error(response.error || `${eventName} failed`));
@@ -158,8 +176,13 @@ const WebRTCClient = (() => {
 
           resolve(response || { ok: true });
         });
+
+        if (!requireAck) {
+          fallbackTimer = setTimeout(resolveOptimistically, Math.min(fallbackResolveMs, timeoutMs));
+        }
       } catch (err) {
         clearTimeout(timer);
+        if (fallbackTimer) clearTimeout(fallbackTimer);
         if (settled) return;
         settled = true;
         reject(err);
@@ -208,7 +231,7 @@ const WebRTCClient = (() => {
         from: SocketClient.getUserId(),
         name: (typeof CU !== "undefined" && CU) ? CU.name : "Someone",
         isVideo: withVideo,
-      });
+      }, { requireAck: false, timeoutMs: 5000, fallbackResolveMs: 1200 });
       if (els.statusTxt) els.statusTxt.textContent = "Ringing...";
 
       // Start 30-second call timeout
@@ -237,7 +260,7 @@ const WebRTCClient = (() => {
     // data: { signal, from, name, isVideo }
     if (isInCall) {
       console.log("WebRTC: Busy, rejecting call");
-      emitWithAck("rejectCall", { to: data.from }, 3000).catch(() => {});
+      emitWithAck("rejectCall", { to: data.from }, { requireAck: false, timeoutMs: 3000, fallbackResolveMs: 800 }).catch(() => {});
       return;
     }
     
@@ -269,7 +292,7 @@ const WebRTCClient = (() => {
       await emitWithAck("answerCall", {
         to: currentCallUser.id,
         signal: serializeSessionDescription(answer)
-      });
+      }, { requireAck: false, timeoutMs: 4000, fallbackResolveMs: 1000 });
       
     } catch (err) {
       console.error("Failed to answer call", err);
@@ -280,7 +303,7 @@ const WebRTCClient = (() => {
 
   // 4. Reject Call
   function rejectCall() {
-    emitWithAck("rejectCall", { to: currentCallUser.id }, 3000).catch(() => {});
+    emitWithAck("rejectCall", { to: currentCallUser.id }, { requireAck: false, timeoutMs: 3000, fallbackResolveMs: 800 }).catch(() => {});
     resetCallUI();
   }
 
@@ -351,7 +374,7 @@ const WebRTCClient = (() => {
   // 9. End Call Locally
   function endCallLocally() {
     if (currentCallUser) {
-      emitWithAck("endCall", { to: currentCallUser.id }, 3000).catch(() => {});
+      emitWithAck("endCall", { to: currentCallUser.id }, { requireAck: false, timeoutMs: 3000, fallbackResolveMs: 800 }).catch(() => {});
     }
     resetCallUI();
   }
@@ -424,7 +447,7 @@ const WebRTCClient = (() => {
         emitWithAck("iceCandidate", {
           to: targetUserId,
           candidate: serializeIceCandidate(event.candidate),
-        }, 3000).catch((err) => {
+        }, { requireAck: false, timeoutMs: 3000, fallbackResolveMs: 700 }).catch((err) => {
           console.warn("ICE candidate signaling failed:", err.message);
         });
       }
