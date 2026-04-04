@@ -172,6 +172,8 @@ const REELS_LIBRARY = [
   { id: "reel-60", src: "https://videos-o57d.vercel.app/Reel60.mp4" },
   { id: "reel-61", src: "https://videos-o57d.vercel.app/Reel61.mp4" },
   { id: "reel-62", src: "https://videos-o57d.vercel.app/Reel62.mp4" },
+  { id: "reel-63", src: "https://videos-o57d.vercel.app/Reel63.mp4" },
+  { id: "reel-64", src: "https://videos-o57d.vercel.app/Reel64.mp4" },
 ];
 const REELS_PREFERS_REDUCED_MOTION = !!(
   window.matchMedia &&
