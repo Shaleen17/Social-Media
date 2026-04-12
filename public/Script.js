@@ -1,4 +1,4 @@
-﻿"use strict";
+"use strict";
 
 /* ── STORAGE ── */
 const Store = {
@@ -98,6 +98,19 @@ let curProfId = null,
 let svIdx = 0,
   svTimer = null,
   compImg = null;
+// Instagram-like profile story viewer state (declared early so closeSV can access)
+let svProfile_profiles = [],
+  svProfile_pi = 0,
+  svProfile_ii = 0,
+  svProfile_timer = null,
+  svProfile_touchStartX = 0,
+  svProfile_touchStartY = 0,
+  _svTouchBound = false,
+  _svKeyboardBound = false,
+  _svIgnoreClickUntil = 0;
+function isMobileStoryViewport() {
+  return window.matchMedia("(max-width: 1023px)").matches;
+}
 let curVidCat = "All",
   curVidTab = "feed";
 let activeVidWatchId = null,
@@ -513,23 +526,50 @@ const SEED_LIVE = [
 ];
 const SEED_VID_STORIES = [
   {
-    id: "vs1",
-    uid: "u2",
-    cap: "Tirth Sutra Logo Revel",
-    t: "1h",
-    type: "video",
-    emo: "",
-    src: "https://video-68c8.vercel.app/Brand1.mp4",
+    id: "prTirthSutra",
+    name: "Tirth Sutra",
+    avatar: "Brand_Logo.jpg",
+    items: [
+      { id: "vs_ts1", type: "video", src: "https://videos-o57d.vercel.app/Tirth_Sutra.mp4", cap: "" }
+    ]
   },
   {
-    id: "vs2",
-    uid: "u4",
-    cap: "Radharaman Darshan ",
-    t: "3h",
-    type: "video",
-    emo: "",
-    src: "https://video-68c8.vercel.app/Reel1.mp4",
+    id: "prIskcon",
+    name: "iskcon.chowpatty",
+    avatar: "images/sants/iskcon.chowpatty.jpg",
+    items: [
+      { id: "vs_ic1", type: "video", src: "https://videos-o57d.vercel.app/StoryC1.mp4", cap: "" },
+      { id: "vs_ic2", type: "video", src: "https://videos-o57d.vercel.app/StoryC2.mp4", cap: "" },
+      { id: "vs_ic3", type: "video", src: "https://videos-o57d.vercel.app/StoryC3.mp4", cap: "" },
+      { id: "vs_ic4", type: "video", src: "https://videos-o57d.vercel.app/StoryC4.mp4", cap: "" }
+    ]
   },
+  {
+    id: "prBhaktipath",
+    name: "bhaktipath",
+    avatar: "images/sants/bhaktipath.jpg",
+    items: [
+      { id: "vs_bp1", type: "video", src: "https://videos-o57d.vercel.app/StoryI1.mp4", cap: "" },
+      { id: "vs_bp2", type: "video", src: "https://videos-o57d.vercel.app/StoryI2.mp4", cap: "" }
+    ]
+  },
+  {
+    id: "prRadharaman",
+    name: "Radharaman",
+    avatar: "images/sants/Radharaman.jpg",
+    items: [
+      { id: "vs_rr1", type: "video", src: "https://videos-o57d.vercel.app/StoryR1.mp4", cap: "" }
+    ]
+  },
+  {
+    id: "prHitaambrish",
+    name: "hitaambrish",
+    avatar: "images/sants/hitaambrish.jpg",
+    items: [
+      { id: "vs_ha1", type: "video", src: "https://videos-o57d.vercel.app/StoryH1.mp4", cap: "" },
+      { id: "vs_ha2", type: "video", src: "https://videos-o57d.vercel.app/StoryH2.mp4", cap: "" }
+    ]
+  }
 ];
 const TRENDING = [
   { tag: "#MahaKumbh2025", cat: "Spiritual", cnt: "22.1k" },
@@ -921,7 +961,68 @@ function getLiveStreams() {
   return Store.g("liveStreams", SEED_LIVE);
 }
 function getVidStories() {
-  return Store.g("vidStories", SEED_VID_STORIES);
+  // Always return a fresh clone of the canonical seed so no stale runtime mutation can leak in.
+  return SEED_VID_STORIES.map((profile) => ({
+    ...profile,
+    items: Array.isArray(profile.items)
+      ? profile.items.map((item) => ({ ...item }))
+      : [],
+  }));
+}
+function getCanonicalVidStoryProfile(profile) {
+  return (
+    SEED_VID_STORIES.find((seedProfile) => {
+      if (!profile) return false;
+      return (
+        (profile.id && seedProfile.id === profile.id) ||
+        (profile.name && seedProfile.name === profile.name) ||
+        (profile.profileKey && seedProfile.profileKey === profile.profileKey)
+      );
+    }) || null
+  );
+}
+function resolveVidStoryProfile(profile) {
+  const canonical = getCanonicalVidStoryProfile(profile) || {};
+  const items =
+    (Array.isArray(profile?.items) && profile.items.length && profile.items) ||
+    (Array.isArray(canonical.items) && canonical.items.length && canonical.items) ||
+    [];
+  return {
+    ...canonical,
+    ...(profile || {}),
+    name: profile?.name || canonical.name || "Unknown",
+    avatar: profile?.avatar || canonical.avatar || "",
+    items,
+  };
+}
+const storyMediaWarmCache = new Map();
+function warmStoryMedia(item) {
+  if (!item || !item.src || storyMediaWarmCache.has(item.src)) return;
+  try {
+    if (item.type === "video") {
+      const probe = document.createElement("video");
+      probe.preload = "metadata";
+      probe.muted = true;
+      probe.playsInline = true;
+      probe.src = item.src;
+      probe.load();
+      storyMediaWarmCache.set(item.src, probe);
+    } else if (item.type === "image") {
+      const img = new Image();
+      img.decoding = "async";
+      img.src = item.src;
+      storyMediaWarmCache.set(item.src, img);
+    }
+  } catch {}
+}
+function preloadStoryNeighborhood(profiles, pi, ii) {
+  const candidates = [];
+  const currentProfile = profiles?.[pi];
+  if (currentProfile?.items?.[ii + 1]) candidates.push(currentProfile.items[ii + 1]);
+  if (currentProfile?.items?.[ii + 2]) candidates.push(currentProfile.items[ii + 2]);
+  if (profiles?.[pi + 1]?.items?.[0]) candidates.push(profiles[pi + 1].items[0]);
+  if (profiles?.[pi - 1]?.items?.[0]) candidates.push(profiles[pi - 1].items[0]);
+  candidates.forEach(warmStoryMedia);
 }
 function getUser(id) {
   return getUsers().find((u) => u.id === id) || null;
@@ -990,7 +1091,7 @@ function esc(s) {
    SEED DATA — version controlled
    Change VERSION number every time you update seed data
    ============================================================ */
-const SEED_VERSION = "v4"; // ← change to v4, v5 etc on each update
+const SEED_VERSION = "v7"; // ← change to force reseed with locked canonical Tirth Tube stories
 
 function seedData() {
   const saved = Store.g("seedVersion");
@@ -1561,15 +1662,35 @@ function showSV(stories, i) {
 }
 function closeSV() {
   clearTimeout(svTimer);
+  clearTimeout(svProfile_timer);
   const sv = document.getElementById("sv");
-  if (sv) sv.classList.remove("show");
-  const v = document.querySelector("#svContent video");
-  if (v) {
-    v.pause();
-    v.src = "";
+  if (sv) {
+    sv.classList.remove("show");
+    sv.setAttribute("aria-hidden", "true");
+    document.body.classList.remove("story-view-open");
+    sv.style.removeProperty("--sv-drag");
   }
-  renderStories();
+  const svCard = document.getElementById("svCard");
+  if (svCard) {
+    svCard.style.transform = "";
+    svCard.style.opacity = "";
+  }
+  const v = document.querySelector("#svContent video");
+  if (v) { v.pause(); v.src = ""; }
+  const mw = document.querySelector("#svMediaWrap video");
+  if (mw) { mw.pause(); mw.src = ""; }
+  const mediaWrap = document.getElementById("svMediaWrap");
+  if (mediaWrap) mediaWrap.style.aspectRatio = "";
+  svProfile_profiles = [];
+  svProfile_pi = 0;
+  svProfile_ii = 0;
+  _svTouchBound = false;
+  if (curPage === "video") renderVidStories();
+  else renderStories();
 }
+// Alias for HTML onclick
+function stepSVProfile(dir) { _svSwitchProfile(dir); }
+
 
 /* ── FEED ── */
 function setFTab(tab, el) {
@@ -3131,21 +3252,438 @@ function renderVideoPage() {
 function renderVidStories() {
   const row = document.getElementById("vidStoriesRow");
   if (!row) return;
-  const stories = Store.g("vidStories", SEED_VID_STORIES);
+  const profiles = SEED_VID_STORIES.map(resolveVidStoryProfile);
   const seen = Store.g("vidStoriesSeen", []);
-  let h = `<div class="add-story-btn" onclick="auth(()=>openOvl('addStoryModal'))"><div class="add-story-ring"><svg viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg></div><div class="s-lbl">Add Story</div></div>`;
-  stories.forEach((s, i) => {
-    const u = getUser(s.uid) || { name: "Unknown" };
-    const ini = getIni(u.name);
-    const isSeen = seen.includes(s.id);
-    h += `<div class="story" onclick="viewVidStory(${i})"><div class="s-ring${isSeen ? " seen" : ""}"><div class="s-inner">${s.src && s.type === "video" ? `<video src="${s.src}" muted>` : s.src && s.type === "image" ? `<img src="${s.src}" alt="">` : s.emo || ini}</div></div><div class="s-lbl">${u.name.split(" ")[0]}</div></div>`;
+  row.innerHTML = "";
+
+  // Add story button
+  const addBtn = document.createElement("div");
+  addBtn.className = "add-story-btn";
+  addBtn.onclick = function() { auth(() => openOvl('addStoryModal')); };
+  addBtn.innerHTML = `<div class="add-story-ring"><svg viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg></div><div class="s-lbl">Add Story</div>`;
+  row.appendChild(addBtn);
+
+  profiles.forEach(function(profile, i) {
+    const resolvedProfile = resolveVidStoryProfile(profile);
+    warmStoryMedia(resolvedProfile.items && resolvedProfile.items[0]);
+    const ini = (resolvedProfile.name || "U").split(" ").map(function(x) { return x[0]; }).join("").slice(0, 2).toUpperCase();
+    const allSeen = resolvedProfile.items && resolvedProfile.items.every(function(item) { return seen.includes(item.id); });
+
+    const storyDiv = document.createElement("div");
+    storyDiv.className = "story";
+    storyDiv.onclick = function() { viewVidStory(i); };
+
+    const ring = document.createElement("div");
+    ring.className = "s-ring" + (allSeen ? " seen" : "");
+
+    const inner = document.createElement("div");
+    inner.className = "s-inner";
+
+    if (resolvedProfile.avatar) {
+      const img = document.createElement("img");
+      img.src = resolvedProfile.avatar;
+      img.alt = resolvedProfile.name || "";
+      img.onerror = function() {
+        this.parentNode.innerHTML = "";
+        this.parentNode.textContent = ini;
+      };
+      inner.appendChild(img);
+    } else {
+      inner.textContent = ini;
+    }
+
+    const lbl = document.createElement("div");
+    lbl.className = "s-lbl";
+    lbl.textContent = resolvedProfile.name || "";
+
+    ring.appendChild(inner);
+    storyDiv.appendChild(ring);
+    storyDiv.appendChild(lbl);
+    row.appendChild(storyDiv);
   });
-  row.innerHTML = h;
+
+  row.scrollLeft = 0;
 }
 function viewVidStory(i) {
-  const stories = Store.g("vidStories", SEED_VID_STORIES);
-  showSV(stories, i);
+  const profiles = SEED_VID_STORIES.map(resolveVidStoryProfile);
+  const profile = profiles[i];
+  if (!profile || !profile.items || !profile.items.length) return;
+  openProfileStory(profiles, i, 0);
 }
+
+
+// Instagram-like profile story viewer (state vars declared at top of file)
+
+
+function ensureStoryViewerMarkup() {
+  let sv = document.getElementById("sv");
+  if (!sv) {
+    sv = document.createElement("div");
+    sv.id = "sv";
+    document.body.appendChild(sv);
+  }
+  if (
+    document.getElementById("svMediaWrap") &&
+    document.getElementById("svSound") &&
+    document.getElementById("svPrevPreview") &&
+    document.getElementById("svNextPreview")
+  ) {
+    return sv;
+  }
+  sv.setAttribute("aria-hidden", "true");
+  sv.innerHTML = `
+    <div class="sv-shell">
+      <button class="sv-nav sv-nav-prev" id="svNavPrev" type="button" onclick="stepSVProfile(-1)" aria-label="Previous profile story">
+        <svg viewBox="0 0 24 24"><polyline points="15 18 9 12 15 6"></polyline></svg>
+      </button>
+      <div class="sv-rail">
+        <button class="sv-preview sv-preview-prev" id="svPrevPreview" type="button" onclick="stepSVProfile(-1)" aria-label="Open previous profile story"></button>
+        <div class="sv-card" id="svCard">
+          <div class="sv-bars" id="svBars"></div>
+          <div class="sv-top">
+            <div class="av av36" id="svAv"></div>
+            <div class="sv-meta">
+              <div class="sv-name" id="svName"></div>
+              <div class="sv-time" id="svTime"></div>
+            </div>
+            <button class="sv-sound" id="svSound" type="button" onclick="toggleSVSound()" aria-label="Toggle story sound"></button>
+            <button class="sv-close" type="button" onclick="closeSV()">
+              <svg viewBox="0 0 24 24">
+                <line x1="18" y1="6" x2="6" y2="18"></line>
+                <line x1="6" y1="6" x2="18" y2="18"></line>
+              </svg>
+            </button>
+          </div>
+          <div class="sv-content" id="svContent">
+            <div class="sv-tap-left" onclick="svTapLeft()" aria-label="Previous story"></div>
+            <div class="sv-media-wrap" id="svMediaWrap"></div>
+            <div class="sv-tap-right" onclick="svTapRight()" aria-label="Next story"></div>
+          </div>
+          <div class="sv-cap" id="svCap"></div>
+        </div>
+        <button class="sv-preview sv-preview-next" id="svNextPreview" type="button" onclick="stepSVProfile(1)" aria-label="Open next profile story"></button>
+      </div>
+      <button class="sv-nav sv-nav-next" id="svNavNext" type="button" onclick="stepSVProfile(1)" aria-label="Next profile story">
+        <svg viewBox="0 0 24 24"><polyline points="9 18 15 12 9 6"></polyline></svg>
+      </button>
+    </div>
+  `;
+  return sv;
+}
+
+function openProfileStory(profiles, pi, ii) {
+  ensureStoryViewerMarkup();
+  svProfile_profiles = profiles;
+  svProfile_pi = pi;
+  svProfile_ii = ii;
+  _renderProfileStory();
+}
+
+function _svMarkSeen(profile, ii) {
+  if (!profile || !profile.items || !profile.items[ii]) return;
+  const seen = Store.g("vidStoriesSeen", []);
+  const id = profile.items[ii].id;
+  if (!seen.includes(id)) {
+    seen.push(id);
+    Store.s("vidStoriesSeen", seen);
+  }
+}
+
+function _renderProfileStory() {
+  const sv = ensureStoryViewerMarkup();
+  if (!sv) return;
+  const profiles = svProfile_profiles;
+  const pi = svProfile_pi;
+  const ii = svProfile_ii;
+  const profile = profiles[pi];
+  if (!profile) { closeSV(); return; }
+  const item = profile.items[ii];
+  if (!item) { closeSV(); return; }
+
+  _svMarkSeen(profile, ii);
+  sv.classList.add("show");
+  sv.setAttribute("aria-hidden", "false");
+  document.body.classList.add("story-view-open");
+  sv.style.removeProperty("--sv-drag");
+  const storyCard = document.getElementById("svCard");
+  if (storyCard) {
+    storyCard.style.transform = "";
+    storyCard.style.opacity = "";
+  }
+
+  // Progress bars
+  const totalItems = profile.items.length;
+  const barsEl = document.getElementById("svBars");
+  if (barsEl) {
+    barsEl.innerHTML = Array.from({length: totalItems}, (_, j) =>
+      `<div class="sv-seg"><div class="sv-fill" id="svf${j}" style="width:${j < ii ? '100%' : '0%'}"></div></div>`
+    ).join("");
+  }
+
+  // Profile header
+  const avEl = document.getElementById("svAv");
+  if (avEl) {
+    avEl.innerHTML = profile.avatar
+      ? `<img src="${profile.avatar}" alt="" onerror="this.style.display='none'">`
+      : getIni(profile.name);
+  }
+  const nameEl = document.getElementById("svName");
+  if (nameEl) nameEl.textContent = profile.name;
+  const timeEl = document.getElementById("svTime");
+  if (timeEl) timeEl.textContent = item.t ? item.t + " ago" : "Just now";
+
+  // Media content — inject into svMediaWrap (inside svContent)
+  const mw = document.getElementById("svMediaWrap");
+  const cont = document.getElementById("svContent");
+  const target = mw || cont;
+  if (target) {
+    // Stop any previous video
+    const oldVid = target.querySelector("video");
+    if (oldVid) { try { oldVid.pause(); oldVid.src = ""; } catch(e){} }
+    if (item.type === "video" && item.src) {
+      target.innerHTML = `<video src="${item.src}" autoplay playsinline webkit-playsinline preload="metadata" class="sv-story-media" id="svVid"></video>`;
+      const vid = target.querySelector("video");
+      if (vid) {
+        vid.muted = false;
+        vid.volume = 1.0;
+        vid.addEventListener("loadedmetadata", () => {
+          const wrap = document.getElementById("svMediaWrap");
+          if (!wrap || !vid.videoWidth || !vid.videoHeight) return;
+          wrap.style.aspectRatio = isMobileStoryViewport()
+            ? ""
+            : `${vid.videoWidth} / ${vid.videoHeight}`;
+        }, { once: true });
+        vid.play().catch(() => { vid.muted = true; vid.play().catch(() => {}); });
+        // Update sound button icon
+        const sndBtn = document.getElementById('svSound');
+        if (sndBtn) sndBtn.innerHTML = '<svg viewBox="0 0 24 24"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07"/></svg>';
+        // Sync progress bar with video time
+        vid.addEventListener("timeupdate", () => {
+          const fillEl = document.getElementById(`svf${svProfile_ii}`);
+          if (fillEl && vid.duration) {
+            clearTimeout(svProfile_timer);
+            fillEl.style.transition = "none";
+            fillEl.style.width = (vid.currentTime / vid.duration * 100) + "%";
+          }
+        });
+        vid.addEventListener("ended", () => _svStepStory(1));
+      }
+    } else if (item.type === "image" && item.src) {
+      target.innerHTML = `<img src="${item.src}" alt="" class="sv-story-media">`;
+      if (mw) mw.style.aspectRatio = "";
+    } else {
+      target.innerHTML = `<div class="sv-media-fallback">${item.emo || '🕉'}</div>`;
+      if (mw) mw.style.aspectRatio = "";
+    }
+  }
+
+  const capEl = document.getElementById("svCap");
+  if (capEl) {
+    capEl.textContent = "";
+    capEl.style.display = "none";
+  }
+
+  // Progress bar animation
+  clearTimeout(svProfile_timer);
+  const fillEl = document.getElementById(`svf${ii}`);
+  if (fillEl) {
+    fillEl.style.transition = "none";
+    fillEl.style.width = "0%";
+  }
+  if (item.type !== "video") {
+    const dur = 6500;
+    if (fillEl) {
+      fillEl.style.transition = `width ${dur}ms linear`;
+      requestAnimationFrame(() => { fillEl.style.width = "100%"; });
+    }
+    svProfile_timer = setTimeout(() => _svStepStory(1), dur);
+  }
+
+  // Desktop previews: left/right adjacent profiles
+  _renderSVPreviews();
+  preloadStoryNeighborhood(profiles, pi, ii);
+
+  // Touch handling for swipe
+  _svBindTouch(sv);
+  _svBindKeyboard();
+
+  // Click handler on sv-card for tap navigation (works on desktop & mobile)
+  const svCard = document.getElementById('svCard');
+  if (svCard && !svCard._svClickBound) {
+    svCard._svClickBound = true;
+    svCard.addEventListener('click', function(e) {
+      if (Date.now() < _svIgnoreClickUntil) return;
+      // Don't hijack clicks on buttons
+      if (e.target.closest('button') || e.target.closest('.sv-tap-left') || e.target.closest('.sv-tap-right')) return;
+      const rect = svCard.getBoundingClientRect();
+      const x = e.clientX - rect.left;
+      if (x < rect.width * 0.35) _svStepStory(-1);
+      else _svStepStory(1);
+    });
+  }
+}
+
+function _svBindKeyboard() {
+  if (_svKeyboardBound) return;
+  _svKeyboardBound = true;
+  document.addEventListener("keydown", function(event) {
+    const sv = document.getElementById("sv");
+    if (!sv || !sv.classList.contains("show")) return;
+    const activeTag = document.activeElement?.tagName;
+    if (activeTag === "INPUT" || activeTag === "TEXTAREA") return;
+    if (event.key === "ArrowLeft") {
+      event.preventDefault();
+      _svStepStory(-1);
+    } else if (event.key === "ArrowRight" || event.key === " ") {
+      event.preventDefault();
+      _svStepStory(1);
+    } else if (event.key === "Escape") {
+      event.preventDefault();
+      closeSV();
+    }
+  });
+}
+
+function _svStepStory(dir) {
+  const profiles = svProfile_profiles;
+  const pi = svProfile_pi;
+  let ii = svProfile_ii + dir;
+  const profile = profiles[pi];
+  if (ii >= 0 && ii < profile.items.length) {
+    svProfile_ii = ii;
+    _renderProfileStory();
+  } else if (dir > 0 && pi + 1 < profiles.length) {
+    svProfile_pi = pi + 1;
+    svProfile_ii = 0;
+    _renderProfileStory();
+  } else if (dir < 0 && pi > 0) {
+    svProfile_pi = pi - 1;
+    const prev = profiles[pi - 1];
+    svProfile_ii = prev.items.length - 1;
+    _renderProfileStory();
+  } else if (dir > 0) {
+    closeSV();
+  }
+}
+
+function _renderSVPreviews() {
+  const profiles = svProfile_profiles;
+  const pi = svProfile_pi;
+  // Nav arrow buttons
+  const prevBtn = document.getElementById("svNavPrev");
+  const nextBtn = document.getElementById("svNavNext");
+  // Preview panels
+  const leftPrev = document.getElementById("svPrevPreview");
+  const rightPrev = document.getElementById("svNextPreview");
+
+  if (prevBtn) prevBtn.style.opacity = pi > 0 ? "1" : "0.2";
+  if (nextBtn) nextBtn.style.opacity = pi < profiles.length - 1 ? "1" : "0.2";
+
+  const renderPrev = (el, profileData) => {
+    if (!el || !profileData) { if(el) el.classList.add("hide"); return; }
+    el.classList.remove("hide");
+    const firstItem = profileData.items[0];
+    const mediaHtml = firstItem && firstItem.type === "video" && firstItem.src
+      ? `<div class="sv-preview-media"><video src="${firstItem.src}" muted preload="metadata" style="width:100%;height:100%;object-fit:cover"></div>`
+      : `<div class="sv-preview-fallback">${profileData.avatar ? `<img src="${profileData.avatar}" style="width:100%;height:100%;object-fit:cover;">` : '🕉'}</div>`;
+    const iniHtml = profileData.avatar ? `<img src="${profileData.avatar}" alt="">` : getIni(profileData.name);
+    el.innerHTML = `${mediaHtml}<div class="sv-preview-dim"></div><div class="sv-preview-avatar">${iniHtml}</div><div class="sv-preview-copy"><strong>${esc(profileData.name)}</strong></div>`;
+  };
+
+  renderPrev(leftPrev, pi > 0 ? profiles[pi - 1] : null);
+  renderPrev(rightPrev, pi < profiles.length - 1 ? profiles[pi + 1] : null);
+}
+
+
+function _svBindTouch(sv) {
+  if (_svTouchBound) return;
+  const svCard = document.getElementById("svCard");
+  if (!svCard) return;
+  const svContent = document.getElementById("svContent");
+  _svTouchBound = true;
+  let gesture = null;
+  const resetTouchVisuals = () => {
+    if (svContent) svContent.style.setProperty("--sv-drag", "0px");
+    svCard.style.transform = "";
+    svCard.style.opacity = "";
+  };
+  svCard.addEventListener("touchstart", e => {
+    gesture = null;
+    svProfile_touchStartX = e.touches[0].clientX;
+    svProfile_touchStartY = e.touches[0].clientY;
+  }, { passive: true });
+  svCard.addEventListener("touchmove", e => {
+    const dx = e.touches[0].clientX - svProfile_touchStartX;
+    const dy = e.touches[0].clientY - svProfile_touchStartY;
+    if (!gesture) {
+      if (Math.abs(dx) > Math.abs(dy) && Math.abs(dx) > 12) gesture = "horizontal";
+      else if (Math.abs(dy) > Math.abs(dx) && Math.abs(dy) > 12) gesture = "vertical";
+    }
+    if (gesture === "horizontal" && svContent) {
+      const offset = Math.max(-72, Math.min(72, dx * 0.18));
+      svContent.style.setProperty("--sv-drag", `${offset}px`);
+    }
+    if (gesture === "vertical" && isMobileStoryViewport() && dy > 0) {
+      const down = Math.min(dy, 180);
+      svCard.style.transform = `translateY(${down}px)`;
+      svCard.style.opacity = String(Math.max(0.65, 1 - down / 260));
+    }
+  }, { passive: true });
+  svCard.addEventListener("touchend", e => {
+    const dx = e.changedTouches[0].clientX - svProfile_touchStartX;
+    const dy = e.changedTouches[0].clientY - svProfile_touchStartY;
+    if (gesture === "vertical" && isMobileStoryViewport() && dy > 110) {
+      _svIgnoreClickUntil = Date.now() + 450;
+      resetTouchVisuals();
+      closeSV();
+      return;
+    }
+    if (gesture === "horizontal" && Math.abs(dx) > Math.abs(dy) && Math.abs(dx) > 50) {
+      _svIgnoreClickUntil = Date.now() + 450;
+      // Horizontal swipe = change profile
+      if (dx < 0) _svSwitchProfile(1);
+      else _svSwitchProfile(-1);
+    } else if (Math.abs(dx) < 30 && Math.abs(dy) < 30) {
+      _svIgnoreClickUntil = Date.now() + 450;
+      // Tap inside current story card: move inside the same profile first, then next/previous profile only at the ends
+      const rect = svCard.getBoundingClientRect();
+      const x = e.changedTouches[0].clientX - rect.left;
+      if (x < rect.width * 0.35) _svStepStory(-1);
+      else _svStepStory(1);
+    }
+    resetTouchVisuals();
+    gesture = null;
+  }, { passive: true });
+  svCard.addEventListener("touchcancel", () => {
+    resetTouchVisuals();
+    gesture = null;
+  }, { passive: true });
+}
+
+function _svSwitchProfile(dir) {
+  const pi = svProfile_pi + dir;
+  if (pi < 0 || pi >= svProfile_profiles.length) return;
+  svProfile_pi = pi;
+  svProfile_ii = 0;
+  _renderProfileStory();
+}
+
+function svTapLeft() { _svStepStory(-1); }
+function svTapRight() { _svStepStory(1); }
+function svPrevProfile() { _svSwitchProfile(-1); }
+function svNextProfile() { _svSwitchProfile(1); }
+function toggleSVSound() {
+  const vid = document.querySelector('#svMediaWrap video');
+  const btn = document.getElementById('svSound');
+  if (!vid) return;
+  vid.muted = !vid.muted;
+  if (btn) {
+    btn.innerHTML = vid.muted
+      ? '<svg viewBox="0 0 24 24"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><line x1="23" y1="9" x2="17" y2="15"/><line x1="17" y1="9" x2="23" y2="15"/></svg>'
+      : '<svg viewBox="0 0 24 24"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07"/></svg>';
+  }
+}
+
 function renderLiveSection() {
   const c = document.getElementById("liveScroll");
   const wrap = document.getElementById("liveSectionWrap");
@@ -3159,9 +3697,13 @@ function renderLiveSection() {
   c.innerHTML = lives
     .map((l) => {
       const u = getUser(l.uid) || { name: "Unknown" };
-      return `<div class="live-card" onclick="playLive('${l.id}')"><div class="live-card-thumb"><video src="${l.src}" muted loop playsinline onmouseenter="this.play().catch(()=>{})" onmouseleave="this.pause()" style="width:100%;height:100%;object-fit:cover"></video><div class="live-overlay"><span class="live-badge">● LIVE</span></div></div><div class="live-card-info"><div class="live-card-title">${esc(l.title)}</div><div class="live-card-channel">${u.name}</div><div class="live-viewers">👁 ${fmtV(l.viewers)} watching · ${l.started}</div></div></div>`;
+      return `<div class="live-card" onclick="playLive('${l.id}')"><div class="live-card-thumb"><video src="${l.src}" muted autoplay loop playsinline webkit-playsinline preload="auto" style="width:100%;height:100%;object-fit:cover"></video><div class="live-overlay"><span class="live-badge">● LIVE</span></div></div><div class="live-card-info"><div class="live-card-title">${esc(l.title)}</div><div class="live-card-channel">${u.name}</div><div class="live-viewers">👁 ${fmtV(l.viewers)} watching · ${l.started}</div></div></div>`;
     })
     .join("");
+  // Force play all live preview videos (muted)
+  requestAnimationFrame(() => {
+    c.querySelectorAll("video").forEach(v => { v.muted = true; v.play().catch(() => {}); });
+  });
 }
 function playLive(id) {
   const l = getLiveStreams().find((x) => x.id === id);

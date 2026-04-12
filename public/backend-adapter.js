@@ -146,6 +146,7 @@
 
   let _chatPushSetupPromise = null;
   let _pendingOpenChatId = consumeOpenChatParam();
+  const APP_ASSET_VERSION = "20260413-storyfix-7";
 
   function urlBase64ToUint8Array(base64String) {
     const padding = "=".repeat((4 - (base64String.length % 4)) % 4);
@@ -196,7 +197,10 @@
 
       if (permission !== "granted") return null;
 
-      const reg = await navigator.serviceWorker.register("/sw.js");
+      const reg = await navigator.serviceWorker.register(`/sw.js?v=${APP_ASSET_VERSION}`);
+      try {
+        await reg.update();
+      } catch {}
       const existing = await reg.pushManager.getSubscription();
       if (existing) {
         await API.savePushSubscription(existing.toJSON()).catch(() => {});
