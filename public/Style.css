@@ -5758,6 +5758,7 @@ video {
   font-weight: 700;
   letter-spacing: 0.02em;
   text-transform: uppercase;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.35);
 }
 
 .about-hero-copy h1,
@@ -5785,6 +5786,17 @@ video {
   display: flex;
   flex-wrap: wrap;
   gap: 10px;
+}
+
+.about-secondary-btn {
+  background: var(--bg);
+  color: var(--p);
+  border: 1.5px solid var(--bd2);
+}
+
+.about-secondary-btn:hover {
+  background: var(--bg2);
+  transform: translateY(-1px);
 }
 
 .about-grid {
@@ -5845,6 +5857,24 @@ video {
   color: var(--t3);
   font-size: 14px;
   font-weight: 600;
+}
+
+[data-dark] .about-eyebrow,
+[data-dark] .about-card-label {
+  background: rgba(201, 149, 90, 0.14);
+  border-color: rgba(226, 166, 122, 0.28);
+  color: var(--dark-accent-text);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06);
+}
+
+[data-dark] .about-secondary-btn {
+  background: var(--bg3);
+  color: var(--dark-accent-text);
+  border-color: rgba(226, 166, 122, 0.28);
+}
+
+[data-dark] .about-secondary-btn:hover {
+  background: var(--a);
 }
 
 .about-list {
