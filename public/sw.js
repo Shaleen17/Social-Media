@@ -1,4 +1,4 @@
-self.__TS_SW_VERSION__ = "20260413-storyfix-7";
+self.__TS_SW_VERSION__ = "20260413-storyfix-8";
 
 self.addEventListener("push", (event) => {
   const payload = (() => {

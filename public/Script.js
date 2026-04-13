@@ -107,7 +107,8 @@ let svProfile_profiles = [],
   svProfile_touchStartY = 0,
   _svTouchBound = false,
   _svKeyboardBound = false,
-  _svIgnoreClickUntil = 0;
+  _svIgnoreClickUntil = 0,
+  _svNavLockUntil = 0;
 function isMobileStoryViewport() {
   return window.matchMedia("(max-width: 1023px)").matches;
 }
@@ -3355,9 +3356,9 @@ function ensureStoryViewerMarkup() {
             </button>
           </div>
           <div class="sv-content" id="svContent">
-            <div class="sv-tap-left" onclick="svTapLeft()" aria-label="Previous story"></div>
-            <div class="sv-media-wrap" id="svMediaWrap"></div>
-            <div class="sv-tap-right" onclick="svTapRight()" aria-label="Next story"></div>
+              <div class="sv-tap-left" onclick="svTapLeft(event)" aria-label="Previous story"></div>
+              <div class="sv-media-wrap" id="svMediaWrap"></div>
+              <div class="sv-tap-right" onclick="svTapRight(event)" aria-label="Next story"></div>
           </div>
           <div class="sv-cap" id="svCap"></div>
         </div>
@@ -3545,6 +3546,8 @@ function _svBindKeyboard() {
 }
 
 function _svStepStory(dir) {
+  if (Date.now() < _svNavLockUntil) return;
+  _svNavLockUntil = Date.now() + 220;
   const profiles = svProfile_profiles;
   const pi = svProfile_pi;
   let ii = svProfile_ii + dir;
@@ -3668,8 +3671,24 @@ function _svSwitchProfile(dir) {
   _renderProfileStory();
 }
 
-function svTapLeft() { _svStepStory(-1); }
-function svTapRight() { _svStepStory(1); }
+function svTapLeft(event) {
+  if (event) {
+    event.preventDefault();
+    event.stopPropagation();
+  }
+  if (Date.now() < _svIgnoreClickUntil) return;
+  _svIgnoreClickUntil = Date.now() + 260;
+  _svStepStory(-1);
+}
+function svTapRight(event) {
+  if (event) {
+    event.preventDefault();
+    event.stopPropagation();
+  }
+  if (Date.now() < _svIgnoreClickUntil) return;
+  _svIgnoreClickUntil = Date.now() + 260;
+  _svStepStory(1);
+}
 function svPrevProfile() { _svSwitchProfile(-1); }
 function svNextProfile() { _svSwitchProfile(1); }
 function toggleSVSound() {

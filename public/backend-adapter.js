@@ -146,7 +146,7 @@
 
   let _chatPushSetupPromise = null;
   let _pendingOpenChatId = consumeOpenChatParam();
-  const APP_ASSET_VERSION = "20260413-storyfix-7";
+  const APP_ASSET_VERSION = "20260413-storyfix-8";
 
   function urlBase64ToUint8Array(base64String) {
     const padding = "=".repeat((4 - (base64String.length % 4)) % 4);
