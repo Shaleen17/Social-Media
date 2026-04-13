@@ -93,6 +93,97 @@
   let _cachedLiveStreams = [];
   let _cachedVidStories = [];
   let _dataLoaded = false;
+  const BOOT_CACHE_KEY = "backendBootCache";
+  const BOOT_CACHE_TTL = 1000 * 60 * 60 * 24 * 30;
+
+  function scheduleNonCriticalWork(task, timeout = 800) {
+    if (typeof task !== "function") return;
+    if (typeof window.requestIdleCallback === "function") {
+      window.requestIdleCallback(() => task(), { timeout });
+      return;
+    }
+    setTimeout(task, Math.min(timeout, 250));
+  }
+
+  function syncBackendCache(payload) {
+    if (!payload || typeof payload !== "object") return false;
+    const users = Array.isArray(payload.users) ? payload.users : null;
+    const posts = Array.isArray(payload.posts) ? payload.posts : null;
+    const videos = Array.isArray(payload.videos) ? payload.videos : null;
+    const liveStreams = Array.isArray(payload.liveStreams)
+      ? payload.liveStreams
+      : null;
+    const vidStories = Array.isArray(payload.vidStories)
+      ? payload.vidStories
+      : null;
+
+    if (!users || !posts || !videos || !liveStreams || !vidStories) {
+      return false;
+    }
+
+    _cachedUsers = users;
+    _cachedPosts = posts;
+    _cachedVideos = videos;
+    _cachedLiveStreams = liveStreams;
+    _cachedVidStories = vidStories;
+    _dataLoaded = true;
+    return true;
+  }
+
+  function writeBootCache() {
+    Store.s(BOOT_CACHE_KEY, {
+      ts: Date.now(),
+      users: _cachedUsers,
+      posts: _cachedPosts,
+      videos: _cachedVideos,
+      liveStreams: _cachedLiveStreams,
+      vidStories: _cachedVidStories,
+    });
+  }
+
+  function hydrateBootCache() {
+    const cached = Store.g(BOOT_CACHE_KEY);
+    if (!cached || typeof cached !== "object") return false;
+    if (
+      typeof cached.ts === "number" &&
+      Date.now() - cached.ts > BOOT_CACHE_TTL
+    ) {
+      Store.d(BOOT_CACHE_KEY);
+      return false;
+    }
+    return syncBackendCache(cached);
+  }
+
+  function renderCurrentPageShell() {
+    initUI();
+    updateInstallButtons();
+
+    const refreshMap = {
+      home: () => {
+        renderFeed();
+        renderStories();
+        renderWidgets();
+      },
+      mandir: () => renderMandir(),
+      mandirCommunity: () => {
+        if (currentMandirSlug) loadMandirPosts(currentMandirSlug);
+      },
+      video: () => renderVideoPage(),
+      reels: () => renderReelsPage(),
+      search: () => {
+        doSearch("");
+        renderWidgets();
+      },
+      notifs: () => renderNotifs(),
+      bookmarks: () => renderBM(),
+      profile: () => renderProfile(CU ? CU.id : curProfId || "u1"),
+      chats: () => renderChatsPage(),
+      about: () => {},
+    };
+
+    const render = refreshMap[curPage] || refreshMap.home;
+    render();
+  }
 
   function getAppBaseUrl() {
     const url = new URL(window.location.href);
@@ -146,7 +237,7 @@
 
   let _chatPushSetupPromise = null;
   let _pendingOpenChatId = consumeOpenChatParam();
-  const APP_ASSET_VERSION = "20260413-storybrand-3";
+  const APP_ASSET_VERSION = "20260414-perf-1";
   let _appSwPromise = null;
   let _deferredInstallPrompt = null;
   let _installPromptBound = false;
@@ -1046,10 +1137,11 @@
   // =============================================
   async function loadAllData() {
     try {
-      const [users, posts, videos] = await Promise.all([
+      const [users, posts, videos, vidStories] = await Promise.all([
         API.getAllUsers().catch(() => []),
         API.getPosts().catch(() => []),
         API.getVideos().catch(() => []),
+        API.getVideoStories().catch(() => []),
       ]);
 
       _cachedUsers = users || [];
@@ -1067,15 +1159,14 @@
           started: v.started || "recently",
         }));
 
-      try {
-        _cachedVidStories = await API.getVideoStories();
-      } catch {
-        _cachedVidStories = [];
-      }
+      _cachedVidStories = vidStories || [];
 
       _dataLoaded = true;
+      writeBootCache();
+      return true;
     } catch (err) {
       console.error("Failed to load data from backend:", err);
+      return false;
     }
   }
 
@@ -2612,79 +2703,98 @@
   // =============================================
   const _origInit = window.init;
   window.init = async function () {
-    ensureAppServiceWorker().catch(() => {});
-    setupInstallPromptBridge();
-    updateInstallButtons();
+    if (window.__TS_BOOT_PROMISE) return window.__TS_BOOT_PROMISE;
 
-    // Restore theme
-    const theme = Store.g("theme", "light");
-    if (theme === "dark") {
-      document.documentElement.setAttribute("data-dark", "");
-      const sunPath =
-        '<circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/>';
-      ["thIco", "dThemeIco"].forEach((id) => {
-        const ico = document.getElementById(id);
-        if (ico) ico.innerHTML = sunPath;
+    window.__TS_BOOT_PROMISE = (async () => {
+      ensureAppServiceWorker().catch(() => {});
+      setupInstallPromptBridge();
+      updateInstallButtons();
+
+      // Restore theme
+      const theme = Store.g("theme", "light");
+      if (theme === "dark") {
+        document.documentElement.setAttribute("data-dark", "");
+        const sunPath =
+          '<circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/>';
+        ["thIco", "dThemeIco"].forEach((id) => {
+          const ico = document.getElementById(id);
+          if (ico) ico.innerHTML = sunPath;
+        });
+      }
+
+      // Wire auth buttons
+      const lb = document.getElementById("loginBtn");
+      if (lb) lb.addEventListener("click", doLogin);
+      const sb2 = document.getElementById("signupBtn");
+      if (sb2) sb2.addEventListener("click", doSignup);
+      document.getElementById("liPw")?.addEventListener("keydown", (e) => {
+        if (e.key === "Enter") doLogin();
       });
-    }
+      document.getElementById("suPw")?.addEventListener("keydown", (e) => {
+        if (e.key === "Enter") doSignup();
+      });
 
-    // Wire auth buttons
-    const lb = document.getElementById("loginBtn");
-    if (lb) lb.addEventListener("click", doLogin);
-    const sb2 = document.getElementById("signupBtn");
-    if (sb2) sb2.addEventListener("click", doSignup);
-    document.getElementById("liPw")?.addEventListener("keydown", (e) => {
-      if (e.key === "Enter") doLogin();
-    });
-    document.getElementById("suPw")?.addEventListener("keydown", (e) => {
-      if (e.key === "Enter") doSignup();
-    });
+      const authRedirect = consumeAuthRedirectHash();
+      if (authRedirect?.authToken) {
+        API.setToken(authRedirect.authToken);
+      }
 
-    const authRedirect = consumeAuthRedirectHash();
-    if (authRedirect?.authToken) {
-      API.setToken(authRedirect.authToken);
-    }
-
-    // Try to restore session from stored token
-    const storedToken = API.getToken();
-    // Guard: reject stale "undefined" string that may have been written
-    // by a previous buggy signup call before this fix was applied.
-    if (storedToken && storedToken !== "undefined" && storedToken !== "null") {
-      try {
-        CU = await API.getMe();
-        SocketClient.connect((CU.id || CU._id).toString());
-        ensureChatPushNotifications(false).catch(() => {});
-      } catch {
-        CU = null;
+      // Try to restore session from stored token
+      const storedToken = API.getToken();
+      if (
+        storedToken &&
+        storedToken !== "undefined" &&
+        storedToken !== "null"
+      ) {
+        try {
+          CU = await API.getMe();
+          SocketClient.connect((CU.id || CU._id).toString());
+          ensureChatPushNotifications(false).catch(() => {});
+        } catch {
+          CU = null;
+          API.logout();
+        }
+      } else if (storedToken === "undefined" || storedToken === "null") {
         API.logout();
       }
-    } else if (storedToken === "undefined" || storedToken === "null") {
-      // Clean up the stale bad value so it doesn't keep breaking
-      API.logout();
-    }
 
-    // Load data from backend
-    await loadAllData();
+      const renderedFromCache = hydrateBootCache();
 
-    // Render UI
-    initUI();
-    renderFeed();
-    renderStories();
-    renderWidgets();
-    updateInstallButtons();
+      if (renderedFromCache) {
+        renderCurrentPageShell();
+        if (typeof window.hideBrandSplash === "function") {
+          window.hideBrandSplash();
+        }
 
-    if (authRedirect?.authError) {
-      MC.error(authRedirect.authError);
-    } else if (authRedirect?.authToken && authRedirect.authSource === "google") {
-      MC.success("Google Sign-In completed successfully.");
-    }
+        loadAllData()
+          .then((loaded) => {
+            if (loaded) renderCurrentPageShell();
+          })
+          .catch(() => {});
+      } else {
+        await loadAllData();
+        renderCurrentPageShell();
+        if (typeof window.hideBrandSplash === "function") {
+          window.hideBrandSplash();
+        }
+      }
 
-    // Check notifications
-    checkNotifications();
-    openPendingChatIfNeeded();
-    if (typeof window.hideBrandSplash === "function") {
-      window.hideBrandSplash();
-    }
+      if (authRedirect?.authError) {
+        MC.error(authRedirect.authError);
+      } else if (
+        authRedirect?.authToken &&
+        authRedirect.authSource === "google"
+      ) {
+        MC.success("Google Sign-In completed successfully.");
+      }
+
+      scheduleNonCriticalWork(() => {
+        checkNotifications();
+        openPendingChatIfNeeded();
+      });
+    })();
+
+    return window.__TS_BOOT_PROMISE;
   };
 
   // =============================================

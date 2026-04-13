@@ -95,14 +95,20 @@ app.use(express.urlencoded({ extended: true, limit: "50mb" }));
 // Serve static files from public/ directory
 app.use(
   express.static(path.join(__dirname, "..", "public"), {
-    etag: false,
-    lastModified: false,
+    etag: true,
+    lastModified: true,
     setHeaders: (res, filePath) => {
-      if (/\.(html|js|css)$/i.test(filePath) || /sw\.js$/i.test(filePath)) {
+      if (/sw\.js$/i.test(filePath) || /\.html$/i.test(filePath)) {
         res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate, proxy-revalidate");
         res.setHeader("Pragma", "no-cache");
         res.setHeader("Expires", "0");
         res.setHeader("Surrogate-Control", "no-store");
+      } else if (
+        /\.(js|css|png|jpg|jpeg|gif|webp|avif|svg|ico|woff2?|ttf|mp4|webmanifest)$/i.test(
+          filePath
+        )
+      ) {
+        res.setHeader("Cache-Control", "public, max-age=31536000, immutable");
       }
     },
   })

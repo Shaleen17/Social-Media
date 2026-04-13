@@ -8210,7 +8210,20 @@ video {
   -webkit-overflow-scrolling: touch;
 }
 .stories { will-change: scroll-position; }
-.post { contain: layout style; }
+.post,
+.notif,
+.chat-item,
+.sant-card {
+  contain: layout style paint;
+  content-visibility: auto;
+  contain-intrinsic-size: 180px;
+}
+.widget,
+.live-card,
+.bhajan-card {
+  content-visibility: auto;
+  contain-intrinsic-size: 240px;
+}
 .page { scroll-behavior: smooth; }
 
 /* ============================================================

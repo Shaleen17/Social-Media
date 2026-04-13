@@ -3732,6 +3732,47 @@ function toggleSVSound() {
   }
 }
 
+let livePreviewObserver = null;
+function setupLivePreviewPlayback(container) {
+  if (livePreviewObserver) {
+    livePreviewObserver.disconnect();
+    livePreviewObserver = null;
+  }
+
+  const videos = Array.from(
+    (container || document).querySelectorAll("[data-live-preview]")
+  );
+  if (!videos.length) return;
+
+  if (typeof IntersectionObserver !== "function") {
+    videos.slice(0, 2).forEach((video) => {
+      video.muted = true;
+      video.play().catch(() => {});
+    });
+    return;
+  }
+
+  livePreviewObserver = new IntersectionObserver(
+    (entries) => {
+      entries.forEach((entry) => {
+        const video = entry.target;
+        if (entry.isIntersecting && entry.intersectionRatio >= 0.35) {
+          video.muted = true;
+          video.play().catch(() => {});
+        } else {
+          video.pause();
+        }
+      });
+    },
+    {
+      root: container,
+      threshold: [0.35, 0.65],
+    }
+  );
+
+  videos.forEach((video) => livePreviewObserver.observe(video));
+}
+
 function renderLiveSection() {
   const c = document.getElementById("liveScroll");
   const wrap = document.getElementById("liveSectionWrap");
@@ -3762,6 +3803,47 @@ function playLive(id) {
   c.innerHTML = `<div style="background:#000"><video src="${l.src}" controls autoplay playsinline style="width:100%;max-height:400px;object-fit:contain"></video></div><div style="padding:14px 16px"><div style="display:flex;align-items:center;gap:8px;margin-bottom:8px"><span class="live-badge">● LIVE</span><span style="font-size:15px;font-weight:600">${esc(l.title)}</span></div><div style="font-size:13px;color:var(--t3)">${u.name} · 👁 ${fmtV(l.viewers)} watching</div></div>`;
   openOvl("pdOvl");
 }
+renderLiveSection = function () {
+  const c = document.getElementById("liveScroll");
+  const wrap = document.getElementById("liveSectionWrap");
+  if (!c) return;
+  const lives = getLiveStreams();
+  if (!lives.length) {
+    if (wrap) wrap.style.display = "none";
+    return;
+  }
+  if (wrap) wrap.style.display = "";
+  c.innerHTML = lives
+    .map((l) => {
+      const u = getUser(l.uid) || { name: "Unknown" };
+      const poster = l.poster || u.avatar || "Brand_Logo.jpg";
+      return `<div class="live-card" onclick="playLive('${l.id}')"><div class="live-card-thumb"><video src="${l.src}" muted loop playsinline webkit-playsinline preload="metadata" poster="${poster}" data-live-preview style="width:100%;height:100%;object-fit:cover"></video><div class="live-overlay"><span class="live-badge">â— LIVE</span></div></div><div class="live-card-info"><div class="live-card-title">${esc(l.title)}</div><div class="live-card-channel">${u.name}</div><div class="live-viewers">ðŸ‘ ${fmtV(l.viewers)} watching Â· ${l.started}</div></div></div>`;
+    })
+    .join("");
+  requestAnimationFrame(() => setupLivePreviewPlayback(c));
+};
+
+function renderLiveSectionFast() {
+  const c = document.getElementById("liveScroll");
+  const wrap = document.getElementById("liveSectionWrap");
+  if (!c) return;
+  const lives = getLiveStreams();
+  if (!lives.length) {
+    if (wrap) wrap.style.display = "none";
+    return;
+  }
+  if (wrap) wrap.style.display = "";
+  c.innerHTML = lives
+    .map((l) => {
+      const u = getUser(l.uid) || { name: "Unknown" };
+      const poster = l.poster || u.avatar || "Brand_Logo.jpg";
+      return `<div class="live-card" onclick="playLive('${l.id}')"><div class="live-card-thumb"><video src="${l.src}" muted loop playsinline webkit-playsinline preload="metadata" poster="${poster}" data-live-preview style="width:100%;height:100%;object-fit:cover"></video><div class="live-overlay"><span class="live-badge">LIVE</span></div></div><div class="live-card-info"><div class="live-card-title">${esc(l.title)}</div><div class="live-card-channel">${u.name}</div><div class="live-viewers">${fmtV(l.viewers)} watching &middot; ${l.started}</div></div></div>`;
+    })
+    .join("");
+  requestAnimationFrame(() => setupLivePreviewPlayback(c));
+}
+renderLiveSection = renderLiveSectionFast;
+
 function setVidCat(cat, el) {
   curVidCat = cat;
   document
@@ -5048,83 +5130,89 @@ function initUI() {
 
 /* ── BOOTSTRAP ── */
 async function init() {
-  // Step 1 — seed data immediately (no delay)
-  seedData();
+  if (window.__TS_BOOT_PROMISE) return window.__TS_BOOT_PROMISE;
 
-  // Step 2 — restore logged-in user
-  // Priority 1: Real backend user stored from login/verify (ts_currentUser)
-  const backendUser = (() => {
-    try { return JSON.parse(localStorage.getItem("ts_currentUser")); }
-    catch { return null; }
-  })();
-  const backendToken = localStorage.getItem("ts_token");
+  window.__TS_BOOT_PROMISE = (async () => {
+    // Step 1 — seed data immediately (no delay)
+    seedData();
 
-  if (backendUser && backendToken && backendToken !== "undefined" && backendToken !== "null") {
-    // Real authenticated user — use directly without matching against seed data
-    CU = backendUser;
-    // Also persist into Store so the rest of the app can find them
-    Store.s("currentUser", backendUser);
-  } else {
-    // Fallback: local guest/seed user session
-    const saved = Store.g("currentUser");
-    if (saved) {
-      const users = getUsers();
-      const found = users.find((u) => u.id === saved.id);
-      if (found) {
-        CU = found;
-        Store.s("currentUser", found);
-      } else {
-        CU = null;
-        Store.d("currentUser");
+    // Step 2 — restore logged-in user
+    // Priority 1: Real backend user stored from login/verify (ts_currentUser)
+    const backendUser = (() => {
+      try { return JSON.parse(localStorage.getItem("ts_currentUser")); }
+      catch { return null; }
+    })();
+    const backendToken = localStorage.getItem("ts_token");
+
+    if (backendUser && backendToken && backendToken !== "undefined" && backendToken !== "null") {
+      // Real authenticated user — use directly without matching against seed data
+      CU = backendUser;
+      // Also persist into Store so the rest of the app can find them
+      Store.s("currentUser", backendUser);
+    } else {
+      // Fallback: local guest/seed user session
+      const saved = Store.g("currentUser");
+      if (saved) {
+        const users = getUsers();
+        const found = users.find((u) => u.id === saved.id);
+        if (found) {
+          CU = found;
+          Store.s("currentUser", found);
+        } else {
+          CU = null;
+          Store.d("currentUser");
+        }
       }
     }
-  }
 
-  // Step 3 — restore theme
-  const theme = Store.g("theme", "light");
-  if (theme === "dark") {
-    document.documentElement.setAttribute("data-dark", "");
-    const sunPath = `<circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/>`;
-    ["thIco", "dThemeIco"].forEach((id) => {
-      const ico = document.getElementById(id);
-      if (ico) ico.innerHTML = sunPath;
+    // Step 3 — restore theme
+    const theme = Store.g("theme", "light");
+    if (theme === "dark") {
+      document.documentElement.setAttribute("data-dark", "");
+      const sunPath = `<circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/>`;
+      ["thIco", "dThemeIco"].forEach((id) => {
+        const ico = document.getElementById(id);
+        if (ico) ico.innerHTML = sunPath;
+      });
+    }
+
+    // Step 4 — wire auth buttons
+    const lb = document.getElementById("loginBtn");
+    if (lb) lb.addEventListener("click", doLogin);
+    const sb2 = document.getElementById("signupBtn");
+    if (sb2) sb2.addEventListener("click", doSignup);
+    document.getElementById("liPw")?.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") doLogin();
     });
-  }
+    document.getElementById("suPw")?.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") doSignup();
+    });
 
-  // Step 4 — wire auth buttons
-  const lb = document.getElementById("loginBtn");
-  if (lb) lb.addEventListener("click", doLogin);
-  const sb2 = document.getElementById("signupBtn");
-  if (sb2) sb2.addEventListener("click", doSignup);
-  document.getElementById("liPw")?.addEventListener("keydown", (e) => {
-    if (e.key === "Enter") doLogin();
-  });
-  document.getElementById("suPw")?.addEventListener("keydown", (e) => {
-    if (e.key === "Enter") doSignup();
-  });
+    // Step 5 — render UI immediately
+    initUI();
+    renderFeed();
+    renderStories();
+    renderWidgets();
+    if (typeof window.hideBrandSplash === "function") {
+      window.hideBrandSplash();
+    }
 
-  // Step 5 — render UI immediately
-  initUI();
-  renderFeed();
-  renderStories();
-  renderWidgets();
-  if (typeof window.hideBrandSplash === "function") {
-    window.hideBrandSplash();
-  }
+    // Step 6 — notification dots
+    const notifs = Store.g("notifs", SEED_NOTIFS);
+    if (notifs.some((n) => n.unread)) {
+      const d = document.getElementById("ndot");
+      if (d) d.style.display = "block";
+      const bd = document.getElementById("bnNotifBadge");
+      if (bd) bd.style.display = "block";
+    }
 
-  // Step 6 — notification dots
-  const notifs = Store.g("notifs", SEED_NOTIFS);
-  if (notifs.some((n) => n.unread)) {
-    const d = document.getElementById("ndot");
-    if (d) d.style.display = "block";
-    const bd = document.getElementById("bnNotifBadge");
-    if (bd) bd.style.display = "block";
-  }
+    // Step 7 — IDB in background, never blocks render
+    try {
+      await openIDB();
+    } catch { }
+  })();
 
-  // Step 7 — IDB in background, never blocks render
-  try {
-    await openIDB();
-  } catch { }
+  return window.__TS_BOOT_PROMISE;
 }
 
 // Call init immediately when DOM is ready
