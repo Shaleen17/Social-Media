@@ -21,6 +21,7 @@ const WebRTCClient = (() => {
   let els = {};
 
   const config = {
+    iceCandidatePoolSize: 10,
     iceServers: [
       { urls: "stun:stun.l.google.com:19302" },
       { urls: "stun:stun1.l.google.com:19302" },
@@ -384,6 +385,14 @@ const WebRTCClient = (() => {
     // Stop old streams if any
     stopMedia();
 
+    if (
+      !window.isSecureContext &&
+      window.location.hostname !== "localhost" &&
+      window.location.hostname !== "127.0.0.1"
+    ) {
+      throw new Error("Calling works only on HTTPS or localhost");
+    }
+
     if (!navigator.mediaDevices?.getUserMedia) {
       throw new Error("Media devices are not available");
     }
@@ -454,11 +463,18 @@ const WebRTCClient = (() => {
     };
     
     peerConnection.onconnectionstatechange = () => {
+      if (!peerConnection) return;
       if (peerConnection.connectionState === "connected" && els.statusTxt) {
         els.statusTxt.textContent = "Connected 🟢";
       }
       if (peerConnection.connectionState === 'disconnected' || peerConnection.connectionState === 'failed') {
-        endCallLocally();
+        els.statusTxt.textContent = "Reconnecting...";
+        try {
+          peerConnection.restartIce();
+        } catch {}
+      }
+      if (peerConnection.connectionState === "closed") {
+        resetCallUI();
       }
     };
 
@@ -468,7 +484,10 @@ const WebRTCClient = (() => {
         els.statusTxt.textContent = "Connected 🟢";
       }
       if (peerConnection.iceConnectionState === "failed") {
-        els.statusTxt.textContent = "Connection lost";
+        els.statusTxt.textContent = "Reconnecting...";
+        try {
+          peerConnection.restartIce();
+        } catch {}
       }
     };
   }

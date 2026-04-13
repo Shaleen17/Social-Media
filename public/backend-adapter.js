@@ -146,7 +146,125 @@
 
   let _chatPushSetupPromise = null;
   let _pendingOpenChatId = consumeOpenChatParam();
-  const APP_ASSET_VERSION = "20260413-storyfix-8";
+  const APP_ASSET_VERSION = "20260413-installfix-1";
+  let _appSwPromise = null;
+  let _deferredInstallPrompt = null;
+  let _installPromptBound = false;
+
+  function isStandaloneApp() {
+    return (
+      window.matchMedia?.("(display-mode: standalone)").matches ||
+      window.navigator.standalone === true
+    );
+  }
+
+  function isLocalDevHost() {
+    return (
+      window.location.hostname === "localhost" ||
+      window.location.hostname === "127.0.0.1"
+    );
+  }
+
+  function isIosDevice() {
+    return /iphone|ipad|ipod/i.test(window.navigator.userAgent || "");
+  }
+
+  async function ensureAppServiceWorker() {
+    if (!("serviceWorker" in navigator)) return null;
+    if (_appSwPromise) return _appSwPromise;
+
+    _appSwPromise = (async () => {
+      const reg = await navigator.serviceWorker.register(`/sw.js?v=${APP_ASSET_VERSION}`);
+      try {
+        await reg.update();
+      } catch {}
+      return reg;
+    })();
+
+    try {
+      return await _appSwPromise;
+    } catch (err) {
+      console.warn("App service worker registration skipped:", err.message);
+      _appSwPromise = null;
+      return null;
+    }
+  }
+
+  function updateInstallButtons() {
+    const allowUi =
+      !isStandaloneApp() &&
+      (isIosDevice() || window.isSecureContext || isLocalDevHost());
+    const installText = _deferredInstallPrompt
+      ? "Install App"
+      : isIosDevice()
+        ? "Add to Home Screen"
+        : "Install App";
+
+    [
+      { id: "sbInstallBtn", display: allowUi ? "flex" : "none", textId: "sbInstallTxt" },
+      { id: "dInstallBtn", display: allowUi ? "flex" : "none", textId: "dInstallTxt" },
+      { id: "topbarInstallBtn", display: allowUi ? "inline-flex" : "none", textId: "" },
+    ].forEach(({ id, display, textId }) => {
+      const btn = document.getElementById(id);
+      if (btn) btn.style.display = display;
+      if (textId) {
+        const txt = document.getElementById(textId);
+        if (txt) txt.textContent = installText;
+      }
+    });
+  }
+
+  function setupInstallPromptBridge() {
+    if (_installPromptBound) return;
+    _installPromptBound = true;
+
+    window.addEventListener("beforeinstallprompt", (event) => {
+      event.preventDefault();
+      _deferredInstallPrompt = event;
+      updateInstallButtons();
+    });
+
+    window.addEventListener("appinstalled", () => {
+      _deferredInstallPrompt = null;
+      updateInstallButtons();
+      MC?.success("Tirth Sutra installed successfully.");
+    });
+  }
+
+  window.promptInstallApp = async function () {
+    await ensureAppServiceWorker().catch(() => {});
+
+    if (isStandaloneApp()) {
+      MC?.info("Tirth Sutra is already installed on this device.");
+      return;
+    }
+
+    if (_deferredInstallPrompt) {
+      const promptEvent = _deferredInstallPrompt;
+      _deferredInstallPrompt = null;
+      promptEvent.prompt();
+      const choice = await promptEvent.userChoice.catch(() => null);
+      updateInstallButtons();
+      if (choice?.outcome === "accepted") {
+        MC?.success("Install started. Open Tirth Sutra from your home screen when it finishes.");
+      } else {
+        MC?.info("Install cancelled.");
+      }
+      return;
+    }
+
+    if (isIosDevice()) {
+      MC?.info("On iPhone, tap Share in Safari and then choose Add to Home Screen.");
+      return;
+    }
+
+    if (!window.isSecureContext && !isLocalDevHost()) {
+      MC?.warn("Install is available only on HTTPS or localhost.");
+      return;
+    }
+
+    MC?.info("Use your browser menu and choose Install app or Add to Home Screen.");
+  };
 
   function urlBase64ToUint8Array(base64String) {
     const padding = "=".repeat((4 - (base64String.length % 4)) % 4);
@@ -197,10 +315,8 @@
 
       if (permission !== "granted") return null;
 
-      const reg = await navigator.serviceWorker.register(`/sw.js?v=${APP_ASSET_VERSION}`);
-      try {
-        await reg.update();
-      } catch {}
+      const reg = await ensureAppServiceWorker();
+      if (!reg) return null;
       const existing = await reg.pushManager.getSubscription();
       if (existing) {
         await API.savePushSubscription(existing.toJSON()).catch(() => {});
@@ -2491,6 +2607,10 @@
   // =============================================
   const _origInit = window.init;
   window.init = async function () {
+    ensureAppServiceWorker().catch(() => {});
+    setupInstallPromptBridge();
+    updateInstallButtons();
+
     // Restore theme
     const theme = Store.g("theme", "light");
     if (theme === "dark") {
@@ -2546,6 +2666,7 @@
     renderFeed();
     renderStories();
     renderWidgets();
+    updateInstallButtons();
 
     if (authRedirect?.authError) {
       MC.error(authRedirect.authError);
@@ -2567,6 +2688,10 @@
   window.startWebrtcCall = function (isVideo) {
     if (!activeChatId) return MC?.error("No active chat.");
 
+    if (!window.isSecureContext && !isLocalDevHost()) {
+      return MC?.error("Voice and video calling require HTTPS or localhost.");
+    }
+
     const conv = _cachedConversations.find(
       (c) => (c.id || c._id || "").toString() === activeChatId
     );
@@ -2586,9 +2711,15 @@
     const uid = conv.uid.toString();
     const userName = conv.user ? conv.user.name : "User";
     const avatar = conv.user ? conv.user.avatar : null;
-
-    if (!SocketClient.isUserOnline(uid)) {
-      return MC?.warn((userName || "User") + " is offline right now.");
+    const selfId = (CU?.id || CU?._id || "").toString();
+    if (selfId) {
+      SocketClient.connect(selfId);
+    }
+    const hasPresenceData =
+      typeof SocketClient.getOnlineUsers === "function" &&
+      SocketClient.getOnlineUsers().size > 0;
+    if (SocketClient.isConnected() && hasPresenceData && !SocketClient.isUserOnline(uid)) {
+      MC?.info((userName || "User") + " may be offline. Trying the call anyway...");
     }
 
     if (typeof WebRTCClient !== "undefined") {

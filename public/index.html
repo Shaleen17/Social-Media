@@ -6,15 +6,21 @@
       name="viewport"
       content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, interactive-widget=resizes-content"
     />
+    <meta name="theme-color" content="#4a2e2a" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+    <meta name="apple-mobile-web-app-title" content="Tirth Sutra" />
     <title>Tirth Sutra — Mandir Community</title>
     <link rel="icon" type="image/png" href="Brand_Logo.jpg" />
+    <link rel="manifest" href="manifest.webmanifest?v=20260413-installfix-1" />
+    <link rel="apple-touch-icon" href="apple-touch-icon.png?v=20260413-installfix-1" />
     <link rel="preload" as="image" href="Brand_Logo.jpg" />
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link rel="preconnect" href="https://videos-o57d.vercel.app" crossorigin>
     <link rel="dns-prefetch" href="//videos-o57d.vercel.app">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-    <link href="Style.css?v=20260413-storyfix-8" rel="stylesheet" type="text/css" />
+    <link href="Style.css?v=20260413-installfix-1" rel="stylesheet" type="text/css" />
     <script src="https://checkout.razorpay.com/v1/checkout.js"></script>
   </head>
   <!-- Google tag (gtag.js) -->
@@ -1266,6 +1272,15 @@
           </svg>
           New Post
         </button>
+        <button class="drawer-item" id="dInstallBtn" onclick="promptInstallApp()" style="display:none;">
+          <svg viewBox="0 0 24 24">
+            <rect x="3" y="4" width="18" height="12" rx="2" />
+            <path d="M8 20h8" />
+            <path d="M12 8v8" />
+            <polyline points="9 13 12 16 15 13" />
+          </svg>
+          <span id="dInstallTxt">Install App</span>
+        </button>
         <button class="drawer-item" id="dAuthBtn" onclick="handleDrawerAuth()">
           <svg viewBox="0 0 24 24">
             <path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4" />
@@ -1448,6 +1463,15 @@
               <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" />
             </svg>
             <span class="sb-label">Theme</span>
+          </button>
+          <button class="sb" id="sbInstallBtn" onclick="promptInstallApp()" style="margin: 4px 0; display:none;">
+            <svg viewBox="0 0 24 24">
+              <rect x="3" y="4" width="18" height="12" rx="2" />
+              <path d="M8 20h8" />
+              <path d="M12 8v8" />
+              <polyline points="9 13 12 16 15 13" />
+            </svg>
+            <span class="sb-label" id="sbInstallTxt">Install App</span>
           </button>
           <button class="sb" id="sbAuthBtn" onclick="handleSidebarAuth()" style="margin: 4px 0">
             <svg viewBox="0 0 24 24">
@@ -2915,6 +2939,14 @@
             <line x1="5" y1="12" x2="19" y2="12" />
           </svg>
         </button>
+        <button class="topbar-btn" id="topbarInstallBtn" onclick="promptInstallApp()" aria-label="Install app" style="display:none;">
+          <svg viewBox="0 0 24 24">
+            <rect x="3" y="4" width="18" height="12" rx="2" />
+            <path d="M8 20h8" />
+            <path d="M12 8v8" />
+            <polyline points="9 13 12 16 15 13" />
+          </svg>
+        </button>
         <button class="topbar-btn topbar-auth-btn" id="topbarAuthBtn" onclick="handleTopbarAuth()" aria-label="Sign In">
           <svg viewBox="0 0 24 24" id="topbarAuthIco">
             <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
@@ -3223,7 +3255,7 @@
     </script>
     <script>
       (function () {
-        const runtimeVersion = "20260413-storyfix-8";
+        const runtimeVersion = "20260413-installfix-1";
         try {
           const storedVersion = localStorage.getItem("ts_frontendRuntimeVersion");
           if (storedVersion !== runtimeVersion) {
@@ -3235,13 +3267,13 @@
         } catch {}
       })();
     </script>
-    <script src="Script.js?v=20260413-storyfix-8"></script>
+    <script src="Script.js?v=20260413-installfix-1"></script>
     <script src="https://cdn.socket.io/4.7.4/socket.io.min.js"></script>
     <!-- Vercel Config & API Backend Scripts -->
     <script src="config.js"></script>
-    <script src="api.js?v=20260413-storyfix-8"></script>
-    <script src="socket-client.js?v=20260413-storyfix-8"></script>
-    <script src="webrtc-client.js?v=20260413-storyfix-8"></script>
-    <script src="backend-adapter.js?v=20260413-storyfix-8"></script>
+    <script src="api.js?v=20260413-installfix-1"></script>
+    <script src="socket-client.js?v=20260413-installfix-1"></script>
+    <script src="webrtc-client.js?v=20260413-installfix-1"></script>
+    <script src="backend-adapter.js?v=20260413-installfix-1"></script>
   </body>
 </html>

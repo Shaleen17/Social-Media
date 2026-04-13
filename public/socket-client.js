@@ -63,6 +63,17 @@ const SocketClient = (() => {
       notifySocketReady(socket);
       return;
     }
+
+    if (socket && !socket.connected) {
+      userId = uid;
+      try {
+        socket.auth = { token };
+      } catch {}
+      if (typeof socket.connect === "function") {
+        socket.connect();
+        return;
+      }
+    }
     
     userId = uid;
 
