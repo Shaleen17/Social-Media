@@ -1,4 +1,4 @@
-self.__TS_SW_VERSION__ = "20260413-aboutfix-4";
+self.__TS_SW_VERSION__ = "20260413-runtimefix-1";
 
 self.addEventListener("fetch", () => {});
 

@@ -50,7 +50,12 @@ const SocketClient = (() => {
     }
 
     // Use the dynamically configured backend URL
-    const backendUrl = typeof CONFIG !== "undefined" ? CONFIG.BACKEND_URL : "";
+    const backendUrl =
+      typeof window.getBackendBaseUrl === "function"
+        ? window.getBackendBaseUrl()
+        : typeof CONFIG !== "undefined" && CONFIG && CONFIG.BACKEND_URL
+          ? String(CONFIG.BACKEND_URL).replace(/\/+$/, "")
+          : "";
     if (!backendUrl) {
       console.error("SocketClient: CONFIG.BACKEND_URL is not defined. Cannot connect.");
       return;

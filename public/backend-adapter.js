@@ -146,7 +146,7 @@
 
   let _chatPushSetupPromise = null;
   let _pendingOpenChatId = consumeOpenChatParam();
-  const APP_ASSET_VERSION = "20260413-aboutfix-4";
+  const APP_ASSET_VERSION = "20260413-runtimefix-1";
   let _appSwPromise = null;
   let _deferredInstallPrompt = null;
   let _installPromptBound = false;
@@ -609,7 +609,12 @@
   };
 
   window.doGoogleLogin = function () {
-    const backendBase = (typeof CONFIG !== "undefined" ? CONFIG.BACKEND_URL : "");
+    const backendBase =
+      typeof window.getBackendBaseUrl === "function"
+        ? window.getBackendBaseUrl()
+        : typeof CONFIG !== "undefined" && CONFIG && CONFIG.BACKEND_URL
+          ? String(CONFIG.BACKEND_URL).replace(/\/+$/, "")
+          : "";
     const returnTo = getAppBaseUrl();
     window.location.href =
       backendBase +

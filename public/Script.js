@@ -1259,7 +1259,12 @@ async function doLogin() {
   if (!ok) return;
 
   try {
-    const backendBase = (typeof CONFIG !== "undefined" ? CONFIG.BACKEND_URL : "");
+    const backendBase =
+      typeof window.getBackendBaseUrl === "function"
+        ? window.getBackendBaseUrl()
+        : typeof CONFIG !== "undefined" && CONFIG && CONFIG.BACKEND_URL
+          ? String(CONFIG.BACKEND_URL).replace(/\/+$/, "")
+          : "";
     const res = await fetch(backendBase + "/api/auth/login", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -1324,7 +1329,12 @@ async function doSignup() {
   if (!ok) return;
 
   try {
-    const backendBase = (typeof CONFIG !== "undefined" ? CONFIG.BACKEND_URL : "");
+    const backendBase =
+      typeof window.getBackendBaseUrl === "function"
+        ? window.getBackendBaseUrl()
+        : typeof CONFIG !== "undefined" && CONFIG && CONFIG.BACKEND_URL
+          ? String(CONFIG.BACKEND_URL).replace(/\/+$/, "")
+          : "";
     const clientUrl = (() => {
       const url = new URL(window.location.href);
       url.hash = "";
@@ -1381,7 +1391,12 @@ function logout() {
 }
 
 function doGoogleLogin() {
-  const backendBase = (typeof CONFIG !== "undefined" ? CONFIG.BACKEND_URL : "");
+  const backendBase =
+    typeof window.getBackendBaseUrl === "function"
+      ? window.getBackendBaseUrl()
+      : typeof CONFIG !== "undefined" && CONFIG && CONFIG.BACKEND_URL
+        ? String(CONFIG.BACKEND_URL).replace(/\/+$/, "")
+        : "";
   const url = new URL(window.location.href);
   url.hash = "";
   url.search = "";

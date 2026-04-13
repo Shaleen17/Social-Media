@@ -3,8 +3,24 @@
  * All functions return promises. JWT token is stored in localStorage.
  */
 const API = (() => {
-  // Use the dynamically configured backend URL
-  const BASE = (typeof CONFIG !== "undefined" ? CONFIG.BACKEND_URL : "") + "/api";
+  function getBackendBase() {
+    if (typeof window.getBackendBaseUrl === "function") {
+      return window.getBackendBaseUrl();
+    }
+
+    if (typeof CONFIG !== "undefined" && CONFIG && CONFIG.BACKEND_URL) {
+      return String(CONFIG.BACKEND_URL).replace(/\/+$/, "");
+    }
+
+    return window.location.hostname === "localhost" ||
+      window.location.hostname === "127.0.0.1"
+      ? "http://localhost:5000"
+      : "https://tirth-sutra-backend.onrender.com";
+  }
+
+  function getApiBase() {
+    return getBackendBase() + "/api";
+  }
 
   function getToken() {
     return localStorage.getItem("ts_token");
@@ -45,7 +61,8 @@ const API = (() => {
     }
 
     try {
-      const res = await fetch(BASE + path, {
+      const endpoint = getApiBase() + path;
+      const res = await fetch(endpoint, {
         ...options,
         headers,
       });
@@ -55,7 +72,7 @@ const API = (() => {
       try {
         data = JSON.parse(text);
       } catch (parseErr) {
-        console.error("Non-JSON response from", path, ":", text.substring(0, 200));
+        console.error("Non-JSON response from", endpoint, ":", text.substring(0, 200));
         throw new Error(res.ok ? "Invalid server response" : `Server error (${res.status})`);
       }
       if (!res.ok) {
@@ -73,7 +90,7 @@ const API = (() => {
     const formData = new FormData();
     formData.append("file", file);
 
-    const res = await fetch(BASE + "/upload", {
+    const res = await fetch(getApiBase() + "/upload", {
       method: "POST",
       headers: {
         Authorization: "Bearer " + token,
