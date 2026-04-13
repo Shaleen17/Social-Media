@@ -3351,6 +3351,15 @@ function ensureStoryViewerMarkup() {
   }
   sv.setAttribute("aria-hidden", "true");
   sv.innerHTML = `
+    <div class="sv-brand-lockup" aria-hidden="true">
+      <div class="sv-brand-logo">
+        <img src="Brand_Logo.jpg" alt="Tirth Sutra logo">
+      </div>
+      <div class="sv-brand-copy">
+        <strong>Tirth Sutra</strong>
+        <span>Mandir Community</span>
+      </div>
+    </div>
     <div class="sv-shell">
       <button class="sv-nav sv-nav-prev" id="svNavPrev" type="button" onclick="stepSVProfile(-1)" aria-label="Previous profile story">
         <svg viewBox="0 0 24 24"><polyline points="15 18 9 12 15 6"></polyline></svg>
@@ -3365,13 +3374,15 @@ function ensureStoryViewerMarkup() {
               <div class="sv-name" id="svName"></div>
               <div class="sv-time" id="svTime"></div>
             </div>
-            <button class="sv-sound" id="svSound" type="button" onclick="toggleSVSound()" aria-label="Toggle story sound"></button>
-            <button class="sv-close" type="button" onclick="closeSV()">
-              <svg viewBox="0 0 24 24">
-                <line x1="18" y1="6" x2="6" y2="18"></line>
-                <line x1="6" y1="6" x2="18" y2="18"></line>
-              </svg>
-            </button>
+            <div class="sv-actions">
+              <button class="sv-sound" id="svSound" type="button" onclick="toggleSVSound()" aria-label="Toggle story sound"></button>
+              <button class="sv-close" type="button" onclick="closeSV()">
+                <svg viewBox="0 0 24 24">
+                  <line x1="18" y1="6" x2="6" y2="18"></line>
+                  <line x1="6" y1="6" x2="18" y2="18"></line>
+                </svg>
+              </button>
+            </div>
           </div>
           <div class="sv-content" id="svContent">
               <div class="sv-tap-left" onclick="svTapLeft(event)" aria-label="Previous story"></div>

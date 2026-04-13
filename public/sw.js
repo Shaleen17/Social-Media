@@ -1,4 +1,4 @@
-self.__TS_SW_VERSION__ = "20260413-runtimefix-1";
+self.__TS_SW_VERSION__ = "20260413-storybrand-3";
 
 self.addEventListener("fetch", () => {});
 

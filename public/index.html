@@ -12,15 +12,15 @@
     <meta name="apple-mobile-web-app-title" content="Tirth Sutra" />
     <title>Tirth Sutra — Mandir Community</title>
     <link rel="icon" type="image/png" href="Brand_Logo.jpg" />
-    <link rel="manifest" href="manifest.webmanifest?v=20260413-runtimefix-1" />
-    <link rel="apple-touch-icon" href="apple-touch-icon.png?v=20260413-runtimefix-1" />
+    <link rel="manifest" href="manifest.webmanifest?v=20260413-storybrand-3" />
+    <link rel="apple-touch-icon" href="apple-touch-icon.png?v=20260413-storybrand-3" />
     <link rel="preload" as="image" href="Brand_Logo.jpg" />
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link rel="preconnect" href="https://videos-o57d.vercel.app" crossorigin>
     <link rel="dns-prefetch" href="//videos-o57d.vercel.app">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-    <link href="Style.css?v=20260413-runtimefix-1" rel="stylesheet" type="text/css" />
+    <link href="Style.css?v=20260413-storybrand-3" rel="stylesheet" type="text/css" />
     <script src="https://checkout.razorpay.com/v1/checkout.js"></script>
   </head>
   <!-- Google tag (gtag.js) -->
@@ -79,6 +79,15 @@
      STORY VIEWER
      ============================================================ -->
     <div id="sv" aria-hidden="true">
+      <div class="sv-brand-lockup" aria-hidden="true">
+        <div class="sv-brand-logo">
+          <img src="Brand_Logo.jpg" alt="Tirth Sutra logo" />
+        </div>
+        <div class="sv-brand-copy">
+          <strong>Tirth Sutra</strong>
+          <span>Mandir Community</span>
+        </div>
+      </div>
       <div class="sv-shell">
         <button
           class="sv-nav sv-nav-prev"
@@ -107,19 +116,21 @@
                 <div class="sv-name" id="svName"></div>
                 <div class="sv-time" id="svTime"></div>
               </div>
-              <button
-                class="sv-sound"
-                id="svSound"
-                type="button"
-                onclick="toggleSVSound()"
-                aria-label="Toggle story sound"
-              ></button>
-              <button class="sv-close" type="button" onclick="closeSV()">
-                <svg viewBox="0 0 24 24">
-                  <line x1="18" y1="6" x2="6" y2="18" />
-                  <line x1="6" y1="6" x2="18" y2="18" />
-                </svg>
-              </button>
+              <div class="sv-actions">
+                <button
+                  class="sv-sound"
+                  id="svSound"
+                  type="button"
+                  onclick="toggleSVSound()"
+                  aria-label="Toggle story sound"
+                ></button>
+                <button class="sv-close" type="button" onclick="closeSV()">
+                  <svg viewBox="0 0 24 24">
+                    <line x1="18" y1="6" x2="6" y2="18" />
+                    <line x1="6" y1="6" x2="18" y2="18" />
+                  </svg>
+                </button>
+              </div>
             </div>
             <div class="sv-content" id="svContent">
               <div class="sv-tap-left" onclick="svTapLeft()" aria-label="Previous story"></div>
@@ -3385,7 +3396,7 @@
     </script>
     <script>
       (function () {
-        const runtimeVersion = "20260413-runtimefix-1";
+        const runtimeVersion = "20260413-storybrand-3";
         try {
           const storedVersion = localStorage.getItem("ts_frontendRuntimeVersion");
           if (storedVersion !== runtimeVersion) {
@@ -3397,13 +3408,13 @@
         } catch {}
       })();
     </script>
-    <script src="Script.js?v=20260413-runtimefix-1"></script>
+    <script src="Script.js?v=20260413-storybrand-3"></script>
     <script src="https://cdn.socket.io/4.7.4/socket.io.min.js"></script>
     <!-- Vercel Config & API Backend Scripts -->
-    <script src="config.js?v=20260413-runtimefix-1"></script>
-    <script src="api.js?v=20260413-runtimefix-1"></script>
-    <script src="socket-client.js?v=20260413-runtimefix-1"></script>
-    <script src="webrtc-client.js?v=20260413-runtimefix-1"></script>
-    <script src="backend-adapter.js?v=20260413-runtimefix-1"></script>
+    <script src="config.js?v=20260413-storybrand-3"></script>
+    <script src="api.js?v=20260413-storybrand-3"></script>
+    <script src="socket-client.js?v=20260413-storybrand-3"></script>
+    <script src="webrtc-client.js?v=20260413-storybrand-3"></script>
+    <script src="backend-adapter.js?v=20260413-storybrand-3"></script>
   </body>
 </html>

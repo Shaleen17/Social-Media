@@ -146,7 +146,7 @@
 
   let _chatPushSetupPromise = null;
   let _pendingOpenChatId = consumeOpenChatParam();
-  const APP_ASSET_VERSION = "20260413-runtimefix-1";
+  const APP_ASSET_VERSION = "20260413-storybrand-3";
   let _appSwPromise = null;
   let _deferredInstallPrompt = null;
   let _installPromptBound = false;
