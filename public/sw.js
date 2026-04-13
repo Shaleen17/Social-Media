@@ -1,4 +1,4 @@
-self.__TS_SW_VERSION__ = "20260413-installfix-1";
+self.__TS_SW_VERSION__ = "20260413-aboutfix-2";
 
 self.addEventListener("fetch", () => {});
 

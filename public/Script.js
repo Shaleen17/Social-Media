@@ -1408,6 +1408,7 @@ const PAGE_IDS = [
   "bookmarks",
   "profile",
   "chats",
+  "about",
 ];
 function gp(page) {
   PAGE_IDS.forEach((p) => {
@@ -1460,18 +1461,20 @@ function gp(page) {
     bookmarks: () => renderBM(),
     profile: () => renderProfile(CU ? CU.id : curProfId || "u1"),
     chats: () => renderChatsPage(),
+    about: () => {},
   };
   const isReelsPage = page === "reels";
+  const isWidePage = page === "chats" || isReelsPage || page === "about";
   document.body.classList.toggle("reels-mode", isReelsPage);
   //* pgChats needs flex not block */
   const cp = document.getElementById("pgChats");
   if (cp) cp.style.display = page === "chats" ? "flex" : "";
   const rw = document.getElementById("rightWrap");
-  if (rw) rw.style.display = page === "chats" || isReelsPage ? "none" : "";
+  if (rw) rw.style.display = isWidePage ? "none" : "";
   const fw = document.getElementById("feedWrap");
   if (fw) {
-    fw.style.maxWidth = page === "chats" || isReelsPage ? "100%" : "";
-    fw.style.borderRight = page === "chats" || isReelsPage ? "none" : "";
+    fw.style.maxWidth = isWidePage ? "100%" : "";
+    fw.style.borderRight = isWidePage ? "none" : "";
   }
   if (!isReelsPage) pauseAllReels();
   if (renderers[page]) renderers[page]();
