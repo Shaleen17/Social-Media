@@ -1142,6 +1142,10 @@ function auth(fn) {
 function openOvl(id) {
   const el = document.getElementById(id);
   if (el) el.classList.add("show");
+  if (id === "moreOvl") {
+    syncMoreMenu();
+    syncMoreNavState(true);
+  }
 }
 function setVideoDetailTitle(title = "Tirth Tube") {
   const el = document.getElementById("videoDetailTitle");
@@ -1206,6 +1210,7 @@ function closeOvl(id) {
   if (id === "videoDetailOvl") stopVideoDetailPlayback();
   const el = document.getElementById(id);
   if (el) el.classList.remove("show");
+  if (id === "moreOvl") syncMoreNavState();
   if (id === "videoDetailOvl") resetVideoDetailState();
 }
 document.addEventListener("click", (e) => {
@@ -1446,6 +1451,60 @@ function openProfilePageAndClose() {
   closeDrawer();
 }
 
+const MORE_NAV_PAGES = ["search", "bookmarks", "about"];
+
+function syncMoreNavState(forceOpen = false) {
+  const isActive = forceOpen || MORE_NAV_PAGES.includes(curPage);
+  ["snAbout", "dAbout"].forEach((id) => {
+    const el = document.getElementById(id);
+    if (el) el.classList.toggle("on", isActive);
+  });
+}
+
+function syncMoreMenu() {
+  const moreAuthTxt = document.getElementById("moreAuthTxt");
+  if (moreAuthTxt) moreAuthTxt.textContent = CU ? "Sign Out" : "Sign In";
+}
+
+function setMoreMenuAnchor(trigger) {
+  const more = document.getElementById("moreOvl");
+  if (!more || !trigger || window.innerWidth <= 640) return;
+  const rect = trigger.getBoundingClientRect();
+  const left = Math.max(12, Math.round(rect.left));
+  const bottom = Math.max(12, Math.round(window.innerHeight - rect.top + 10));
+  more.style.setProperty("--more-left", left + "px");
+  more.style.setProperty("--more-bottom", bottom + "px");
+}
+
+function openMoreMenu(trigger) {
+  const more = document.getElementById("moreOvl");
+  if (more && more.classList.contains("show")) {
+    closeMoreMenu();
+    return;
+  }
+  setMoreMenuAnchor(trigger || document.getElementById("snAbout"));
+  closeDrawer();
+  openOvl("moreOvl");
+}
+
+function closeMoreMenu() {
+  closeOvl("moreOvl");
+}
+
+function moreGo(page) {
+  closeMoreMenu();
+  gp(page);
+}
+
+function handleMoreAuth() {
+  closeMoreMenu();
+  if (CU) {
+    logout();
+  } else {
+    openOvl("authOvl");
+  }
+}
+
 function gp(page) {
   PAGE_IDS.forEach((p) => {
     const el = document.getElementById(
@@ -1462,6 +1521,7 @@ function gp(page) {
     "sn" + page.charAt(0).toUpperCase() + page.slice(1),
   );
   if (sb) sb.classList.add("on");
+  else if (MORE_NAV_PAGES.includes(page)) syncMoreNavState(true);
   // Bottom nav
   document.querySelectorAll(".bnb").forEach((b) => b.classList.remove("on"));
   const bn = document.getElementById(
@@ -1476,6 +1536,7 @@ function gp(page) {
     "d" + page.charAt(0).toUpperCase() + page.slice(1),
   );
   if (di) di.classList.add("on");
+  else if (MORE_NAV_PAGES.includes(page)) syncMoreNavState(true);
   curPage = page;
   const renderers = {
     home: () => {
@@ -1575,6 +1636,8 @@ function updateNavAuthButtons() {
   // Desktop sidebar auth button
   const sbAuthTxt = document.getElementById("sbAuthTxt");
   if (sbAuthTxt) sbAuthTxt.textContent = CU ? "Sign Out" : "Sign In";
+  const moreAuthTxt = document.getElementById("moreAuthTxt");
+  if (moreAuthTxt) moreAuthTxt.textContent = CU ? "Sign Out" : "Sign In";
 
   // Mobile topbar auth button
   const topbarBtn = document.getElementById("topbarAuthBtn");

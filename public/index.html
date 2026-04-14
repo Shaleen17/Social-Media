@@ -407,6 +407,49 @@
       </div>
     </div>
 
+    <!-- MORE MENU -->
+    <div class="ovl" id="moreOvl">
+      <div class="modal more-menu-modal" role="dialog" aria-label="More menu">
+        <div class="more-menu-list">
+          <button class="more-menu-item" type="button" onclick="moreGo('search')">
+            <svg viewBox="0 0 24 24">
+              <circle cx="11" cy="11" r="8"></circle>
+              <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+            </svg>
+            <span>Search</span>
+          </button>
+          <button class="more-menu-item" type="button" onclick="moreGo('bookmarks')">
+            <svg viewBox="0 0 24 24">
+              <path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"></path>
+            </svg>
+            <span>Bookmarks</span>
+          </button>
+          <button class="more-menu-item" type="button" onclick="moreGo('about')">
+            <svg viewBox="0 0 24 24">
+              <circle cx="12" cy="12" r="9"></circle>
+              <line x1="12" y1="10" x2="12" y2="16"></line>
+              <circle cx="12" cy="7" r="1" fill="currentColor" stroke="none"></circle>
+            </svg>
+            <span>About Tirth Sutra</span>
+          </button>
+          <div class="more-menu-divider"></div>
+          <button
+            class="more-menu-item more-menu-item-auth"
+            id="moreAuthBtn"
+            type="button"
+            onclick="handleMoreAuth()"
+          >
+            <svg viewBox="0 0 24 24">
+              <path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"></path>
+              <polyline points="10 17 15 12 10 7"></polyline>
+              <line x1="15" y1="12" x2="3" y2="12"></line>
+            </svg>
+            <span id="moreAuthTxt">Sign In</span>
+          </button>
+        </div>
+      </div>
+    </div>
+
     <!-- COMPOSE MODAL -->
     <div class="ovl" id="compOvl">
       <div class="modal">
@@ -1155,13 +1198,6 @@
           </svg>
           Reels
         </button>
-        <button class="drawer-item" id="dSearch" onclick="gpAndClose('search')">
-          <svg viewBox="0 0 24 24">
-            <circle cx="11" cy="11" r="8" />
-            <line x1="21" y1="21" x2="16.65" y2="16.65" />
-          </svg>
-          Search
-        </button>
         <button class="drawer-item" id="dNotifs" onclick="gpAndClose('notifs')">
           <svg viewBox="0 0 24 24">
             <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9" />
@@ -1184,16 +1220,6 @@
         </button>
         <button
           class="drawer-item"
-          id="dBookmarks"
-          onclick="gpAndClose('bookmarks')"
-        >
-          <svg viewBox="0 0 24 24">
-            <path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z" />
-          </svg>
-          Bookmarks
-        </button>
-        <button
-          class="drawer-item"
           id="dProfile"
           onclick="openProfilePageAndClose()"
         >
@@ -1202,6 +1228,14 @@
             <circle cx="12" cy="7" r="4" />
           </svg>
           Profile
+        </button>
+        <button class="drawer-item" id="dAbout" onclick="openMoreMenu(event.currentTarget)">
+          <svg viewBox="0 0 24 24">
+            <line x1="5" y1="7" x2="19" y2="7" />
+            <line x1="5" y1="12" x2="19" y2="12" />
+            <line x1="5" y1="17" x2="19" y2="17" />
+          </svg>
+          More
         </button>
 
         <div class="drawer-divider"></div>
@@ -1239,14 +1273,6 @@
             <line x1="5" y1="19.5" x2="19" y2="19.5" />
           </svg>
           <span id="dInstallTxt">Install App</span>
-        </button>
-        <button class="drawer-item" id="dAuthBtn" onclick="handleDrawerAuth()">
-          <svg viewBox="0 0 24 24">
-            <path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4" />
-            <polyline points="10 17 15 12 10 7" />
-            <line x1="15" y1="12" x2="3" y2="12" />
-          </svg>
-          <span id="dAuthTxt">Sign In</span>
         </button>
       </div>
 
@@ -1356,13 +1382,6 @@
             </svg>
             <span class="sb-label">Reels</span>
           </button>
-          <button class="sb" id="snSearch" onclick="gp('search')">
-            <svg viewBox="0 0 24 24">
-              <circle cx="11" cy="11" r="8" />
-              <line x1="21" y1="21" x2="16.65" y2="16.65" />
-            </svg>
-            <span class="sb-label">Search</span>
-          </button>
           <button class="sb" id="snNotifs" onclick="gp('notifs')">
             <svg viewBox="0 0 24 24">
               <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9" />
@@ -1384,18 +1403,20 @@
             <span class="sb-label">Chats</span>
           </button>
 
-          <button class="sb" id="snBookmarks" onclick="gp('bookmarks')">
-            <svg viewBox="0 0 24 24">
-              <path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z" />
-            </svg>
-            <span class="sb-label">Bookmarks</span>
-          </button>
           <button class="sb" id="snProfile" onclick="openProfilePage()">
             <svg viewBox="0 0 24 24">
               <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
               <circle cx="12" cy="7" r="4" />
             </svg>
             <span class="sb-label">Profile</span>
+          </button>
+          <button class="sb" id="snAbout" onclick="openMoreMenu(event.currentTarget)">
+            <svg viewBox="0 0 24 24">
+              <line x1="5" y1="7" x2="19" y2="7" />
+              <line x1="5" y1="12" x2="19" y2="12" />
+              <line x1="5" y1="17" x2="19" y2="17" />
+            </svg>
+            <span class="sb-label">More</span>
           </button>
         </div>
 
@@ -1431,14 +1452,6 @@
               <line x1="5" y1="19.5" x2="19" y2="19.5" />
             </svg>
             <span class="sb-label" id="sbInstallTxt">Install App</span>
-          </button>
-          <button class="sb" id="sbAuthBtn" onclick="handleSidebarAuth()" style="margin: 4px 0">
-            <svg viewBox="0 0 24 24">
-              <path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4" />
-              <polyline points="10 17 15 12 10 7" />
-              <line x1="15" y1="12" x2="3" y2="12" />
-            </svg>
-            <span class="sb-label" id="sbAuthTxt">Sign In</span>
           </button>
         </div>
 
