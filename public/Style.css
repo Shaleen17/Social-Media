@@ -2597,7 +2597,7 @@ video {
   position: fixed;
   left: var(--more-left, 16px);
   bottom: var(--more-bottom, 140px);
-  width: min(330px, calc(100vw - 32px));
+  width: min(var(--more-width, 330px), calc(100vw - 24px));
   max-width: 330px;
   border-radius: 26px;
   overflow: hidden;
@@ -2689,23 +2689,16 @@ video {
   color: #fff6ea;
 }
 @media (max-width: 640px) {
-  #moreOvl {
-    background: rgba(0, 0, 0, 0.45);
-  }
   #moreOvl .more-menu-modal {
-    left: 0;
-    right: 0;
-    bottom: 0;
-    width: 100%;
-    max-width: 100%;
-    border-radius: 24px 24px 0 0;
-    border-left: none;
-    border-right: none;
-    border-bottom: none;
-    transform-origin: center bottom;
+    left: var(--more-left, 12px);
+    bottom: var(--more-bottom, calc(var(--bottomnav-h) + 18px));
+    width: min(var(--more-width, calc(100vw - 24px)), calc(100vw - 24px));
+    max-width: calc(100vw - 24px);
+    border-radius: 24px;
+    transform-origin: left bottom;
   }
   #moreOvl .more-menu-list {
-    padding: 12px 12px calc(14px + env(safe-area-inset-bottom));
+    padding: 12px;
   }
 }
 .xbtn {

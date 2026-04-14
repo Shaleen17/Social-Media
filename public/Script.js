@@ -1468,12 +1468,26 @@ function syncMoreMenu() {
 
 function setMoreMenuAnchor(trigger) {
   const more = document.getElementById("moreOvl");
-  if (!more || !trigger || window.innerWidth <= 640) return;
+  if (!more || !trigger) return;
   const rect = trigger.getBoundingClientRect();
-  const left = Math.max(12, Math.round(rect.left));
-  const bottom = Math.max(12, Math.round(window.innerHeight - rect.top + 10));
+  const isMobile = window.innerWidth <= 640;
+  const fromDrawer =
+    typeof trigger.closest === "function" && trigger.closest("#mobileDrawer");
+  const left = isMobile
+    ? Math.max(12, Math.round(fromDrawer ? rect.left : rect.left - 4))
+    : Math.max(12, Math.round(rect.left));
+  const bottom = Math.max(
+    12,
+    Math.round(window.innerHeight - rect.top + (isMobile ? 12 : 10)),
+  );
   more.style.setProperty("--more-left", left + "px");
   more.style.setProperty("--more-bottom", bottom + "px");
+  if (isMobile && fromDrawer) {
+    const width = Math.min(window.innerWidth - 24, Math.max(260, Math.round(rect.width)));
+    more.style.setProperty("--more-width", width + "px");
+  } else {
+    more.style.removeProperty("--more-width");
+  }
 }
 
 function openMoreMenu(trigger) {
@@ -1483,7 +1497,11 @@ function openMoreMenu(trigger) {
     return;
   }
   setMoreMenuAnchor(trigger || document.getElementById("snAbout"));
-  closeDrawer();
+  const fromDrawer =
+    trigger &&
+    typeof trigger.closest === "function" &&
+    trigger.closest("#mobileDrawer");
+  if (!fromDrawer) closeDrawer();
   openOvl("moreOvl");
 }
 
@@ -1493,11 +1511,13 @@ function closeMoreMenu() {
 
 function moreGo(page) {
   closeMoreMenu();
+  closeDrawer();
   gp(page);
 }
 
 function handleMoreAuth() {
   closeMoreMenu();
+  closeDrawer();
   if (CU) {
     logout();
   } else {
