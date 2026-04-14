@@ -1381,6 +1381,7 @@ async function doSignup() {
 }
 function logout() {
   CU = null;
+  curProfId = null;
   Store.d("currentUser");
   // Also clear the JWT token so stale auth doesn't persist
   localStorage.removeItem("ts_token");
@@ -1425,6 +1426,26 @@ const PAGE_IDS = [
   "chats",
   "about",
 ];
+function resetProfileTabs(defaultTab = "posts") {
+  const tabLabel = defaultTab === "likes" ? "pranams" : defaultTab;
+  document.querySelectorAll("#prTabs .tab").forEach((tab) => {
+    tab.classList.toggle(
+      "on",
+      tab.textContent.trim().toLowerCase() === tabLabel,
+    );
+  });
+}
+
+function openProfilePage() {
+  curProfId = null;
+  gp("profile");
+}
+
+function openProfilePageAndClose() {
+  openProfilePage();
+  closeDrawer();
+}
+
 function gp(page) {
   PAGE_IDS.forEach((p) => {
     const el = document.getElementById(
@@ -1474,7 +1495,7 @@ function gp(page) {
     },
     notifs: () => renderNotifs(),
     bookmarks: () => renderBM(),
-    profile: () => renderProfile(CU ? CU.id : curProfId || "u1"),
+    profile: () => renderProfile(CU ? CU.id : curProfId),
     chats: () => renderChatsPage(),
     about: () => {},
   };
@@ -1586,7 +1607,7 @@ function handleSidebarAuth() {
 }
 function handleTopbarAuth() {
   if (CU) {
-    gp('profile');
+    openProfilePage();
   } else {
     openOvl('authOvl');
   }
@@ -4572,8 +4593,60 @@ function vpro(uid) {
   curProfId = uid;
   gp("profile");
 }
+function renderGuestProfilePrompt(
+  title = "Sign in to view your profile",
+  subtitle = "Create an account to manage your posts, followers, bookmarks, and spiritual journey.",
+) {
+  curProfId = null;
+  resetProfileTabs();
+  const bi = document.getElementById("prBannerImg");
+  if (bi) {
+    bi.src = "";
+    bi.style.display = "none";
+  }
+  const prAv = document.getElementById("prAv");
+  if (prAv) prAv.innerHTML = "G";
+  const prActions = document.getElementById("prActions");
+  if (prActions) {
+    prActions.innerHTML =
+      '<button class="btn btn-p" onclick="openOvl(\'authOvl\')">Sign In / Join Free</button>';
+  }
+  const phName = document.getElementById("phName");
+  if (phName) phName.textContent = "Profile";
+  const phPosts = document.getElementById("phPosts");
+  if (phPosts) phPosts.textContent = "Guest access";
+  const prName = document.getElementById("prName");
+  if (prName) prName.textContent = "Guest";
+  const prHdl = document.getElementById("prHdl");
+  if (prHdl) prHdl.textContent = "@guest";
+  const prBio = document.getElementById("prBio");
+  if (prBio) prBio.textContent = subtitle;
+  const prMeta = document.getElementById("prMeta");
+  if (prMeta) prMeta.innerHTML = "";
+  const prStats = document.getElementById("prStats");
+  if (prStats) {
+    prStats.innerHTML =
+      '<div class="ps"><strong>-</strong> <span>Following</span></div><div class="ps"><strong>-</strong> <span>Followers</span></div><div class="ps"><strong>-</strong> <span>Posts</span></div>';
+  }
+  const prPosts = document.getElementById("prPosts");
+  if (prPosts) {
+    prPosts.innerHTML = `<div class="empty"><div class="empty-ico">👤</div><div class="empty-ttl">${title}</div><div class="empty-sub">${subtitle}</div><button class="btn btn-p" style="margin-top:12px" onclick="openOvl('authOvl')">Sign In</button></div>`;
+  }
+}
 function renderProfile(uid) {
-  const u = getUser(uid) || SEED_USERS[0];
+  if (!uid) {
+    renderGuestProfilePrompt();
+    return;
+  }
+  const u = getUser(uid);
+  if (!u) {
+    renderGuestProfilePrompt(
+      "Profile not found",
+      "This profile is unavailable right now. Please try another account.",
+    );
+    return;
+  }
+  resetProfileTabs();
   curProfId = u.id;
   const isOwn = CU && CU.id === u.id;
   const isFollowing = CU && (CU.following || []).includes(u.id);
@@ -5006,6 +5079,105 @@ function renderBM() {
 }
 
 /* ── SEARCH ── */
+function getSearchScore(query, fields) {
+  const ql = String(query || "").trim().toLowerCase();
+  if (!ql) return -1;
+  const terms = ql.split(/\s+/).filter(Boolean);
+  const values = fields
+    .filter((field) => field !== undefined && field !== null)
+    .map((field) => String(field).toLowerCase());
+  const haystack = values.join(" ");
+  if (!terms.every((term) => haystack.includes(term))) return -1;
+
+  let score = 0;
+  values.forEach((value, index) => {
+    const weight = Math.max(1, 6 - index);
+    if (value === ql) score += 120 * weight;
+    else if (value.startsWith(ql)) score += 72 * weight;
+    else if (value.includes(ql)) score += 36 * weight;
+
+    terms.forEach((term) => {
+      if (value.startsWith(term)) score += 8 * weight;
+      else if (value.includes(term)) score += 3 * weight;
+    });
+  });
+  return score;
+}
+
+function renderSearchSection(title, rows) {
+  if (!rows.length) return "";
+  return `<section class="search-group"><div class="search-group-title">${title}</div>${rows.join("")}</section>`;
+}
+
+function renderSearchPeopleResults(query) {
+  const users = getUsers()
+    .map((u) => ({
+      data: u,
+      score: getSearchScore(query, [u.name, u.handle, u.bio, u.location]),
+    }))
+    .filter((item) => item.score >= 0)
+    .sort((a, b) => b.score - a.score)
+    .map(({ data: u }) => {
+      const ini = getIni(u.name);
+      const isFollowing = CU && (CU.following || []).includes(u.id);
+      return `<div class="s-result" onclick="vpro('${u.id}')"><div class="av av40">${u.avatar ? `<img src="${u.avatar}" alt="">` : ini}</div><div class="search-result-main"><div class="search-result-top"><div class="who-name">${esc(u.name)}${u.verified ? " 🔱" : ""}</div><span class="search-result-badge">Devotee</span></div><div class="who-hdl">@${esc(u.handle)}</div><div class="search-result-copy">${esc(u.bio || "Community profile")}</div></div><button class="btn btn-sm ${isFollowing ? "btn-o" : "btn-p"}" onclick="event.stopPropagation();toggleFollow('${u.id}',this)">${isFollowing ? "Following" : "Follow"}</button></div>`;
+    });
+
+  const mandirs = Object.values(MANDIR_CONFIG)
+    .map((mandir) => ({
+      data: mandir,
+      score: getSearchScore(query, [
+        mandir.name,
+        mandir.handle,
+        mandir.location,
+        mandir.category,
+        mandir.bio,
+        (mandir.highlights || []).join(" "),
+      ]),
+    }))
+    .filter((item) => item.score >= 0)
+    .sort((a, b) => b.score - a.score)
+    .map(({ data: mandir }) => `<div class="s-result" onclick="openMandirCommunity('${mandir.slug}')"><div class="av av40">${mandir.image ? `<img src="${mandir.image}" alt="${esc(mandir.name)}">` : "🛕"}</div><div class="search-result-main"><div class="search-result-top"><div class="who-name">${esc(mandir.name)}</div><span class="search-result-badge">Sacred Mandir</span></div><div class="search-result-meta"><span>@${esc(mandir.handle || mandir.slug)}</span><span>${esc(mandir.location || "India")}</span></div><div class="search-result-copy">${esc(mandir.bio || mandir.category || "Temple community")}</div></div><button class="btn btn-p btn-sm" onclick="event.stopPropagation();openMandirCommunity('${mandir.slug}')">Visit</button></div>`);
+
+  const verifiedSants = SANTS
+    .filter((sant) => sant.verified !== false)
+    .map((sant) => {
+      const u = sant.uid ? getUser(sant.uid) : null;
+      const name = u ? u.name : sant.name || sant.handle || "Sant";
+      return {
+        sant,
+        name,
+        score: getSearchScore(query, [
+          name,
+          sant.handle,
+          sant.title,
+          sant.category,
+          sant.bio,
+          sant.location,
+          (sant.highlights || []).join(" "),
+        ]),
+      };
+    })
+    .filter((item) => item.score >= 0)
+    .sort((a, b) => b.score - a.score)
+    .map(({ sant, name }) => {
+      const realIdx = SANTS.indexOf(sant);
+      const avatar = sant.src || "";
+      const ini = getIni(name);
+      return `<div class="s-result" onclick="openSantProfile(${realIdx})"><div class="av av40">${avatar ? `<img src="${avatar}" alt="${esc(name)}">` : ini}</div><div class="search-result-main"><div class="search-result-top"><div class="who-name">${esc(name)} 🔱</div><span class="search-result-badge">Verified Sant</span></div><div class="search-result-meta"><span>@${esc(sant.handle || "sant")}</span><span>${esc(sant.title || sant.category || "Spiritual Guide")}</span></div><div class="search-result-copy">${esc(sant.bio || sant.location || "Blessings and guidance")}</div></div><button class="btn btn-p btn-sm" onclick="event.stopPropagation();openSantProfile(${realIdx})">View</button></div>`;
+    });
+
+  const sections = [
+    renderSearchSection("Sacred Mandirs", mandirs),
+    renderSearchSection("Verified Sants", verifiedSants),
+    renderSearchSection("People", users),
+  ].filter(Boolean);
+
+  return sections.length
+    ? sections.join("")
+    : `<div class="empty"><div class="empty-sub">No people, mandirs, or verified sants found</div></div>`;
+}
+
 function setSTab(t, el) {
   curSTabVal = t;
   document
@@ -5017,12 +5189,15 @@ function setSTab(t, el) {
 function doSearch(q) {
   const c = document.getElementById("srchResults");
   if (!c) return;
-  if (!q) {
+  const query = String(q || "").trim();
+  if (!query) {
     c.innerHTML = `<div style="padding:14px 16px"><h3 style="font-size:15px;font-weight:700;margin-bottom:10px">🔥 Trending Today</h3>${TRENDING.map((t) => `<div class="trend-item" onclick="searchTag('${t.tag}')"><div class="trend-cat">${t.cat}</div><div class="trend-name">${t.tag}</div><div class="trend-cnt">${t.cnt} posts</div></div>`).join("")}</div>`;
     return;
   }
-  const ql = q.toLowerCase();
+  const ql = query.toLowerCase();
   if (curSTabVal === "people") {
+    c.innerHTML = renderSearchPeopleResults(query);
+    return;
     const users = getUsers().filter(
       (u) =>
         u.name.toLowerCase().includes(ql) ||
@@ -5370,7 +5545,7 @@ window.addEventListener("DOMContentLoaded", init);
       notifs: () => renderNotifs(),
       messages: () => renderConvs(),
       bookmarks: () => renderBM(),
-      profile: () => renderProfile(curProfId || (CU ? CU.id : "u1")),
+      profile: () => renderProfile(CU ? CU.id : curProfId),
       chats: () => renderChatsPage(),
     };
 
