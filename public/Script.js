@@ -1525,6 +1525,41 @@ function handleMoreAuth() {
   }
 }
 
+const ANALYTICS_PAGE_TITLES = {
+  home: "Home",
+  mandir: "Mandir",
+  mandirCommunity: "Mandir Community",
+  santAll: "Saints",
+  santProfile: "Saint Profile",
+  video: "Videos",
+  reels: "Reels",
+  search: "Search",
+  notifs: "Notifications",
+  bookmarks: "Bookmarks",
+  profile: "Profile",
+  chats: "Chats",
+  messages: "Messages",
+  about: "About",
+};
+
+window.__tsLastTrackedPage = window.__tsLastTrackedPage || "home";
+
+function trackVirtualPageView(page) {
+  if (!page || typeof window.gtag !== "function") return;
+  if (window.__tsLastTrackedPage === page) return;
+
+  const pagePath = page === "home" ? "/" : `/${page}`;
+  const pageTitle =
+    "Tirth Sutra - " + (ANALYTICS_PAGE_TITLES[page] || page);
+
+  window.__tsLastTrackedPage = page;
+  window.gtag("event", "page_view", {
+    page_title: pageTitle,
+    page_path: pagePath,
+    page_location: new URL(pagePath, window.location.origin).toString(),
+  });
+}
+
 function gp(page) {
   PAGE_IDS.forEach((p) => {
     const el = document.getElementById(
@@ -1558,6 +1593,7 @@ function gp(page) {
   if (di) di.classList.add("on");
   else if (MORE_NAV_PAGES.includes(page)) syncMoreNavState(true);
   curPage = page;
+  trackVirtualPageView(page);
   const renderers = {
     home: () => {
       renderFeed();

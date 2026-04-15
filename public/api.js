@@ -414,6 +414,21 @@ const API = (() => {
       });
     },
 
+    // Payments
+    async createDonationOrder(amount, purpose, name = "", email = "") {
+      return request("/payments/razorpay/order", {
+        method: "POST",
+        body: JSON.stringify({ amount, purpose, name, email }),
+      });
+    },
+
+    async verifyDonationPayment(paymentPayload) {
+      return request("/payments/razorpay/verify", {
+        method: "POST",
+        body: JSON.stringify(paymentPayload),
+      });
+    },
+
     // Upload
     uploadFile,
     uploadBase64,

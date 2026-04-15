@@ -22,21 +22,21 @@
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
     <link href="Style.css?v=20260414-perf-1" rel="stylesheet" type="text/css" />
     <script src="https://checkout.razorpay.com/v1/checkout.js"></script>
-  </head>
-  <!-- Google tag (gtag.js) -->
-  <script
-    async
-    src="https://www.googletagmanager.com/gtag/js?id=G-BE8S0K4L9H"
-  ></script>
-  <script>
-    window.dataLayer = window.dataLayer || [];
-    function gtag() {
-      dataLayer.push(arguments);
-    }
-    gtag("js", new Date());
+    <!-- Google tag (gtag.js) -->
+    <script
+      async
+      src="https://www.googletagmanager.com/gtag/js?id=G-BE8S0K4L9H"
+    ></script>
+    <script>
+      window.dataLayer = window.dataLayer || [];
+      function gtag() {
+        dataLayer.push(arguments);
+      }
+      gtag("js", new Date());
 
-    gtag("config", "G-BE8S0K4L9H");
-  </script>
+      gtag("config", "G-BE8S0K4L9H");
+    </script>
+  </head>
   <body>
     <div id="brandSplash" aria-hidden="true">
       <div class="brand-splash-inner">
@@ -3210,7 +3210,18 @@
 
     <script>
     /* ── DONATION MODULE ── */
+    const DONATION_PURPOSE = 'Mandir Community';
     let _donateAmount = 251;
+    let _donateBusy = false;
+
+    function setDonateBusy(isBusy) {
+      _donateBusy = isBusy;
+      const btn = document.getElementById('donatePayBtn');
+      if (!btn) return;
+      btn.disabled = isBusy || !_donateAmount || _donateAmount < 1;
+      btn.style.opacity = isBusy ? '0.72' : '';
+      btn.style.cursor = isBusy ? 'wait' : '';
+    }
 
     function openDonateModal() {
       // Reset to form view
@@ -3225,11 +3236,13 @@
       const ci = document.getElementById('donateCustomAmt');
       if (ci) ci.value = '';
       _donateAmount = 251;
+      setDonateBusy(false);
       updateDonatePayLabel();
       openOvl('donateOvl');
     }
 
     function closeDonateModal() {
+      setDonateBusy(false);
       closeOvl('donateOvl');
     }
 
@@ -3254,38 +3267,76 @@
     function updateDonatePayLabel() {
       const sp = document.getElementById('donatePayAmount');
       if (sp) sp.textContent = _donateAmount.toLocaleString('en-IN');
-      const btn = document.getElementById('donatePayBtn');
-      if (btn) btn.disabled = !_donateAmount || _donateAmount < 1;
+      setDonateBusy(_donateBusy);
     }
 
-    function startPayment() {
+    async function startPayment() {
+      if (_donateBusy) return;
+
       if (!_donateAmount || _donateAmount < 1) {
         MC.warn('Please select or enter an amount');
         return;
       }
 
+      if (!window.API || typeof API.createDonationOrder !== 'function') {
+        MC.error('Payment API is unavailable right now.');
+        return;
+      }
+
+      if (typeof window.Razorpay !== 'function') {
+        MC.error('Razorpay checkout could not load. Please refresh and try again.');
+        return;
+      }
+
+      setDonateBusy(true);
+      let createdOrder;
+      try {
+        createdOrder = await API.createDonationOrder(
+          _donateAmount,
+          DONATION_PURPOSE,
+          CU ? CU.name : '',
+          CU ? (CU.email || '') : ''
+        );
+      } catch (error) {
+        setDonateBusy(false);
+        MC.error(error.message || 'Could not create the donation order. Please try again.');
+        return;
+      }
+
       const options = {
-        key: 'rzp_test_XXXXXXXXXX', // TODO: Replace with your Razorpay Key ID
-        amount: _donateAmount * 100, // Razorpay expects paise
+        key: createdOrder.keyId,
+        amount: createdOrder.amount,
         currency: 'INR',
-        name: 'Tirth Sutra',
-        description: 'Donation to Mandir Community',
+        name: createdOrder.name || 'Tirth Sutra',
+        description: createdOrder.description || ('Donation to ' + DONATION_PURPOSE),
         image: 'Brand_Logo.jpg',
-        handler: function(response) {
+        order_id: createdOrder.orderId,
+        handler: async function(response) {
+          try {
           // Payment successful
-          showDonateSuccess();
+          const verification = await API.verifyDonationPayment(response);
+          showDonateSuccess(verification);
           MC.success('Donation of ₹' + _donateAmount.toLocaleString('en-IN') + ' successful! 🙏');
+          } catch (error) {
+            MC.error(error.message || 'Payment verification failed. Please contact support.');
+          } finally {
+            setDonateBusy(false);
+          }
         },
         prefill: {
-          name: CU ? CU.name : '',
-          email: CU ? (CU.email || '') : '',
+          name: (createdOrder.prefill && createdOrder.prefill.name) || (CU ? CU.name : ''),
+          email:
+            (createdOrder.prefill && createdOrder.prefill.email) ||
+            (CU ? (CU.email || '') : ''),
         },
+        notes: createdOrder.notes || {},
         theme: {
           color: '#4a2e2a',
           backdrop_color: 'rgba(74, 46, 42, 0.8)',
         },
         modal: {
           ondismiss: function() {
+            setDonateBusy(false);
             MC.info('Payment cancelled');
           }
         }
@@ -3294,22 +3345,41 @@
       try {
         const rzp = new Razorpay(options);
         rzp.on('payment.failed', function(response) {
-          MC.error('Payment failed. Please try again.');
+          setDonateBusy(false);
+          const reason =
+            response && response.error
+              ? (response.error.description || response.error.reason || response.error.source || 'Payment failed. Please try again.')
+              : 'Payment failed. Please try again.';
+          MC.error(reason);
         });
         rzp.open();
-      } catch(e) {
+      } catch (error) {
+        setDonateBusy(false);
+        MC.error(error.message || 'Could not start the payment. Please try again.');
+        return;
         // Fallback: simulate success for demo/test mode
         MC.info('Razorpay test mode — simulating successful payment');
-        setTimeout(() => showDonateSuccess(), 800);
+        setDonateBusy(false);
+        MC.error(error.message || 'Could not start the payment. Please try again.');
       }
     }
 
-    function showDonateSuccess() {
+    function showDonateSuccess(details) {
       const fv = document.getElementById('donateFormView');
       const sv = document.getElementById('donateSuccessView');
       const sa = document.getElementById('donateSuccessAmt');
       if (fv) fv.style.display = 'none';
+      if (sa && details && details.amount) {
+        sa.textContent = 'â‚¹' + (details.amount / 100).toLocaleString('en-IN');
+      }
       if (sa) sa.textContent = '₹' + _donateAmount.toLocaleString('en-IN');
+      if (sa && details && details.amount) {
+        sa.textContent = 'â‚¹' + (details.amount / 100).toLocaleString('en-IN');
+      }
+      if (sa) {
+        const finalAmount = details && details.amount ? details.amount / 100 : _donateAmount;
+        sa.textContent = String.fromCharCode(8377) + finalAmount.toLocaleString('en-IN');
+      }
       if (sv) sv.classList.add('show');
     }
     </script>
