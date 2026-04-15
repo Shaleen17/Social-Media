@@ -1372,7 +1372,7 @@ function authToggle(mode) {
   document.getElementById("authTtl").textContent =
     mode === "login" ? "Sign In" : "Create Account";
   const resendBtn = document.getElementById("resendVerificationBtn");
-  if (resendBtn) resendBtn.style.display = mode === "login" ? "none" : resendBtn.style.display;
+  if (resendBtn && mode !== "login") resendBtn.style.display = "none";
   ["liEE", "liPE", "liErr", "suNE", "suEE", "suHE", "suPE", "suErr", "suOtpErr"].forEach(
     (id) => {
       const el = document.getElementById(id);
@@ -1452,6 +1452,7 @@ async function doLogin() {
 }
 
 async function doSignupLegacy() {
+  return doSignup();
   const nm = (document.getElementById("suNm")?.value || "").trim();
   const em = (document.getElementById("suEml")?.value || "").trim();
   const hdl = (document.getElementById("suHdl")?.value || "")

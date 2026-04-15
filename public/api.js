@@ -76,7 +76,11 @@ const API = (() => {
         throw new Error(res.ok ? "Invalid server response" : `Server error (${res.status})`);
       }
       if (!res.ok) {
-        throw new Error(data.error || "Request failed");
+        const error = new Error(data.error || "Request failed");
+        error.status = res.status;
+        error.details = data.details || null;
+        error.data = data;
+        throw error;
       }
       return data;
     } catch (err) {

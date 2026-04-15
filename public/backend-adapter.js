@@ -699,6 +699,274 @@
     }
   };
 
+  function setOtpAuthFieldError(id, show, message) {
+    const el = document.getElementById(id);
+    if (!el) return;
+    if (typeof message === "string") {
+      el.textContent = message;
+    }
+    el.classList.toggle("show", show);
+    el.style.display = show ? "block" : "none";
+  }
+
+  function getOtpSignupEmail() {
+    return (
+      (document.getElementById("suEml")?.value || "").trim().toLowerCase() ||
+      (document.getElementById("liEml")?.value || "").trim().toLowerCase()
+    );
+  }
+
+  function syncOtpPendingState(email) {
+    const normalizedEmail = (email || "").trim().toLowerCase();
+    const signupEmail = document.getElementById("suEml");
+    const loginEmail = document.getElementById("liEml");
+
+    if (signupEmail && normalizedEmail) signupEmail.value = normalizedEmail;
+    if (loginEmail && normalizedEmail) loginEmail.value = normalizedEmail;
+
+    if (typeof window.setPendingSignupOtp === "function") {
+      window.setPendingSignupOtp(normalizedEmail);
+    }
+  }
+
+  function clearOtpPendingState() {
+    if (typeof window.clearPendingSignupOtp === "function") {
+      window.clearPendingSignupOtp();
+    }
+  }
+
+  async function bootstrapOtpSession(user, successMessage) {
+    CU = user;
+    closeOvl("authOvl");
+
+    if (
+      typeof SocketClient !== "undefined" &&
+      SocketClient &&
+      typeof SocketClient.connect === "function"
+    ) {
+      SocketClient.connect((CU.id || CU._id).toString());
+    }
+
+    if (typeof ensureChatPushNotifications === "function") {
+      ensureChatPushNotifications(true).catch(() => {});
+    }
+
+    await loadAllData();
+    initUI();
+
+    if (successMessage) {
+      MC.success(successMessage);
+    }
+
+    gp("home");
+  }
+
+  // Final auth overrides: keep the live app on OTP-based signup across all devices.
+  window.doLogin = async function () {
+    const email = (document.getElementById("liEml")?.value || "").trim();
+    const password = document.getElementById("liPw")?.value || "";
+    let ok = true;
+
+    setOtpAuthFieldError("liEE", !email || !email.includes("@"), "Valid email required");
+    if (!email || !email.includes("@")) ok = false;
+    setOtpAuthFieldError("liPE", !password, "Password required");
+    if (!password) ok = false;
+    if (!ok) return;
+
+    try {
+      const data = await API.login(email, password);
+      const resendBtn = document.getElementById("resendVerificationBtn");
+      setOtpAuthFieldError("liErr", false);
+      if (resendBtn) resendBtn.style.display = "none";
+      clearOtpPendingState();
+      ["liEml", "liPw"].forEach((id) => {
+        const el = document.getElementById(id);
+        if (el) el.value = "";
+      });
+      await bootstrapOtpSession(
+        data.user,
+        "Welcome back, " + data.user.name.split(" ")[0] + "! " + String.fromCodePoint(0x1f64f)
+      );
+    } catch (err) {
+      const resendBtn = document.getElementById("resendVerificationBtn");
+      const needsOtp =
+        !!(err && err.details && err.details.requiresVerification) ||
+        (err?.message || "").toLowerCase().includes("verify your email");
+
+      setOtpAuthFieldError(
+        "liErr",
+        true,
+        String.fromCodePoint(0x274c) + " " + (err.message || "Invalid email or password")
+      );
+
+      if (resendBtn) {
+        resendBtn.style.display = needsOtp ? "inline-flex" : "none";
+      }
+
+      if (needsOtp) {
+        syncOtpPendingState((err.details && err.details.email) || email);
+      }
+
+      MC.error(err.message || "Invalid email or password. Please try again.");
+    }
+  };
+
+  window.doSignup = async function () {
+    const name = (document.getElementById("suNm")?.value || "").trim();
+    const email = (document.getElementById("suEml")?.value || "").trim();
+    const handle = (document.getElementById("suHdl")?.value || "")
+      .trim()
+      .replace("@", "")
+      .toLowerCase()
+      .replace(/\s+/g, "");
+    const password = document.getElementById("suPw")?.value || "";
+    let ok = true;
+
+    setOtpAuthFieldError("suNE", !name, "Name required");
+    if (!name) ok = false;
+    setOtpAuthFieldError("suEE", !email || !email.includes("@"), "Valid email required");
+    if (!email || !email.includes("@")) ok = false;
+    setOtpAuthFieldError("suHE", !handle || handle.length < 3, "Username required (min 3 chars)");
+    if (!handle || handle.length < 3) ok = false;
+    setOtpAuthFieldError("suPE", !password || password.length < 6, "Min 6 characters");
+    if (!password || password.length < 6) ok = false;
+    if (!ok) return;
+
+    try {
+      const data = await API.signup(name, handle, email, password, getAppBaseUrl());
+      const passwordInput = document.getElementById("suPw");
+      const otpInput = document.getElementById("suOtp");
+
+      setOtpAuthFieldError("suErr", false);
+      setOtpAuthFieldError("suOtpErr", false);
+      syncOtpPendingState(data.email || email);
+
+      if (passwordInput) passwordInput.value = "";
+      if (otpInput) otpInput.value = "";
+
+      if (typeof authToggle === "function") {
+        authToggle("signup");
+      }
+
+      if (otpInput) {
+        window.setTimeout(() => otpInput.focus(), 30);
+      }
+
+      MC.success(data.message || "We sent a 6-digit OTP to your email.");
+    } catch (err) {
+      setOtpAuthFieldError(
+        "suErr",
+        true,
+        String.fromCodePoint(0x274c) + " " + (err.message || "Signup failed")
+      );
+      MC.error(err.message || "Signup failed.");
+    }
+  };
+
+  window.verifySignupOtp = async function () {
+    const email = getOtpSignupEmail();
+    const otp = (document.getElementById("suOtp")?.value || "").trim();
+
+    if (!email || !email.includes("@")) {
+      setOtpAuthFieldError("suEE", true, "Valid email required");
+      return;
+    }
+
+    if (!/^\d{6}$/.test(otp)) {
+      setOtpAuthFieldError(
+        "suOtpErr",
+        true,
+        String.fromCodePoint(0x274c) + " Enter a valid 6-digit OTP"
+      );
+      return;
+    }
+
+    try {
+      const data = await API.verifySignupOtp(email, otp);
+      clearOtpPendingState();
+      ["suNm", "suEml", "suHdl", "suPw", "suOtp", "liEml", "liPw"].forEach((id) => {
+        const el = document.getElementById(id);
+        if (el) el.value = "";
+      });
+      setOtpAuthFieldError("suErr", false);
+      setOtpAuthFieldError("suOtpErr", false);
+      await bootstrapOtpSession(
+        data.user,
+        "Welcome to Tirth Sutra, " +
+          data.user.name.split(" ")[0] +
+          "! " +
+          String.fromCodePoint(0x1f64f)
+      );
+    } catch (err) {
+      setOtpAuthFieldError(
+        "suOtpErr",
+        true,
+        String.fromCodePoint(0x274c) + " " + (err.message || "OTP verification failed")
+      );
+      MC.error(err.message || "OTP verification failed");
+    }
+  };
+
+  window.resendSignupOtp = async function () {
+    const email = getOtpSignupEmail();
+
+    if (!email || !email.includes("@")) {
+      setOtpAuthFieldError("suEE", true, "Valid email required");
+      return;
+    }
+
+    try {
+      const data = await API.resendVerification(email, getAppBaseUrl());
+      syncOtpPendingState(data.email || email);
+      setOtpAuthFieldError("suOtpErr", false);
+      MC.success(data.message || "A fresh OTP has been sent to your email.");
+    } catch (err) {
+      setOtpAuthFieldError(
+        "suOtpErr",
+        true,
+        String.fromCodePoint(0x274c) + " " + (err.message || "Could not resend OTP")
+      );
+      MC.error(err.message || "Could not resend OTP");
+    }
+  };
+
+  window.resendVerificationEmail = async function () {
+    const email = getOtpSignupEmail();
+
+    if (!email || !email.includes("@")) {
+      setOtpAuthFieldError("liEE", true, "Valid email required");
+      MC.warn("Enter your email address first so we can resend the OTP.");
+      return;
+    }
+
+    const resendBtn = document.getElementById("resendVerificationBtn");
+    if (resendBtn) {
+      resendBtn.disabled = true;
+      resendBtn.textContent = "Sending OTP...";
+    }
+
+    try {
+      const data = await API.resendVerification(email, getAppBaseUrl());
+      syncOtpPendingState(data.email || email);
+      if (typeof authToggle === "function") {
+        authToggle("signup");
+      }
+      MC.success(data.message || "A fresh OTP has been sent to your email.");
+    } catch (err) {
+      setOtpAuthFieldError(
+        "liErr",
+        true,
+        String.fromCodePoint(0x274c) + " " + (err.message || "Could not resend OTP")
+      );
+      MC.error(err.message || "Could not resend OTP.");
+    } finally {
+      if (resendBtn) {
+        resendBtn.disabled = false;
+        resendBtn.textContent = "Resend OTP";
+      }
+    }
+  };
+
   window.doGoogleLogin = function () {
     const backendBase =
       typeof window.getBackendBaseUrl === "function"

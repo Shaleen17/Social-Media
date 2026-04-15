@@ -8,16 +8,29 @@ function createTransporter() {
     return transporter;
   }
 
-  const secure = process.env.SMTP_SECURE === "true";
-  const port = Number(process.env.SMTP_PORT || (secure ? 465 : 587));
+  const authUser = process.env.SMTP_USER || process.env.EMAIL_USER;
+  const authPass = process.env.SMTP_PASS || process.env.EMAIL_PASS;
+  const parsedPort = Number(process.env.SMTP_PORT || 0);
+  const secure = process.env.SMTP_SECURE
+    ? process.env.SMTP_SECURE === "true"
+    : parsedPort === 465;
+  const port = parsedPort || (secure ? 465 : 587);
+
+  if (!authUser || !authPass) {
+    throw new AppError("Email delivery is not configured on the server.", 500);
+  }
 
   transporter = nodemailer.createTransport({
     host: process.env.SMTP_HOST || "smtp.gmail.com",
     port,
     secure,
+    requireTLS: !secure,
     auth: {
-      user: process.env.SMTP_USER || process.env.EMAIL_USER,
-      pass: process.env.SMTP_PASS || process.env.EMAIL_PASS,
+      user: authUser,
+      pass: authPass,
+    },
+    tls: {
+      minVersion: "TLSv1.2",
     },
   });
 
