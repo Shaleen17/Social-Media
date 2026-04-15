@@ -1226,6 +1226,142 @@ document.addEventListener("keydown", (e) => {
   }
 });
 
+let pendingSignupOtpEmail = "";
+
+function getAuthClientUrl() {
+  const url = new URL(window.location.href);
+  url.hash = "";
+  url.search = "";
+  if (!url.pathname.endsWith("/")) {
+    url.pathname = url.pathname.substring(0, url.pathname.lastIndexOf("/") + 1);
+  }
+  return url.toString();
+}
+
+function toggleFieldError(id, show, message = "") {
+  const el = document.getElementById(id);
+  if (!el) return;
+  if (message) el.textContent = message;
+  el.classList.toggle("show", show);
+  el.style.display = show ? "block" : "none";
+}
+
+function syncSignupOtpState() {
+  const wrap = document.getElementById("signupOtpWrap");
+  const hint = document.getElementById("signupOtpHint");
+  const verifyBtn = document.getElementById("verifyOtpBtn");
+  const hasPendingOtp = !!pendingSignupOtpEmail;
+
+  if (wrap) {
+    wrap.classList.toggle("hide", !hasPendingOtp);
+    wrap.style.display = hasPendingOtp ? "block" : "none";
+  }
+
+  if (hint) {
+    hint.textContent = hasPendingOtp
+      ? `We sent a 6-digit OTP to ${pendingSignupOtpEmail}. Enter it here to finish creating your account.`
+      : "We sent a 6-digit OTP to your email. Enter it here to finish creating your account.";
+  }
+
+  if (!hasPendingOtp) {
+    const otpInput = document.getElementById("suOtp");
+    if (otpInput) otpInput.value = "";
+    toggleFieldError("suOtpErr", false);
+  } else if (verifyBtn) {
+    window.setTimeout(() => verifyBtn.focus(), 30);
+  }
+}
+
+function setPendingSignupOtp(email) {
+  pendingSignupOtpEmail = (email || "").trim().toLowerCase();
+  syncSignupOtpState();
+}
+
+function clearPendingSignupOtp() {
+  pendingSignupOtpEmail = "";
+  syncSignupOtpState();
+}
+
+async function resendVerificationEmail() {
+  const email = (document.getElementById("liEml")?.value || "").trim().toLowerCase();
+  if (!email || !email.includes("@")) {
+    toggleFieldError("liEE", true);
+    return;
+  }
+
+  try {
+    const data = await API.resendVerification(email, getAuthClientUrl());
+    const suEmail = document.getElementById("suEml");
+    if (suEmail) suEmail.value = email;
+    setPendingSignupOtp(data.email || email);
+    authToggle("signup");
+    MC.success(data.message || "A fresh OTP has been sent to your email.");
+  } catch (err) {
+    toggleFieldError("liErr", true, "❌ " + (err.message || "Could not resend OTP"));
+    MC.error(err.message || "Could not resend OTP");
+  }
+}
+
+async function resendSignupOtp() {
+  const email =
+    pendingSignupOtpEmail ||
+    (document.getElementById("suEml")?.value || "").trim().toLowerCase();
+
+  if (!email || !email.includes("@")) {
+    toggleFieldError("suEE", true);
+    return;
+  }
+
+  try {
+    const data = await API.resendVerification(email, getAuthClientUrl());
+    setPendingSignupOtp(data.email || email);
+    toggleFieldError("suOtpErr", false);
+    MC.success(data.message || "A fresh OTP has been sent to your email.");
+  } catch (err) {
+    toggleFieldError("suOtpErr", true, "❌ " + (err.message || "Could not resend OTP"));
+    MC.error(err.message || "Could not resend OTP");
+  }
+}
+
+async function verifySignupOtp() {
+  const email =
+    pendingSignupOtpEmail ||
+    (document.getElementById("suEml")?.value || "").trim().toLowerCase();
+  const otp = (document.getElementById("suOtp")?.value || "").trim();
+
+  if (!email || !email.includes("@")) {
+    toggleFieldError("suEE", true);
+    return;
+  }
+
+  if (!/^\d{6}$/.test(otp)) {
+    toggleFieldError("suOtpErr", true, "❌ Enter a valid 6-digit OTP");
+    return;
+  }
+
+  try {
+    const data = await API.verifySignupOtp(email, otp);
+    const { user, token } = data;
+    CU = user;
+    Store.s("currentUser", user);
+    Store.s("token", token);
+    clearPendingSignupOtp();
+    ["suNm", "suEml", "suHdl", "suPw", "suOtp"].forEach((id) => {
+      const el = document.getElementById(id);
+      if (el) el.value = "";
+    });
+    toggleFieldError("suErr", false);
+    toggleFieldError("suOtpErr", false);
+    closeOvl("authOvl");
+    initUI();
+    MC.success(`Welcome to Tirth Sutra, ${user.name.split(" ")[0]}! 🙏`);
+    gp("home");
+  } catch (err) {
+    toggleFieldError("suOtpErr", true, "❌ " + (err.message || "OTP verification failed"));
+    MC.error(err.message || "OTP verification failed");
+  }
+}
+
 function authToggle(mode) {
   document
     .getElementById("loginForm")
@@ -1235,7 +1371,9 @@ function authToggle(mode) {
     .classList.toggle("hide", mode === "login");
   document.getElementById("authTtl").textContent =
     mode === "login" ? "Sign In" : "Create Account";
-  ["liEE", "liPE", "liErr", "suNE", "suEE", "suHE", "suPE", "suErr"].forEach(
+  const resendBtn = document.getElementById("resendVerificationBtn");
+  if (resendBtn) resendBtn.style.display = mode === "login" ? "none" : resendBtn.style.display;
+  ["liEE", "liPE", "liErr", "suNE", "suEE", "suHE", "suPE", "suErr", "suOtpErr"].forEach(
     (id) => {
       const el = document.getElementById(id);
       if (el) {
@@ -1244,6 +1382,7 @@ function authToggle(mode) {
       }
     },
   );
+  syncSignupOtpState();
 }
 
 async function doLogin() {
@@ -1277,17 +1416,23 @@ async function doLogin() {
     });
     const data = await res.json();
     const e = document.getElementById("liErr");
+    const resendBtn = document.getElementById("resendVerificationBtn");
 
     if (!res.ok) {
       if (e) {
         e.textContent = "❌ " + (data.error || "Invalid email or password");
         e.style.display = "block";
       }
+      if (resendBtn) {
+        resendBtn.style.display =
+          data && data.details && data.details.requiresVerification ? "inline-flex" : "none";
+      }
       MC.error(data.error || "Invalid email or password. Please try again.");
       return;
     }
 
     if (e) e.style.display = "none";
+    if (resendBtn) resendBtn.style.display = "none";
     const { user, token } = data;
     CU = user;
     Store.s("currentUser", user);
@@ -1306,7 +1451,7 @@ async function doLogin() {
   }
 }
 
-async function doSignup() {
+async function doSignupLegacy() {
   const nm = (document.getElementById("suNm")?.value || "").trim();
   const em = (document.getElementById("suEml")?.value || "").trim();
   const hdl = (document.getElementById("suHdl")?.value || "")
@@ -1334,33 +1479,7 @@ async function doSignup() {
   if (!ok) return;
 
   try {
-    const backendBase =
-      typeof window.getBackendBaseUrl === "function"
-        ? window.getBackendBaseUrl()
-        : typeof CONFIG !== "undefined" && CONFIG && CONFIG.BACKEND_URL
-          ? String(CONFIG.BACKEND_URL).replace(/\/+$/, "")
-          : "";
-    const clientUrl = (() => {
-      const url = new URL(window.location.href);
-      url.hash = "";
-      url.search = "";
-      if (!url.pathname.endsWith("/")) {
-        url.pathname = url.pathname.substring(0, url.pathname.lastIndexOf("/") + 1);
-      }
-      return url.toString();
-    })();
-    const res = await fetch(backendBase + "/api/auth/signup", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        name: nm,
-        handle: hdl,
-        email: em,
-        password: pw,
-        clientUrl,
-      }),
-    });
-    const data = await res.json();
+    const data = await API.signup(nm, hdl, em, pw, getAuthClientUrl());
     const errEl = document.getElementById("suErr");
 
     if (!res.ok) {
@@ -1384,6 +1503,41 @@ async function doSignup() {
     MC.error("Network error. Please try again.");
   }
 }
+async function doSignup() {
+  const nm = (document.getElementById("suNm")?.value || "").trim();
+  const em = (document.getElementById("suEml")?.value || "").trim();
+  const hdl = (document.getElementById("suHdl")?.value || "")
+    .trim()
+    .replace("@", "")
+    .toLowerCase()
+    .replace(/\s+/g, "");
+  const pw = document.getElementById("suPw")?.value || "";
+  let ok = true;
+
+  toggleFieldError("suNE", !nm);
+  if (!nm) ok = false;
+  toggleFieldError("suEE", !em || !em.includes("@"));
+  if (!em || !em.includes("@")) ok = false;
+  toggleFieldError("suHE", !hdl || hdl.length < 3);
+  if (!hdl || hdl.length < 3) ok = false;
+  toggleFieldError("suPE", !pw || pw.length < 6);
+  if (!pw || pw.length < 6) ok = false;
+  if (!ok) return;
+
+  try {
+    const data = await API.signup(nm, hdl, em, pw, getAuthClientUrl());
+    toggleFieldError("suErr", false);
+    toggleFieldError("suOtpErr", false);
+    setPendingSignupOtp(data.email || em);
+    const otpInput = document.getElementById("suOtp");
+    if (otpInput) otpInput.value = "";
+    MC.success(data.message || "We sent a 6-digit OTP to your email.");
+  } catch (err) {
+    toggleFieldError("suErr", true, "❌ " + (err.message || "Signup failed"));
+    MC.error(err.message || "Signup failed");
+  }
+}
+
 function logout() {
   CU = null;
   curProfId = null;
@@ -5480,6 +5634,9 @@ async function init() {
     });
     document.getElementById("suPw")?.addEventListener("keydown", (e) => {
       if (e.key === "Enter") doSignup();
+    });
+    document.getElementById("suOtp")?.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") verifySignupOtp();
     });
 
     // Step 5 — render UI immediately

@@ -41,6 +41,9 @@ const userSchema = new mongoose.Schema(
     emailVerificationToken: { type: String },
     emailVerificationTokenExpires: { type: Date },
     emailVerificationRedirectUrl: { type: String },
+    emailOtpCode: { type: String },
+    emailOtpExpires: { type: Date },
+    emailOtpLastSentAt: { type: Date },
     lastSeen: { type: Date, default: Date.now },
     mandirId: { type: String, default: null },
     joined: { type: String, default: "" },
@@ -79,6 +82,9 @@ userSchema.set("toJSON", {
     delete ret.emailVerificationToken;
     delete ret.emailVerificationTokenExpires;
     delete ret.emailVerificationRedirectUrl;
+    delete ret.emailOtpCode;
+    delete ret.emailOtpExpires;
+    delete ret.emailOtpLastSentAt;
     ret.id = ret._id;
     return ret;
   },

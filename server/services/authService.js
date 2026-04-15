@@ -7,11 +7,16 @@ const sendEmail = require("../utils/sendEmail");
 const {
   verificationEmailTemplate,
   resendVerificationEmailTemplate,
+  signupOtpEmailTemplate,
+  resendSignupOtpEmailTemplate,
 } = require("../utils/emailTemplates");
 const {
   createEmailVerificationToken,
+  createEmailOtpCode,
   hashVerificationToken,
+  hashOtpCode,
   signAuthToken,
+  EMAIL_OTP_TTL_MS,
 } = require("../utils/authTokens");
 const {
   getPublicServerUrl,
@@ -70,6 +75,19 @@ async function ensureUniqueHandle(baseHandle) {
   return candidate;
 }
 
+function clearOtpState(user) {
+  user.emailOtpCode = undefined;
+  user.emailOtpExpires = undefined;
+  user.emailOtpLastSentAt = undefined;
+}
+
+function clearVerificationState(user) {
+  user.emailVerificationToken = undefined;
+  user.emailVerificationTokenExpires = undefined;
+  user.emailVerificationRedirectUrl = undefined;
+  clearOtpState(user);
+}
+
 async function deliverVerificationEmail(user, templateBuilder, { req, clientUrl }) {
   const tokenBundle = createEmailVerificationToken();
   user.emailVerificationToken = tokenBundle.hashedToken;
@@ -92,6 +110,32 @@ async function deliverVerificationEmail(user, templateBuilder, { req, clientUrl 
   return verificationUrl;
 }
 
+async function deliverSignupOtpEmail(user, templateBuilder) {
+  const otpBundle = createEmailOtpCode();
+  user.emailOtpCode = otpBundle.hashedOtp;
+  user.emailOtpExpires = otpBundle.expiresAt;
+  user.emailOtpLastSentAt = new Date();
+  user.emailVerificationToken = undefined;
+  user.emailVerificationTokenExpires = undefined;
+  user.emailVerificationRedirectUrl = undefined;
+  await user.save({ validateBeforeSave: false });
+
+  const template = templateBuilder({
+    name: user.name,
+    otpCode: otpBundle.rawOtp,
+    otpExpiryMinutes: Math.round(EMAIL_OTP_TTL_MS / 60000),
+  });
+
+  await sendEmail({
+    email: user.email,
+    subject: template.subject,
+    html: template.html,
+    text: `Your Tirth Sutra OTP is ${otpBundle.rawOtp}. It expires in ${Math.round(
+      EMAIL_OTP_TTL_MS / 60000
+    )} minutes.`,
+  });
+}
+
 async function signupLocalUser({ name, handle, email, password, clientUrl }, req) {
   if (!name || !handle || !email || !password) {
     throw new AppError("All fields are required.", 400);
@@ -107,39 +151,54 @@ async function signupLocalUser({ name, handle, email, password, clientUrl }, req
   }
 
   const normalizedEmail = email.toLowerCase().trim();
-  const existingEmail = await User.findOne({ email: normalizedEmail });
-  if (existingEmail) {
+  const existingEmail = await User.findOne({ email: normalizedEmail }).select("+password");
+  const existingHandle = await User.findOne({ handle: cleanHandle });
+
+  let user = existingEmail;
+
+  if (existingEmail && (existingEmail.emailVerified || existingEmail.verified || existingEmail.authProvider !== "local")) {
     throw new AppError("Email already registered.", 409);
   }
 
-  const existingHandle = await User.findOne({ handle: cleanHandle });
-  if (existingHandle) {
+  if (existingHandle && (!existingEmail || String(existingHandle._id) !== String(existingEmail._id))) {
     throw new AppError("Username is already taken.", 409);
   }
 
-  const user = await User.create({
-    name: name.trim(),
-    handle: cleanHandle,
-    email: normalizedEmail,
-    password,
-    authProvider: "local",
-    emailVerified: false,
-  });
+  if (user) {
+    user.name = name.trim();
+    user.handle = cleanHandle;
+    user.email = normalizedEmail;
+    user.password = password;
+    user.authProvider = "local";
+    user.emailVerified = false;
+    clearVerificationState(user);
+    await user.save();
+  } else {
+    user = await User.create({
+      name: name.trim(),
+      handle: cleanHandle,
+      email: normalizedEmail,
+      password,
+      authProvider: "local",
+      emailVerified: false,
+    });
+  }
 
   try {
-    await deliverVerificationEmail(user, verificationEmailTemplate, {
-      req,
-      clientUrl,
-    });
+    await deliverSignupOtpEmail(user, signupOtpEmailTemplate);
   } catch (error) {
-    await User.findByIdAndDelete(user._id);
+    if (!existingEmail) {
+      await User.findByIdAndDelete(user._id);
+    }
     throw error;
   }
 
   return {
     success: true,
+    otpRequired: true,
+    email: user.email,
     message:
-      "Account created successfully. Please check your email to verify your account before logging in.",
+      "We sent a 6-digit OTP to your email. Enter it to finish creating your account.",
   };
 }
 
@@ -154,8 +213,9 @@ async function loginLocalUser({ email, password }) {
   }
 
   if (!(user.emailVerified || user.verified)) {
-    throw new AppError("Please verify your email before logging in.", 403, {
+    throw new AppError("Please verify your email with the OTP before logging in.", 403, {
       requiresVerification: true,
+      verificationMethod: "otp",
       email: user.email,
     });
   }
@@ -188,16 +248,41 @@ async function verifyEmailToken(rawToken) {
   }
 
   user.emailVerified = true;
-  user.emailVerificationToken = undefined;
-  user.emailVerificationTokenExpires = undefined;
   const redirectUrl = user.emailVerificationRedirectUrl;
-  user.emailVerificationRedirectUrl = undefined;
+  clearVerificationState(user);
   await user.save({ validateBeforeSave: false });
 
   return {
     user: user.toJSON(),
     token: signAuthToken(user._id),
     redirectUrl,
+  };
+}
+
+async function verifySignupOtp({ email, otp }) {
+  if (!email || !otp) {
+    throw new AppError("Email and OTP are required.", 400);
+  }
+
+  const normalizedEmail = email.toLowerCase().trim();
+  const hashedOtp = hashOtpCode(otp.trim());
+  const user = await User.findOne({
+    email: normalizedEmail,
+    emailOtpCode: hashedOtp,
+    emailOtpExpires: { $gt: new Date() },
+  });
+
+  if (!user) {
+    throw new AppError("This OTP is invalid or has expired.", 400);
+  }
+
+  user.emailVerified = true;
+  clearVerificationState(user);
+  await user.save({ validateBeforeSave: false });
+
+  return {
+    user: user.toJSON(),
+    token: signAuthToken(user._id),
   };
 }
 
@@ -215,14 +300,13 @@ async function resendVerificationEmail({ email, clientUrl }, req) {
     throw new AppError("This email is already verified. You can sign in now.", 400);
   }
 
-  await deliverVerificationEmail(user, resendVerificationEmailTemplate, {
-    req,
-    clientUrl,
-  });
+  await deliverSignupOtpEmail(user, resendSignupOtpEmailTemplate);
 
   return {
     success: true,
-    message: "A new verification email has been sent.",
+    otpRequired: true,
+    email: user.email,
+    message: "A fresh OTP has been sent to your email.",
   };
 }
 
@@ -293,8 +377,7 @@ async function loginWithGoogle({ token, tokenType }) {
     user.authProvider = user.authProvider || "google";
     user.googleId = user.googleId || sub;
     user.emailVerified = true;
-    user.emailVerificationToken = undefined;
-    user.emailVerificationTokenExpires = undefined;
+    clearVerificationState(user);
     if (picture && !user.avatar) {
       user.avatar = picture;
     }
@@ -411,6 +494,7 @@ module.exports = {
   signupLocalUser,
   loginLocalUser,
   verifyEmailToken,
+  verifySignupOtp,
   resendVerificationEmail,
   loginWithGoogle,
   createGoogleAuthUrl,

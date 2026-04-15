@@ -5,7 +5,7 @@ Base URL: `/api/auth`
 ## Endpoints
 
 ### `POST /signup`
-Creates a local email/password account and sends a verification email.
+Creates a local email/password account and sends a 6-digit OTP email.
 
 Request body:
 
@@ -23,7 +23,33 @@ Response:
 ```json
 {
   "success": true,
-  "message": "Account created successfully. Please check your email to verify your account before logging in."
+  "otpRequired": true,
+  "email": "aarav@example.com",
+  "message": "We sent a 6-digit OTP to your email. Enter it to finish creating your account."
+}
+```
+
+### `POST /verify-signup-otp`
+Verifies the OTP for a local signup and immediately signs the user in.
+
+Request body:
+
+```json
+{
+  "email": "aarav@example.com",
+  "otp": "123456"
+}
+```
+
+Response:
+
+```json
+{
+  "success": true,
+  "user": {
+    "id": "..."
+  },
+  "token": "jwt-token"
 }
 ```
 
@@ -54,16 +80,17 @@ If the account is not verified, the API returns `403` and:
 
 ```json
 {
-  "error": "Please verify your email before logging in.",
+  "error": "Please verify your email with the OTP before logging in.",
   "details": {
     "requiresVerification": true,
+    "verificationMethod": "otp",
     "email": "aarav@example.com"
   }
 }
 ```
 
 ### `POST /resend-verification`
-Sends a fresh verification email to an existing unverified user.
+Sends a fresh OTP email to an existing unverified local user.
 
 Request body:
 
@@ -74,10 +101,10 @@ Request body:
 ```
 
 ### `GET /verify-email/:token`
-Validates the email verification token on the server and redirects the browser back to the frontend verification page.
+Legacy verification-link endpoint kept for backwards compatibility with older verification emails.
 
 ### `POST /verify-email/:token`
-Validates the email verification token and returns JSON for programmatic verification.
+Legacy verification-link JSON endpoint kept for backwards compatibility.
 
 ### `POST /google`
 Signs in with Google OAuth.
@@ -114,8 +141,8 @@ Returns the authenticated user for the bearer token.
 ## Notes
 
 - Passwords are hashed with `bcryptjs`.
-- Email verification tokens are random 32-byte values stored in hashed form.
-- Verification links expire after 24 hours.
+- Signup OTPs are 6-digit codes stored in hashed form and expire after 10 minutes.
+- Legacy verification links remain supported for older emails.
 - Nodemailer supports both Gmail and generic SMTP via environment variables.
 - For Google OAuth, add your backend callback URL to Google Cloud Console:
   - `http://localhost:5000/api/auth/google/callback`

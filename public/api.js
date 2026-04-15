@@ -119,12 +119,20 @@ const API = (() => {
 
     // Auth
     async signup(name, handle, email, password, clientUrl) {
-      // Server returns {success, message} only — no token issued until email is verified.
-      // Do NOT call setToken/setUser here; they would store "undefined" in localStorage.
       const data = await request("/auth/signup", {
         method: "POST",
         body: JSON.stringify({ name, handle, email, password, clientUrl }),
       });
+      return data;
+    },
+
+    async verifySignupOtp(email, otp) {
+      const data = await request("/auth/verify-signup-otp", {
+        method: "POST",
+        body: JSON.stringify({ email, otp }),
+      });
+      setToken(data.token);
+      setUser(data.user);
       return data;
     },
 

@@ -3,6 +3,7 @@ const {
   signupLocalUser,
   loginLocalUser,
   verifyEmailToken,
+  verifySignupOtp,
   resendVerificationEmail,
   loginWithGoogle,
   createGoogleAuthUrl,
@@ -30,6 +31,11 @@ const me = asyncHandler(async (req, res) => {
 
 const verifyEmailJson = asyncHandler(async (req, res) => {
   const result = await verifyEmailToken(req.params.token);
+  res.json({ success: true, user: result.user, token: result.token });
+});
+
+const verifySignupOtpCode = asyncHandler(async (req, res) => {
+  const result = await verifySignupOtp(req.body);
   res.json({ success: true, user: result.user, token: result.token });
 });
 
@@ -105,6 +111,7 @@ module.exports = {
   login,
   me,
   verifyEmailJson,
+  verifySignupOtpCode,
   verifyEmailRedirect,
   resendVerification,
   googleAuth,

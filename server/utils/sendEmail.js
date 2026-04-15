@@ -49,7 +49,7 @@ async function sendEmail({ email, subject, html, text }) {
   } catch (error) {
     console.error("Email delivery failed:", error.message);
     throw new AppError(
-      "Unable to send the verification email right now. Please try again shortly.",
+      "Unable to send the email right now. Please try again shortly.",
       502
     );
   }
