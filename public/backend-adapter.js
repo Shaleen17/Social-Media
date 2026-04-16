@@ -237,7 +237,7 @@
 
   let _chatPushSetupPromise = null;
   let _pendingOpenChatId = consumeOpenChatParam();
-  const APP_ASSET_VERSION = "20260414-perf-1";
+  const APP_ASSET_VERSION = "20260416-otpfix-3";
   let _appSwPromise = null;
   let _deferredInstallPrompt = null;
   let _installPromptBound = false;
@@ -727,8 +727,21 @@
   }
 
   function buildOtpErrorMessage(error, fallbackMessage) {
+    const status = Number(error?.status);
     const baseMessage = error?.message || fallbackMessage;
     const attemptsRemaining = Number(error?.details?.attemptsRemaining);
+
+    if (status === 404) {
+      return "The live server does not have the OTP verification routes yet. Redeploy the latest backend build and try again.";
+    }
+
+    if (
+      status === 500 ||
+      status === 502 ||
+      /email delivery|send the email|configured incorrectly/i.test(baseMessage)
+    ) {
+      return "The live server could not send the OTP email. Check your SMTP settings on the deployed backend and try again.";
+    }
 
     if (Number.isFinite(attemptsRemaining) && attemptsRemaining > 0) {
       return `${baseMessage} ${attemptsRemaining} attempt${
@@ -738,6 +751,25 @@
 
     if (error?.details?.requiresResend) {
       return `${baseMessage} Request a new OTP to continue.`;
+    }
+
+    return baseMessage;
+  }
+
+  function buildSignupErrorMessage(error, fallbackMessage) {
+    const status = Number(error?.status);
+    const baseMessage = error?.message || fallbackMessage;
+
+    if (status === 404) {
+      return "The deployed backend is still on an older auth build. Redeploy the latest backend so OTP signup routes are available.";
+    }
+
+    if (
+      status === 500 ||
+      status === 502 ||
+      /email delivery|send the email|configured incorrectly/i.test(baseMessage)
+    ) {
+      return "OTP email sending is not working on the live server. Add the SMTP environment variables on your backend deployment first.";
     }
 
     return baseMessage;
@@ -898,12 +930,13 @@
           "We sent a 6-digit OTP to your email. Enter it to verify your email and create your account."
       );
     } catch (err) {
+      const message = buildSignupErrorMessage(err, "Signup failed");
       setOtpAuthFieldError(
         "suErr",
         true,
-        String.fromCodePoint(0x274c) + " " + (err.message || "Signup failed")
+        String.fromCodePoint(0x274c) + " " + message
       );
-      MC.error(err.message || "Signup failed.");
+      MC.error(message);
     } finally {
       setButtonBusy(signupBtn, false, "Sending OTP...");
     }
