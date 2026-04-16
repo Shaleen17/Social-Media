@@ -1,4 +1,4 @@
-self.__TS_SW_VERSION__ = "20260416-otpfix-3";
+self.__TS_SW_VERSION__ = "20260416-otpfix-5";
 const TS_STATIC_CACHE = `ts-static-${self.__TS_SW_VERSION__}`;
 
 self.addEventListener("install", (event) => {

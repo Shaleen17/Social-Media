@@ -8,7 +8,10 @@ const cloudinary = require("cloudinary").v2;
 const connectDB = require("./config/db");
 const setupSocket = require("./socket/chat");
 const AppError = require("./utils/appError");
-const { verifyEmailTransport } = require("./utils/sendEmail");
+const {
+  verifyEmailTransport,
+  isEmailDeliveryConfigured,
+} = require("./utils/sendEmail");
 
 // ─── Validate Required Environment Variables ───
 const REQUIRED_ENV = [
@@ -189,6 +192,12 @@ if (!process.env.VERCEL) {
       }
     }, 15 * 60 * 1000); // 15 minutes
   });
+
+  if (!isEmailDeliveryConfigured()) {
+    console.warn(
+      "OTP email delivery is not configured. Set SMTP_HOST, SMTP_PORT, SMTP_SECURE, SMTP_USER, SMTP_PASS, and EMAIL_FROM in production."
+    );
+  }
 
   if (process.env.SMTP_VERIFY_ON_STARTUP === "true") {
     verifyEmailTransport().catch((error) => {

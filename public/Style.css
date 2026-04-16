@@ -517,6 +517,17 @@ video {
   overflow: hidden;
   text-overflow: ellipsis;
 }
+.sb-auth-cta {
+  background: var(--a);
+  color: var(--p);
+  border-radius: 12px;
+  margin: 4px 8px 0;
+  width: calc(100% - 16px);
+}
+.sb-auth-cta:hover {
+  background: var(--bg3);
+  color: var(--pd);
+}
 
 /* ============================================================
    MAIN AREA
@@ -2870,6 +2881,15 @@ video {
   background: var(--bg3);
   color: var(--pd);
 }
+.more-menu-item-install {
+  margin-top: 4px;
+  background: var(--a);
+  color: var(--p);
+}
+.more-menu-item-install:hover {
+  background: var(--bg3);
+  color: var(--pd);
+}
 [data-dark] #moreOvl {
   background: transparent;
 }
@@ -2894,6 +2914,14 @@ video {
   color: #ffe8cf;
 }
 [data-dark] .more-menu-item-auth:hover {
+  background: rgba(123, 85, 72, 0.48);
+  color: #fff6ea;
+}
+[data-dark] .more-menu-item-install {
+  background: rgba(123, 85, 72, 0.32);
+  color: #ffe8cf;
+}
+[data-dark] .more-menu-item-install:hover {
   background: rgba(123, 85, 72, 0.48);
   color: #fff6ea;
 }

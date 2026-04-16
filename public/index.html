@@ -12,15 +12,15 @@
     <meta name="apple-mobile-web-app-title" content="Tirth Sutra" />
     <title>Tirth Sutra — Mandir Community</title>
     <link rel="icon" type="image/png" href="Brand_Logo.jpg" />
-    <link rel="manifest" href="manifest.webmanifest?v=20260416-otpfix-3" />
-    <link rel="apple-touch-icon" href="apple-touch-icon.png?v=20260416-otpfix-3" />
+  <link rel="manifest" href="manifest.webmanifest?v=20260416-otpfix-5" />
+  <link rel="apple-touch-icon" href="apple-touch-icon.png?v=20260416-otpfix-5" />
     <link rel="preload" as="image" href="Brand_Logo.jpg" />
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link rel="preconnect" href="https://videos-o57d.vercel.app" crossorigin>
     <link rel="dns-prefetch" href="//videos-o57d.vercel.app">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-    <link href="Style.css?v=20260416-otpfix-3" rel="stylesheet" type="text/css" />
+  <link href="Style.css?v=20260416-otpfix-5" rel="stylesheet" type="text/css" />
     <script src="https://checkout.razorpay.com/v1/checkout.js"></script>
     <!-- Google tag (gtag.js) -->
     <script
@@ -500,19 +500,21 @@
             </svg>
             <span>About Tirth Sutra</span>
           </button>
-          <div class="more-menu-divider"></div>
+          <div class="more-menu-divider" id="moreUtilityDivider" style="display:none;"></div>
           <button
-            class="more-menu-item more-menu-item-auth"
-            id="moreAuthBtn"
+            class="more-menu-item more-menu-item-install"
+            id="moreInstallBtn"
             type="button"
-            onclick="handleMoreAuth()"
+            onclick="promptInstallApp()"
+            style="display:none;"
           >
             <svg viewBox="0 0 24 24">
-              <path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"></path>
-              <polyline points="10 17 15 12 10 7"></polyline>
-              <line x1="15" y1="12" x2="3" y2="12"></line>
+              <path d="M12 4.5v10"></path>
+              <polyline points="7.5 10.5 12 15 16.5 10.5"></polyline>
+              <path d="M5 16.5v2.5a1.5 1.5 0 0 0 1.5 1.5h11A1.5 1.5 0 0 0 19 19v-2.5"></path>
+              <line x1="5" y1="19.5" x2="19" y2="19.5"></line>
             </svg>
-            <span id="moreAuthTxt">Sign In</span>
+            <span id="moreInstallTxt">Install App</span>
           </button>
         </div>
       </div>
@@ -1297,6 +1299,14 @@
           </svg>
           Profile
         </button>
+        <button class="drawer-item" id="dAuth" onclick="handleDrawerAuth()">
+          <svg viewBox="0 0 24 24">
+            <path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4" />
+            <polyline points="10 17 15 12 10 7" />
+            <line x1="15" y1="12" x2="3" y2="12" />
+          </svg>
+          <span id="dAuthTxt">Sign In</span>
+        </button>
         <button class="drawer-item" id="dAbout" onclick="openMoreMenu(this)">
           <svg viewBox="0 0 24 24">
             <line x1="5" y1="7" x2="19" y2="7" />
@@ -1332,15 +1342,6 @@
             <line x1="5" y1="12" x2="19" y2="12" />
           </svg>
           New Post
-        </button>
-        <button class="drawer-item" id="dInstallBtn" onclick="promptInstallApp()" style="display:none;">
-          <svg viewBox="0 0 24 24">
-            <path d="M12 4.5v10" />
-            <polyline points="7.5 10.5 12 15 16.5 10.5" />
-            <path d="M5 16.5v2.5a1.5 1.5 0 0 0 1.5 1.5h11A1.5 1.5 0 0 0 19 19v-2.5" />
-            <line x1="5" y1="19.5" x2="19" y2="19.5" />
-          </svg>
-          <span id="dInstallTxt">Install App</span>
         </button>
       </div>
 
@@ -1512,14 +1513,12 @@
             </svg>
             <span class="sb-label">Theme</span>
           </button>
-          <button class="sb" id="sbInstallBtn" onclick="promptInstallApp()" style="margin: 4px 0; display:none;">
-            <svg viewBox="0 0 24 24">
-              <path d="M12 4.5v10" />
-              <polyline points="7.5 10.5 12 15 16.5 10.5" />
-              <path d="M5 16.5v2.5a1.5 1.5 0 0 0 1.5 1.5h11A1.5 1.5 0 0 0 19 19v-2.5" />
-              <line x1="5" y1="19.5" x2="19" y2="19.5" />
+          <button class="sb sb-auth-cta" id="sbAuthBtn" onclick="handleSidebarAuth()" style="margin: 4px 0">
+            <svg viewBox="0 0 24 24" id="sbAuthIco">
+              <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
+              <circle cx="12" cy="7" r="4" />
             </svg>
-            <span class="sb-label" id="sbInstallTxt">Install App</span>
+            <span class="sb-label" id="sbAuthTxt">Sign In</span>
           </button>
         </div>
 
@@ -3109,15 +3108,7 @@
             <line x1="5" y1="12" x2="19" y2="12" />
           </svg>
         </button>
-        <button class="topbar-btn" id="topbarInstallBtn" onclick="promptInstallApp()" aria-label="Install app" style="display:none;">
-          <svg viewBox="0 0 24 24">
-            <path d="M12 4.5v10" />
-            <polyline points="7.5 10.5 12 15 16.5 10.5" />
-            <path d="M5 16.5v2.5a1.5 1.5 0 0 0 1.5 1.5h11A1.5 1.5 0 0 0 19 19v-2.5" />
-            <line x1="5" y1="19.5" x2="19" y2="19.5" />
-          </svg>
-        </button>
-        <button class="topbar-btn topbar-auth-btn" id="topbarAuthBtn" onclick="handleTopbarAuth()" aria-label="Sign In">
+        <button class="topbar-btn topbar-auth-btn" id="topbarAuthBtn" onclick="handleTopbarAuth()" aria-label="Profile">
           <svg viewBox="0 0 24 24" id="topbarAuthIco">
             <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
             <circle cx="12" cy="7" r="4" />
@@ -3495,7 +3486,7 @@
     </script>
     <script>
       (function () {
-        const runtimeVersion = "20260416-otpfix-3";
+      const runtimeVersion = "20260416-otpfix-5";
         const refreshKey = "ts_frontendRuntimeRefresh_" + runtimeVersion;
         try {
           const storedVersion = localStorage.getItem("ts_frontendRuntimeVersion");
@@ -3548,13 +3539,13 @@
         } catch {}
       })();
     </script>
-    <script src="Script.js?v=20260416-otpfix-3"></script>
+  <script src="Script.js?v=20260416-otpfix-5"></script>
     <script src="https://cdn.socket.io/4.7.4/socket.io.min.js"></script>
     <!-- Vercel Config & API Backend Scripts -->
-    <script src="config.js?v=20260416-otpfix-3"></script>
-    <script src="api.js?v=20260416-otpfix-3"></script>
-    <script src="socket-client.js?v=20260416-otpfix-3"></script>
-    <script src="webrtc-client.js?v=20260416-otpfix-3"></script>
-    <script src="backend-adapter.js?v=20260416-otpfix-3"></script>
+  <script src="config.js?v=20260416-otpfix-5"></script>
+  <script src="api.js?v=20260416-otpfix-5"></script>
+  <script src="socket-client.js?v=20260416-otpfix-5"></script>
+  <script src="webrtc-client.js?v=20260416-otpfix-5"></script>
+  <script src="backend-adapter.js?v=20260416-otpfix-5"></script>
   </body>
 </html>

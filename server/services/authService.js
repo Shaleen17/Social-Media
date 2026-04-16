@@ -5,7 +5,10 @@ const { OAuth2Client } = require("google-auth-library");
 const User = require("../models/User");
 const PendingSignup = require("../models/PendingSignup");
 const AppError = require("../utils/appError");
-const { sendEmail } = require("../utils/sendEmail");
+const {
+  sendEmail,
+  assertEmailDeliveryConfigured,
+} = require("../utils/sendEmail");
 const {
   signupOtpEmailTemplate,
   resendSignupOtpEmailTemplate,
@@ -98,7 +101,7 @@ function isLocalUnverifiedUser(user) {
   return (
     !!user &&
     user.authProvider === "local" &&
-    !(user.emailVerified || user.verified)
+    !user.emailVerified
   );
 }
 
@@ -420,6 +423,8 @@ async function signupLocalUser(payload = {}, context = {}) {
     throw new AppError("Username must be at least 3 characters.", 400);
   }
 
+  assertEmailDeliveryConfigured();
+
   return createOrUpdatePendingSignup(
     {
       name,
@@ -460,7 +465,7 @@ async function loginLocalUser(payload = {}, context = {}) {
     throw new AppError("Invalid email or password.", 401);
   }
 
-  if (!(user.emailVerified || user.verified)) {
+  if (!user.emailVerified) {
     throw new AppError(
       "Please verify your email with the OTP before logging in.",
       403,
@@ -581,6 +586,8 @@ async function verifySignupOtp(payload = {}, context = {}) {
 async function resendSignupOtp(payload = {}, context = {}) {
   const email = normalizeEmail(payload.email);
   const ip = normalizeIp(context.ip);
+
+  assertEmailDeliveryConfigured();
 
   assertRateLimit({
     key: `auth:resend:ip:${ip}`,

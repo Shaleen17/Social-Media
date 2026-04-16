@@ -1867,8 +1867,12 @@ function syncMoreNavState(forceOpen = false) {
 }
 
 function syncMoreMenu() {
-  const moreAuthTxt = document.getElementById("moreAuthTxt");
-  if (moreAuthTxt) moreAuthTxt.textContent = CU ? "Sign Out" : "Sign In";
+  const moreInstallBtn = document.getElementById("moreInstallBtn");
+  const divider = document.getElementById("moreUtilityDivider");
+  if (divider) {
+    divider.style.display =
+      moreInstallBtn && moreInstallBtn.style.display !== "none" ? "block" : "none";
+  }
 }
 
 function setMoreMenuAnchor(trigger) {
@@ -2074,6 +2078,7 @@ function updateDrawer() {
   const hdlEl = document.getElementById("drawerUserHandle");
   const avEl = document.getElementById("drawerAv");
   const authTxt = document.getElementById("dAuthTxt");
+  const authBtn = document.getElementById("dAuth");
   if (CU) {
     if (nameEl) nameEl.textContent = CU.name || "";
     if (hdlEl) hdlEl.textContent = "@" + (CU.handle || "");
@@ -2082,42 +2087,53 @@ function updateDrawer() {
         ? `<img src="${CU.avatar}" alt="">`
         : `${getIni(CU.name)}`;
     if (authTxt) authTxt.textContent = "Sign Out";
+    if (authBtn) authBtn.setAttribute("aria-label", "Sign out");
   } else {
     if (nameEl) nameEl.textContent = "Guest";
     if (hdlEl) hdlEl.textContent = "@guest";
     if (avEl)
       avEl.innerHTML = `<svg style="width:16px;height:16px;stroke:#fff;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round" viewBox="0 0 24 24"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>`;
     if (authTxt) authTxt.textContent = "Sign In";
+    if (authBtn) authBtn.setAttribute("aria-label", "Sign in");
   }
   // Also update sidebar and topbar auth buttons
   updateNavAuthButtons();
 }
 
 function updateNavAuthButtons() {
-  // Desktop sidebar auth button
   const sbAuthTxt = document.getElementById("sbAuthTxt");
+  const sbAuthBtn = document.getElementById("sbAuthBtn");
   if (sbAuthTxt) sbAuthTxt.textContent = CU ? "Sign Out" : "Sign In";
-  const moreAuthTxt = document.getElementById("moreAuthTxt");
-  if (moreAuthTxt) moreAuthTxt.textContent = CU ? "Sign Out" : "Sign In";
+  if (sbAuthBtn) {
+    sbAuthBtn.setAttribute("aria-label", CU ? "Sign out" : "Sign in");
+  }
 
-  // Mobile topbar auth button
+  const dAuthTxt = document.getElementById("dAuthTxt");
+  const dAuthBtn = document.getElementById("dAuth");
+  if (dAuthTxt) dAuthTxt.textContent = CU ? "Sign Out" : "Sign In";
+  if (dAuthBtn) {
+    dAuthBtn.setAttribute("aria-label", CU ? "Sign out" : "Sign in");
+  }
+
   const topbarBtn = document.getElementById("topbarAuthBtn");
   if (topbarBtn) {
     if (CU) {
       const ini = getIni(CU.name);
+      topbarBtn.setAttribute("aria-label", "Profile");
       topbarBtn.innerHTML = CU.avatar
         ? `<img src="${CU.avatar}" alt="" style="width:100%;height:100%;object-fit:cover;border-radius:50%">`
         : `<span style="font-size:13px;font-weight:700;color:var(--p)">${ini}</span>`;
-      topbarBtn.style.background = CU.avatar ? 'transparent' : 'var(--a)';
-      topbarBtn.style.border = CU.avatar ? 'none' : '2px solid var(--p)';
-      topbarBtn.style.padding = '0';
-      topbarBtn.style.overflow = 'hidden';
+      topbarBtn.style.background = CU.avatar ? "transparent" : "var(--a)";
+      topbarBtn.style.border = CU.avatar ? "none" : "2px solid var(--p)";
+      topbarBtn.style.padding = "0";
+      topbarBtn.style.overflow = "hidden";
     } else {
+      topbarBtn.setAttribute("aria-label", "Profile");
       topbarBtn.innerHTML = `<svg viewBox="0 0 24 24" id="topbarAuthIco"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" /><circle cx="12" cy="7" r="4" /></svg>`;
-      topbarBtn.style.background = '';
-      topbarBtn.style.border = '';
-      topbarBtn.style.padding = '';
-      topbarBtn.style.overflow = '';
+      topbarBtn.style.background = "";
+      topbarBtn.style.border = "";
+      topbarBtn.style.padding = "";
+      topbarBtn.style.overflow = "";
     }
   }
 }
@@ -2130,11 +2146,10 @@ function handleSidebarAuth() {
   }
 }
 function handleTopbarAuth() {
-  if (CU) {
-    openProfilePage();
-  } else {
-    openOvl('authOvl');
-  }
+  openProfilePage();
+}
+function handleBottomNavAuth() {
+  openProfilePage();
 }
 function handleDrawerAuth() {
   closeDrawer();

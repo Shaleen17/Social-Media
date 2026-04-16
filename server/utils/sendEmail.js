@@ -4,25 +4,57 @@ const AppError = require("./appError");
 let transporter;
 let verifyPromise;
 
-function createTransporter() {
-  if (transporter) {
-    return transporter;
-  }
-
+function getEmailTransportSettings() {
   const authUser = process.env.SMTP_USER || process.env.EMAIL_USER;
   const authPass = process.env.SMTP_PASS || process.env.EMAIL_PASS;
+  const fromAddress =
+    process.env.EMAIL_FROM ||
+    process.env.SMTP_FROM ||
+    process.env.SMTP_USER ||
+    process.env.EMAIL_USER;
   const parsedPort = Number(process.env.SMTP_PORT || 0);
   const secure = process.env.SMTP_SECURE
     ? process.env.SMTP_SECURE === "true"
     : parsedPort === 465;
   const port = parsedPort || (secure ? 465 : 587);
 
-  if (!authUser || !authPass) {
-    throw new AppError("Email delivery is not configured on the server.", 500);
+  return {
+    authUser,
+    authPass,
+    fromAddress,
+    host: process.env.SMTP_HOST || "smtp.gmail.com",
+    port,
+    secure,
+  };
+}
+
+function isEmailDeliveryConfigured() {
+  const { authUser, authPass, fromAddress } = getEmailTransportSettings();
+  return !!(authUser && authPass && fromAddress);
+}
+
+function assertEmailDeliveryConfigured() {
+  if (isEmailDeliveryConfigured()) {
+    return;
   }
 
+  throw new AppError(
+    "OTP email delivery is not configured on the server. Add SMTP_HOST, SMTP_PORT, SMTP_SECURE, SMTP_USER, SMTP_PASS, and EMAIL_FROM in production.",
+    503
+  );
+}
+
+function createTransporter() {
+  if (transporter) {
+    return transporter;
+  }
+
+  const { authUser, authPass, host, port, secure } = getEmailTransportSettings();
+
+  assertEmailDeliveryConfigured();
+
   transporter = nodemailer.createTransport({
-    host: process.env.SMTP_HOST || "smtp.gmail.com",
+    host,
     port,
     secure,
     requireTLS: !secure,
@@ -39,15 +71,9 @@ function createTransporter() {
 }
 
 async function sendEmail({ email, subject, html, text }) {
-  const fromAddress =
-    process.env.EMAIL_FROM ||
-    process.env.SMTP_FROM ||
-    process.env.SMTP_USER ||
-    process.env.EMAIL_USER;
+  const { fromAddress } = getEmailTransportSettings();
 
-  if (!fromAddress) {
-    throw new AppError("Email delivery is not configured on the server.", 500);
-  }
+  assertEmailDeliveryConfigured();
 
   try {
     if (process.env.SMTP_VERIFY_BEFORE_SEND === "true") {
@@ -97,4 +123,6 @@ async function verifyEmailTransport() {
 module.exports = {
   sendEmail,
   verifyEmailTransport,
+  isEmailDeliveryConfigured,
+  assertEmailDeliveryConfigured,
 };

@@ -237,7 +237,7 @@
 
   let _chatPushSetupPromise = null;
   let _pendingOpenChatId = consumeOpenChatParam();
-  const APP_ASSET_VERSION = "20260416-otpfix-3";
+  const APP_ASSET_VERSION = "20260416-otpfix-5";
   let _appSwPromise = null;
   let _deferredInstallPrompt = null;
   let _installPromptBound = false;
@@ -292,9 +292,7 @@
         : "Install App";
 
     [
-      { id: "sbInstallBtn", display: allowUi ? "flex" : "none", textId: "sbInstallTxt" },
-      { id: "dInstallBtn", display: allowUi ? "flex" : "none", textId: "dInstallTxt" },
-      { id: "topbarInstallBtn", display: allowUi ? "inline-flex" : "none", textId: "" },
+      { id: "moreInstallBtn", display: allowUi ? "flex" : "none", textId: "moreInstallTxt" },
     ].forEach(({ id, display, textId }) => {
       const btn = document.getElementById(id);
       if (btn) btn.style.display = display;
@@ -303,6 +301,13 @@
         if (txt) txt.textContent = installText;
       }
     });
+
+    const divider = document.getElementById("moreUtilityDivider");
+    if (divider) divider.style.display = allowUi ? "block" : "none";
+
+    if (typeof window.syncMoreMenu === "function") {
+      window.syncMoreMenu();
+    }
   }
 
   function setupInstallPromptBridge() {
@@ -805,6 +810,21 @@
     }
   }
 
+  function clearActiveSessionForPendingSignup() {
+    CU = null;
+    if (typeof API.logout === "function") {
+      API.logout();
+    }
+    if (
+      typeof SocketClient !== "undefined" &&
+      SocketClient &&
+      typeof SocketClient.disconnect === "function"
+    ) {
+      SocketClient.disconnect();
+    }
+    initUI();
+  }
+
   async function bootstrapOtpSession(user, successMessage) {
     CU = user;
     closeOvl("authOvl");
@@ -874,6 +894,7 @@
       }
 
       if (needsOtp) {
+        clearActiveSessionForPendingSignup();
         syncOtpPendingState((err.details && err.details.email) || email);
       }
 
@@ -909,6 +930,7 @@
       const passwordInput = document.getElementById("suPw");
       const firstOtpDigit = document.getElementById("suOtpDigit0");
 
+      clearActiveSessionForPendingSignup();
       setOtpAuthFieldError("suErr", false);
       setOtpAuthFieldError("suOtpErr", false);
       syncOtpPendingState(data.email || email, {
