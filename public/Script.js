@@ -1703,56 +1703,6 @@ async function doLogin() {
 
 async function doSignupShim() {
   return doSignup();
-  const nm = (document.getElementById("suNm")?.value || "").trim();
-  const em = (document.getElementById("suEml")?.value || "").trim();
-  const hdl = (document.getElementById("suHdl")?.value || "")
-    .trim()
-    .replace("@", "")
-    .toLowerCase()
-    .replace(/\s+/g, "");
-  const pw = document.getElementById("suPw")?.value || "";
-  const se = (id, show) => {
-    const el = document.getElementById(id);
-    if (el) {
-      el.classList.toggle("show", show);
-      el.style.display = show ? "block" : "none";
-    }
-  };
-  let ok = true;
-  se("suNE", !nm);
-  if (!nm) ok = false;
-  se("suEE", !em || !em.includes("@"));
-  if (!em || !em.includes("@")) ok = false;
-  se("suHE", !hdl || hdl.length < 3);
-  if (!hdl || hdl.length < 3) ok = false;
-  se("suPE", !pw || pw.length < 6);
-  if (!pw || pw.length < 6) ok = false;
-  if (!ok) return;
-
-  try {
-    const data = await API.signup(nm, hdl, em, pw);
-    const errEl = document.getElementById("suErr");
-
-    if (!res.ok) {
-      if (errEl) {
-        errEl.textContent = "❌ " + (data.error || "Signup failed");
-        errEl.style.display = "block";
-      }
-      MC.error(data.error || "Signup failed");
-      return;
-    }
-
-    if (errEl) errEl.style.display = "none";
-    ["suNm", "suEml", "suHdl", "suPw"].forEach((id) => {
-      const el = document.getElementById(id);
-      if (el) el.value = "";
-    });
-    closeOvl("authOvl");
-    MC.success(data.message || "Account created! Please check your email. 🕉");
-  } catch (err) {
-    console.error(err);
-    MC.error("Network error. Please try again.");
-  }
 }
 async function doSignup() {
   const nm = (document.getElementById("suNm")?.value || "").trim();
@@ -1779,7 +1729,9 @@ async function doSignup() {
     const data = await API.signup(nm, hdl, em, pw);
     toggleFieldError("suErr", false);
     toggleFieldError("suOtpErr", false);
-    setPendingSignupOtp(data.email || em);
+    setPendingSignupOtp(data.email || em, {
+      cooldownSeconds: Number(data?.verification?.resendAfterSeconds) || 30,
+    });
     const otpInput = document.getElementById("suOtp");
     if (otpInput) otpInput.value = "";
     MC.success(data.message || "We sent a 6-digit OTP to your email.");

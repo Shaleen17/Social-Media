@@ -11,6 +11,7 @@ const AppError = require("./utils/appError");
 const {
   verifyEmailTransport,
   isEmailDeliveryConfigured,
+  assertEmailDeliveryConfigured,
 } = require("./utils/sendEmail");
 
 // ─── Validate Required Environment Variables ───
@@ -134,7 +135,45 @@ app.use("/api/payments", paymentRoutes);
 
 // Health check
 app.get("/api/health", (req, res) => {
-  res.json({ status: "ok", timestamp: new Date().toISOString() });
+  res.json({
+    status: "ok",
+    timestamp: new Date().toISOString(),
+    email: isEmailDeliveryConfigured() ? "configured" : "NOT_CONFIGURED",
+  });
+});
+
+// Email SMTP diagnostic endpoint — visit this URL on Render to instantly check if email works
+// URL: https://tirth-sutra-backend.onrender.com/api/health/email
+app.get("/api/health/email", async (req, res) => {
+  if (!isEmailDeliveryConfigured()) {
+    const missing = ["SMTP_HOST","SMTP_PORT","SMTP_SECURE","SMTP_USER","SMTP_PASS","EMAIL_FROM"]
+      .filter((k) => !process.env[k]);
+    return res.status(503).json({
+      status: "error",
+      message: "SMTP is NOT configured. OTP emails will fail.",
+      missingEnvVars: missing,
+      fix: "Add these environment variables in your Render dashboard under Environment tab.",
+    });
+  }
+  try {
+    await verifyEmailTransport();
+    res.json({
+      status: "ok",
+      message: "SMTP connection verified. OTP emails should work.",
+      smtpHost: process.env.SMTP_HOST,
+      smtpPort: process.env.SMTP_PORT,
+      smtpUser: process.env.SMTP_USER,
+    });
+  } catch (err) {
+    res.status(500).json({
+      status: "error",
+      message: "SMTP credentials are set but the connection FAILED.",
+      error: err.message,
+      smtpHost: process.env.SMTP_HOST,
+      smtpUser: process.env.SMTP_USER,
+      fix: "Check that SMTP_PASS is a valid Gmail App Password (16 chars, no spaces). Ensure 2-Step Verification is ON for the Gmail account.",
+    });
+  }
 });
 
 // Catch-all: serve index.html for SPA
@@ -193,16 +232,27 @@ if (!process.env.VERCEL) {
     }, 15 * 60 * 1000); // 15 minutes
   });
 
-  if (!isEmailDeliveryConfigured()) {
-    console.warn(
-      "OTP email delivery is not configured. Set SMTP_HOST, SMTP_PORT, SMTP_SECURE, SMTP_USER, SMTP_PASS, and EMAIL_FROM in production."
+  // Always verify SMTP on startup so Render logs immediately show ✅ or ❌
+  if (isEmailDeliveryConfigured()) {
+    console.log("📧 SMTP configured — verifying connection on startup...");
+    verifyEmailTransport()
+      .then(() => {
+        console.log("✅ SMTP ready — OTP emails will be delivered.");
+      })
+      .catch((err) => {
+        console.error(
+          "❌ SMTP startup check FAILED — OTP emails will NOT be delivered.\n" +
+          "   Error:", err.message, "\n" +
+          "   Fix: Check SMTP_USER / SMTP_PASS in Render Environment Variables.\n" +
+          "   Gmail requires a 16-char App Password (Google Account → Security → App Passwords)."
+        );
+      });
+  } else {
+    console.error(
+      "❌ SMTP is NOT configured — OTP emails will NOT be delivered.\n" +
+      "   Missing: SMTP_HOST, SMTP_PORT, SMTP_SECURE, SMTP_USER, SMTP_PASS, EMAIL_FROM\n" +
+      "   Fix: Add these in your Render dashboard → Environment tab."
     );
-  }
-
-  if (process.env.SMTP_VERIFY_ON_STARTUP === "true") {
-    verifyEmailTransport().catch((error) => {
-      console.error("SMTP startup verification failed:", error.message);
-    });
   }
 }
 
