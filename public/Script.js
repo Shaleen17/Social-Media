@@ -1227,16 +1227,10 @@ document.addEventListener("keydown", (e) => {
 });
 
 let pendingSignupOtpEmail = "";
-
-function getAuthClientUrl() {
-  const url = new URL(window.location.href);
-  url.hash = "";
-  url.search = "";
-  if (!url.pathname.endsWith("/")) {
-    url.pathname = url.pathname.substring(0, url.pathname.lastIndexOf("/") + 1);
-  }
-  return url.toString();
-}
+let pendingSignupOtpCooldownUntil = 0;
+let otpResendCountdownTimer = null;
+const OTP_LENGTH = 6;
+const OTP_RESEND_DEFAULT_SECONDS = 30;
 
 function toggleFieldError(id, show, message = "") {
   const el = document.getElementById(id);
@@ -1246,10 +1240,216 @@ function toggleFieldError(id, show, message = "") {
   el.style.display = show ? "block" : "none";
 }
 
+function maskSignupOtpEmail(email) {
+  const normalized = (email || "").trim().toLowerCase();
+  const [local, domain] = normalized.split("@");
+  if (!local || !domain) return "No email selected yet";
+  const visible = local.length <= 2 ? local : local.slice(0, 2);
+  return `${visible}${"*".repeat(Math.max(1, Math.min(4, local.length - visible.length)))}@${domain}`;
+}
+
+function getOtpDigitInputs() {
+  return Array.from(document.querySelectorAll("#signupOtpInputs .otp-digit"));
+}
+
+function getOtpHiddenInput() {
+  return document.getElementById("suOtp");
+}
+
+function getOtpValueFromDigits() {
+  return getOtpDigitInputs()
+    .map((input) => input.value || "")
+    .join("");
+}
+
+function formatOtpCountdown(totalSeconds) {
+  const safeSeconds = Math.max(0, totalSeconds);
+  const minutes = Math.floor(safeSeconds / 60)
+    .toString()
+    .padStart(2, "0");
+  const seconds = Math.floor(safeSeconds % 60)
+    .toString()
+    .padStart(2, "0");
+  return `${minutes}:${seconds}`;
+}
+
+function updateVerifyOtpButtonState() {
+  const verifyBtn = document.getElementById("verifyOtpBtn");
+  if (!verifyBtn) return;
+  verifyBtn.disabled = getOtpValueFromDigits().length !== OTP_LENGTH;
+}
+
+function setOtpValue(value, options = {}) {
+  const sanitized = String(value || "")
+    .replace(/\D/g, "")
+    .slice(0, OTP_LENGTH);
+  const hiddenInput = getOtpHiddenInput();
+  const digits = getOtpDigitInputs();
+
+  if (hiddenInput) hiddenInput.value = sanitized;
+
+  digits.forEach((input, index) => {
+    input.value = sanitized[index] || "";
+    input.classList.toggle("is-filled", !!input.value);
+  });
+
+  updateVerifyOtpButtonState();
+
+  if (options.focusFirstEmpty) {
+    const nextInput = digits[sanitized.length] || digits[digits.length - 1];
+    nextInput?.focus();
+    nextInput?.select();
+  }
+}
+
+function renderOtpResendState() {
+  const timerLabel = document.getElementById("signupOtpTimer");
+  const meta = document.getElementById("signupOtpMeta");
+  const resendBtn = document.getElementById("resendSignupOtpBtnInline");
+  const hasPendingOtp = !!pendingSignupOtpEmail;
+  const remainingMs = Math.max(0, pendingSignupOtpCooldownUntil - Date.now());
+  const remainingSeconds = Math.ceil(remainingMs / 1000);
+
+  if (!hasPendingOtp) {
+    if (timerLabel) timerLabel.textContent = "Waiting for code";
+    if (meta) {
+      meta.textContent =
+        "Paste the code from your email or type it digit by digit.";
+    }
+    if (resendBtn) {
+      resendBtn.disabled = true;
+      resendBtn.textContent = "Resend OTP";
+    }
+    return;
+  }
+
+  if (remainingSeconds > 0) {
+    const countdownText = formatOtpCountdown(remainingSeconds);
+    if (timerLabel) timerLabel.textContent = `Resend in ${countdownText}`;
+    if (meta) {
+      meta.textContent = `You can request a fresh OTP in ${countdownText}.`;
+    }
+    if (resendBtn) {
+      resendBtn.disabled = true;
+      resendBtn.textContent = `Resend OTP in ${countdownText}`;
+    }
+    return;
+  }
+
+  if (timerLabel) timerLabel.textContent = "You can resend now";
+  if (meta) {
+    meta.textContent =
+      "Did not receive the OTP? Request a fresh one or paste the code from your email.";
+  }
+  if (resendBtn) {
+    resendBtn.disabled = false;
+    resendBtn.textContent = "Resend OTP";
+  }
+}
+
+function startOtpResendCountdown(seconds) {
+  pendingSignupOtpCooldownUntil =
+    seconds > 0 ? Date.now() + seconds * 1000 : 0;
+
+  if (otpResendCountdownTimer) {
+    clearInterval(otpResendCountdownTimer);
+    otpResendCountdownTimer = null;
+  }
+
+  renderOtpResendState();
+
+  if (pendingSignupOtpCooldownUntil > Date.now()) {
+    otpResendCountdownTimer = window.setInterval(() => {
+      if (pendingSignupOtpCooldownUntil <= Date.now()) {
+        clearInterval(otpResendCountdownTimer);
+        otpResendCountdownTimer = null;
+      }
+      renderOtpResendState();
+    }, 1000);
+  }
+}
+
+function setupOtpInputEnhancements() {
+  const digits = getOtpDigitInputs();
+  const hiddenInput = getOtpHiddenInput();
+
+  if (!digits.length || !hiddenInput || digits[0].dataset.ready === "true") {
+    updateVerifyOtpButtonState();
+    renderOtpResendState();
+    return;
+  }
+
+  digits.forEach((input, index) => {
+    input.dataset.ready = "true";
+
+    input.addEventListener("focus", () => input.select());
+
+    input.addEventListener("input", () => {
+      const numericValue = input.value.replace(/\D/g, "");
+
+      if (numericValue.length > 1) {
+        setOtpValue(numericValue, { focusFirstEmpty: true });
+        toggleFieldError("suOtpErr", false);
+        return;
+      }
+
+      input.value = numericValue;
+      input.classList.toggle("is-filled", !!numericValue);
+
+      if (numericValue && index < digits.length - 1) {
+        digits[index + 1].focus();
+        digits[index + 1].select();
+      }
+
+      hiddenInput.value = getOtpValueFromDigits();
+      updateVerifyOtpButtonState();
+      if (hiddenInput.value.length === OTP_LENGTH) {
+        toggleFieldError("suOtpErr", false);
+      }
+    });
+
+    input.addEventListener("keydown", (event) => {
+      if (event.key === "Backspace" && !input.value && index > 0) {
+        digits[index - 1].focus();
+        digits[index - 1].select();
+      } else if (event.key === "ArrowLeft" && index > 0) {
+        event.preventDefault();
+        digits[index - 1].focus();
+        digits[index - 1].select();
+      } else if (event.key === "ArrowRight" && index < digits.length - 1) {
+        event.preventDefault();
+        digits[index + 1].focus();
+        digits[index + 1].select();
+      } else if (event.key === "Enter" && getOtpValueFromDigits().length === OTP_LENGTH) {
+        event.preventDefault();
+        verifySignupOtp();
+      }
+    });
+
+    input.addEventListener("paste", (event) => {
+      const pasted = event.clipboardData?.getData("text") || "";
+      const sanitized = pasted.replace(/\D/g, "").slice(0, OTP_LENGTH);
+      if (!sanitized) return;
+      event.preventDefault();
+      setOtpValue(sanitized, { focusFirstEmpty: true });
+      toggleFieldError("suOtpErr", false);
+    });
+  });
+
+  hiddenInput.addEventListener("input", () => {
+    setOtpValue(hiddenInput.value, { focusFirstEmpty: false });
+  });
+
+  updateVerifyOtpButtonState();
+  renderOtpResendState();
+}
+
 function syncSignupOtpState() {
   const wrap = document.getElementById("signupOtpWrap");
   const hint = document.getElementById("signupOtpHint");
+  const emailBadge = document.getElementById("signupOtpEmail");
   const verifyBtn = document.getElementById("verifyOtpBtn");
+  const signupBtn = document.getElementById("signupBtn");
   const hasPendingOtp = !!pendingSignupOtpEmail;
 
   if (wrap) {
@@ -1259,30 +1459,74 @@ function syncSignupOtpState() {
 
   if (hint) {
     hint.textContent = hasPendingOtp
-      ? `We sent a 6-digit OTP to ${pendingSignupOtpEmail}. Enter it here to finish creating your account.`
-      : "We sent a 6-digit OTP to your email. Enter it here to finish creating your account.";
+      ? `We sent a 6-digit OTP to ${pendingSignupOtpEmail}. Enter it here to verify your email and create your account.`
+      : "We send a 6-digit OTP to your email. Your account is created only after the OTP is verified.";
+  }
+
+  if (emailBadge) {
+    emailBadge.textContent = hasPendingOtp
+      ? `Code sent to ${maskSignupOtpEmail(pendingSignupOtpEmail)}`
+      : "No email selected yet";
+  }
+
+  if (signupBtn) {
+    signupBtn.textContent = hasPendingOtp ? "Send New OTP" : "Send OTP";
   }
 
   if (!hasPendingOtp) {
-    const otpInput = document.getElementById("suOtp");
-    if (otpInput) otpInput.value = "";
+    setOtpValue("", { focusFirstEmpty: false });
     toggleFieldError("suOtpErr", false);
-  } else if (verifyBtn) {
-    window.setTimeout(() => verifyBtn.focus(), 30);
+  } else {
+    setupOtpInputEnhancements();
+    renderOtpResendState();
+    window.setTimeout(() => {
+      const firstEmpty = getOtpDigitInputs().find((input) => !input.value);
+      (firstEmpty || getOtpDigitInputs()[0] || verifyBtn)?.focus();
+    }, 30);
   }
 }
 
-function setPendingSignupOtp(email) {
+function setPendingSignupOtp(email, options = {}) {
   pendingSignupOtpEmail = (email || "").trim().toLowerCase();
+
+  if (typeof options === "number") {
+    options = { cooldownSeconds: options };
+  }
+
+  if (typeof options.cooldownSeconds === "number") {
+    startOtpResendCountdown(options.cooldownSeconds);
+  } else if (options.resetCooldown) {
+    startOtpResendCountdown(0);
+  } else {
+    renderOtpResendState();
+  }
+
   syncSignupOtpState();
 }
 
 function clearPendingSignupOtp() {
   pendingSignupOtpEmail = "";
+  startOtpResendCountdown(0);
   syncSignupOtpState();
 }
 
-async function resendVerificationEmail() {
+function resetSignupOtpFlow() {
+  clearPendingSignupOtp();
+  toggleFieldError("suErr", false);
+  toggleFieldError("suOtpErr", false);
+  const emailInput = document.getElementById("suEml");
+  emailInput?.focus();
+}
+
+window.setPendingSignupOtp = setPendingSignupOtp;
+window.clearPendingSignupOtp = clearPendingSignupOtp;
+window.resetSignupOtpFlow = resetSignupOtpFlow;
+window.syncSignupOtpState = syncSignupOtpState;
+window.renderOtpResendState = renderOtpResendState;
+setupOtpInputEnhancements();
+syncSignupOtpState();
+
+async function resendSignupOtpFromLogin() {
   const email = (document.getElementById("liEml")?.value || "").trim().toLowerCase();
   if (!email || !email.includes("@")) {
     toggleFieldError("liEE", true);
@@ -1290,10 +1534,13 @@ async function resendVerificationEmail() {
   }
 
   try {
-    const data = await API.resendVerification(email, getAuthClientUrl());
+    const data = await API.resendSignupOtp(email);
     const suEmail = document.getElementById("suEml");
     if (suEmail) suEmail.value = email;
-    setPendingSignupOtp(data.email || email);
+    setPendingSignupOtp(data.email || email, {
+      cooldownSeconds:
+        Number(data?.verification?.resendAfterSeconds) || OTP_RESEND_DEFAULT_SECONDS,
+    });
     authToggle("signup");
     MC.success(data.message || "A fresh OTP has been sent to your email.");
   } catch (err) {
@@ -1313,8 +1560,11 @@ async function resendSignupOtp() {
   }
 
   try {
-    const data = await API.resendVerification(email, getAuthClientUrl());
-    setPendingSignupOtp(data.email || email);
+    const data = await API.resendSignupOtp(email);
+    setPendingSignupOtp(data.email || email, {
+      cooldownSeconds:
+        Number(data?.verification?.resendAfterSeconds) || OTP_RESEND_DEFAULT_SECONDS,
+    });
     toggleFieldError("suOtpErr", false);
     MC.success(data.message || "A fresh OTP has been sent to your email.");
   } catch (err) {
@@ -1370,8 +1620,8 @@ function authToggle(mode) {
     .getElementById("signupForm")
     .classList.toggle("hide", mode === "login");
   document.getElementById("authTtl").textContent =
-    mode === "login" ? "Sign In" : "Create Account";
-  const resendBtn = document.getElementById("resendVerificationBtn");
+    mode === "login" ? "Sign In" : "Sign Up with OTP";
+  const resendBtn = document.getElementById("resendSignupOtpBtn");
   if (resendBtn && mode !== "login") resendBtn.style.display = "none";
   ["liEE", "liPE", "liErr", "suNE", "suEE", "suHE", "suPE", "suErr", "suOtpErr"].forEach(
     (id) => {
@@ -1416,7 +1666,7 @@ async function doLogin() {
     });
     const data = await res.json();
     const e = document.getElementById("liErr");
-    const resendBtn = document.getElementById("resendVerificationBtn");
+    const resendBtn = document.getElementById("resendSignupOtpBtn");
 
     if (!res.ok) {
       if (e) {
@@ -1451,7 +1701,7 @@ async function doLogin() {
   }
 }
 
-async function doSignupLegacy() {
+async function doSignupShim() {
   return doSignup();
   const nm = (document.getElementById("suNm")?.value || "").trim();
   const em = (document.getElementById("suEml")?.value || "").trim();
@@ -1480,7 +1730,7 @@ async function doSignupLegacy() {
   if (!ok) return;
 
   try {
-    const data = await API.signup(nm, hdl, em, pw, getAuthClientUrl());
+    const data = await API.signup(nm, hdl, em, pw);
     const errEl = document.getElementById("suErr");
 
     if (!res.ok) {
@@ -1526,7 +1776,7 @@ async function doSignup() {
   if (!ok) return;
 
   try {
-    const data = await API.signup(nm, hdl, em, pw, getAuthClientUrl());
+    const data = await API.signup(nm, hdl, em, pw);
     toggleFieldError("suErr", false);
     toggleFieldError("suOtpErr", false);
     setPendingSignupOtp(data.email || em);

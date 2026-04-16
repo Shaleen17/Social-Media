@@ -550,9 +550,9 @@
   };
 
   // =============================================
-  // Override Auth (doLogin, doSignup, logout)
+  // Legacy auth block kept only for reference; live OTP auth overrides are defined below.
   // =============================================
-  window.doLogin = async function () {
+  const legacyDoLogin = async function () {
     const em = (document.getElementById("liEml")?.value || "").trim();
     const pw = document.getElementById("liPw")?.value || "";
     let ok = true;
@@ -572,7 +572,7 @@
     try {
       const data = await API.login(em, pw);
       const e = document.getElementById("liErr");
-      const resendBtn = document.getElementById("resendVerificationBtn");
+      const resendBtn = document.getElementById("resendSignupOtpBtn");
       if (e) e.style.display = "none";
       if (resendBtn) resendBtn.style.display = "none";
       CU = data.user;
@@ -590,7 +590,7 @@
       gp("home");
     } catch (err) {
       const e = document.getElementById("liErr");
-      const resendBtn = document.getElementById("resendVerificationBtn");
+      const resendBtn = document.getElementById("resendSignupOtpBtn");
       if (e) {
         e.textContent = "❌ " + (err.message || "Invalid email or password");
         e.style.display = "block";
@@ -605,7 +605,7 @@
     }
   };
 
-  window.doSignup = async function () {
+  const legacyDoSignup = async function () {
     const nm = (document.getElementById("suNm")?.value || "").trim();
     const em = (document.getElementById("suEml")?.value || "").trim();
     const hdl = (document.getElementById("suHdl")?.value || "")
@@ -633,8 +633,8 @@
     if (!ok) return;
 
     try {
-      // API.signup() returns {success, message} — NO user/token until email is verified.
-      const data = await API.signup(nm, hdl, em, pw, getAppBaseUrl());
+      // Legacy fallback kept for reference. Live signup now finishes through OTP verification in-app.
+      const data = await API.signup(nm, hdl, em, pw);
       ["suNm", "suEml", "suHdl", "suPw"].forEach((id) => {
         const el = document.getElementById(id);
         if (el) el.value = "";
@@ -642,7 +642,10 @@
       closeOvl("authOvl");
       // Do NOT set CU, connect socket, or call loadAllData here.
       // The user must verify their email before they can log in.
-      MC.success(data.message || "Account created! 🧱 Please check your email to verify your account.");
+      MC.success(
+        data.message ||
+          "We sent a 6-digit OTP to your email. Your account will be created after verification."
+      );
       const loginEmail = document.getElementById("liEml");
       if (loginEmail) loginEmail.value = em;
       authToggle("login");
@@ -670,31 +673,31 @@
     MC.info("Signed out. Jai Shri Ram 🙏");
   };
 
-  window.resendVerificationEmail = async function () {
+  const legacyResendSignupOtp = async function () {
     const email =
       (document.getElementById("liEml")?.value || "").trim() ||
       (document.getElementById("suEml")?.value || "").trim();
 
     if (!email || !email.includes("@")) {
-      MC.warn("Enter your email address first so we can resend the verification link.");
+      MC.warn("Enter your email address first so we can resend the OTP.");
       return;
     }
 
-    const resendBtn = document.getElementById("resendVerificationBtn");
+    const resendBtn = document.getElementById("resendSignupOtpBtn");
     if (resendBtn) {
       resendBtn.disabled = true;
-      resendBtn.textContent = "Sending verification email...";
+      resendBtn.textContent = "Sending OTP...";
     }
 
     try {
-      const data = await API.resendVerification(email, getAppBaseUrl());
-      MC.success(data.message || "A new verification email has been sent.");
+      const data = await API.resendSignupOtp(email);
+      MC.success(data.message || "A fresh OTP has been sent to your email.");
     } catch (err) {
-      MC.error(err.message || "Could not resend the verification email.");
+      MC.error(err.message || "Could not resend OTP.");
     } finally {
       if (resendBtn) {
         resendBtn.disabled = false;
-        resendBtn.textContent = "Resend verification email";
+        resendBtn.textContent = "Resend OTP";
       }
     }
   };
@@ -716,7 +719,42 @@
     );
   }
 
-  function syncOtpPendingState(email) {
+  function getOtpCooldownSeconds(payload, fallbackSeconds = 30) {
+    const fromPayload = Number(payload?.verification?.resendAfterSeconds);
+    return Number.isFinite(fromPayload) && fromPayload > 0
+      ? fromPayload
+      : fallbackSeconds;
+  }
+
+  function buildOtpErrorMessage(error, fallbackMessage) {
+    const baseMessage = error?.message || fallbackMessage;
+    const attemptsRemaining = Number(error?.details?.attemptsRemaining);
+
+    if (Number.isFinite(attemptsRemaining) && attemptsRemaining > 0) {
+      return `${baseMessage} ${attemptsRemaining} attempt${
+        attemptsRemaining === 1 ? "" : "s"
+      } left.`;
+    }
+
+    if (error?.details?.requiresResend) {
+      return `${baseMessage} Request a new OTP to continue.`;
+    }
+
+    return baseMessage;
+  }
+
+  function setButtonBusy(button, isBusy, busyText) {
+    if (!button) return;
+
+    if (!button.dataset.defaultText) {
+      button.dataset.defaultText = button.textContent;
+    }
+
+    button.disabled = !!isBusy;
+    button.textContent = isBusy ? busyText : button.dataset.defaultText;
+  }
+
+  function syncOtpPendingState(email, options = {}) {
     const normalizedEmail = (email || "").trim().toLowerCase();
     const signupEmail = document.getElementById("suEml");
     const loginEmail = document.getElementById("liEml");
@@ -725,7 +763,7 @@
     if (loginEmail && normalizedEmail) loginEmail.value = normalizedEmail;
 
     if (typeof window.setPendingSignupOtp === "function") {
-      window.setPendingSignupOtp(normalizedEmail);
+      window.setPendingSignupOtp(normalizedEmail, options);
     }
   }
 
@@ -775,7 +813,7 @@
 
     try {
       const data = await API.login(email, password);
-      const resendBtn = document.getElementById("resendVerificationBtn");
+      const resendBtn = document.getElementById("resendSignupOtpBtn");
       setOtpAuthFieldError("liErr", false);
       if (resendBtn) resendBtn.style.display = "none";
       clearOtpPendingState();
@@ -788,7 +826,7 @@
         "Welcome back, " + data.user.name.split(" ")[0] + "! " + String.fromCodePoint(0x1f64f)
       );
     } catch (err) {
-      const resendBtn = document.getElementById("resendVerificationBtn");
+      const resendBtn = document.getElementById("resendSignupOtpBtn");
       const needsOtp =
         !!(err && err.details && err.details.requiresVerification) ||
         (err?.message || "").toLowerCase().includes("verify your email");
@@ -820,6 +858,7 @@
       .toLowerCase()
       .replace(/\s+/g, "");
     const password = document.getElementById("suPw")?.value || "";
+    const signupBtn = document.getElementById("signupBtn");
     let ok = true;
 
     setOtpAuthFieldError("suNE", !name, "Name required");
@@ -833,26 +872,31 @@
     if (!ok) return;
 
     try {
-      const data = await API.signup(name, handle, email, password, getAppBaseUrl());
+      setButtonBusy(signupBtn, true, "Sending OTP...");
+      const data = await API.signup(name, handle, email, password);
       const passwordInput = document.getElementById("suPw");
-      const otpInput = document.getElementById("suOtp");
+      const firstOtpDigit = document.getElementById("suOtpDigit0");
 
       setOtpAuthFieldError("suErr", false);
       setOtpAuthFieldError("suOtpErr", false);
-      syncOtpPendingState(data.email || email);
+      syncOtpPendingState(data.email || email, {
+        cooldownSeconds: getOtpCooldownSeconds(data),
+      });
 
       if (passwordInput) passwordInput.value = "";
-      if (otpInput) otpInput.value = "";
 
       if (typeof authToggle === "function") {
         authToggle("signup");
       }
 
-      if (otpInput) {
-        window.setTimeout(() => otpInput.focus(), 30);
+      if (firstOtpDigit) {
+        window.setTimeout(() => firstOtpDigit.focus(), 30);
       }
 
-      MC.success(data.message || "We sent a 6-digit OTP to your email.");
+      MC.success(
+        data.message ||
+          "We sent a 6-digit OTP to your email. Enter it to verify your email and create your account."
+      );
     } catch (err) {
       setOtpAuthFieldError(
         "suErr",
@@ -860,12 +904,15 @@
         String.fromCodePoint(0x274c) + " " + (err.message || "Signup failed")
       );
       MC.error(err.message || "Signup failed.");
+    } finally {
+      setButtonBusy(signupBtn, false, "Sending OTP...");
     }
   };
 
   window.verifySignupOtp = async function () {
     const email = getOtpSignupEmail();
     const otp = (document.getElementById("suOtp")?.value || "").trim();
+    const verifyBtn = document.getElementById("verifyOtpBtn");
 
     if (!email || !email.includes("@")) {
       setOtpAuthFieldError("suEE", true, "Valid email required");
@@ -882,6 +929,7 @@
     }
 
     try {
+      setButtonBusy(verifyBtn, true, "Verifying OTP...");
       const data = await API.verifySignupOtp(email, otp);
       clearOtpPendingState();
       ["suNm", "suEml", "suHdl", "suPw", "suOtp", "liEml", "liPw"].forEach((id) => {
@@ -898,17 +946,24 @@
           String.fromCodePoint(0x1f64f)
       );
     } catch (err) {
+      const message = buildOtpErrorMessage(err, "OTP verification failed");
       setOtpAuthFieldError(
         "suOtpErr",
         true,
-        String.fromCodePoint(0x274c) + " " + (err.message || "OTP verification failed")
+        String.fromCodePoint(0x274c) + " " + message
       );
-      MC.error(err.message || "OTP verification failed");
+      MC.error(message);
+      if (err?.details?.requiresResend && typeof window.renderOtpResendState === "function") {
+        window.renderOtpResendState();
+      }
+    } finally {
+      setButtonBusy(verifyBtn, false, "Verifying OTP...");
     }
   };
 
   window.resendSignupOtp = async function () {
     const email = getOtpSignupEmail();
+    const resendBtn = document.getElementById("resendSignupOtpBtnInline");
 
     if (!email || !email.includes("@")) {
       setOtpAuthFieldError("suEE", true, "Valid email required");
@@ -916,21 +971,36 @@
     }
 
     try {
-      const data = await API.resendVerification(email, getAppBaseUrl());
-      syncOtpPendingState(data.email || email);
+      setButtonBusy(resendBtn, true, "Sending...");
+      const data = await API.resendSignupOtp(email);
+      syncOtpPendingState(data.email || email, {
+        cooldownSeconds: getOtpCooldownSeconds(data),
+      });
       setOtpAuthFieldError("suOtpErr", false);
       MC.success(data.message || "A fresh OTP has been sent to your email.");
     } catch (err) {
+      if (err?.details?.retryAfterSeconds) {
+        syncOtpPendingState(email, {
+          cooldownSeconds: err.details.retryAfterSeconds,
+        });
+      }
+      const message = buildOtpErrorMessage(err, "Could not resend OTP");
       setOtpAuthFieldError(
         "suOtpErr",
         true,
-        String.fromCodePoint(0x274c) + " " + (err.message || "Could not resend OTP")
+        String.fromCodePoint(0x274c) + " " + message
       );
-      MC.error(err.message || "Could not resend OTP");
+      MC.error(message);
+    } finally {
+      if (typeof window.renderOtpResendState === "function") {
+        window.renderOtpResendState();
+      } else {
+        setButtonBusy(resendBtn, false, "Sending...");
+      }
     }
   };
 
-  window.resendVerificationEmail = async function () {
+  window.resendSignupOtpFromLogin = async function () {
     const email = getOtpSignupEmail();
 
     if (!email || !email.includes("@")) {
@@ -939,26 +1009,30 @@
       return;
     }
 
-    const resendBtn = document.getElementById("resendVerificationBtn");
+    const resendBtn = document.getElementById("resendSignupOtpBtn");
     if (resendBtn) {
       resendBtn.disabled = true;
       resendBtn.textContent = "Sending OTP...";
     }
 
     try {
-      const data = await API.resendVerification(email, getAppBaseUrl());
-      syncOtpPendingState(data.email || email);
+      const data = await API.resendSignupOtp(email);
+      syncOtpPendingState(data.email || email, {
+        cooldownSeconds: getOtpCooldownSeconds(data),
+      });
       if (typeof authToggle === "function") {
         authToggle("signup");
       }
+      document.getElementById("suOtpDigit0")?.focus();
       MC.success(data.message || "A fresh OTP has been sent to your email.");
     } catch (err) {
+      const message = buildOtpErrorMessage(err, "Could not resend OTP");
       setOtpAuthFieldError(
         "liErr",
         true,
-        String.fromCodePoint(0x274c) + " " + (err.message || "Could not resend OTP")
+        String.fromCodePoint(0x274c) + " " + message
       );
-      MC.error(err.message || "Could not resend OTP.");
+      MC.error(message);
     } finally {
       if (resendBtn) {
         resendBtn.disabled = false;

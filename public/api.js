@@ -122,10 +122,10 @@ const API = (() => {
     removeUser,
 
     // Auth
-    async signup(name, handle, email, password, clientUrl) {
+    async signup(name, handle, email, password) {
       const data = await request("/auth/signup", {
         method: "POST",
-        body: JSON.stringify({ name, handle, email, password, clientUrl }),
+        body: JSON.stringify({ name, handle, email, password }),
       });
       return data;
     },
@@ -150,10 +150,10 @@ const API = (() => {
       return data;
     },
 
-    async resendVerification(email, clientUrl) {
-      return request("/auth/resend-verification", {
+    async resendSignupOtp(email) {
+      return request("/auth/resend-signup-otp", {
         method: "POST",
-        body: JSON.stringify({ email, clientUrl }),
+        body: JSON.stringify({ email }),
       });
     },
 

@@ -2,6 +2,7 @@ const nodemailer = require("nodemailer");
 const AppError = require("./appError");
 
 let transporter;
+let verifyPromise;
 
 function createTransporter() {
   if (transporter) {
@@ -49,6 +50,10 @@ async function sendEmail({ email, subject, html, text }) {
   }
 
   try {
+    if (process.env.SMTP_VERIFY_BEFORE_SEND === "true") {
+      await verifyEmailTransport();
+    }
+
     const info = await createTransporter().sendMail({
       from: `Tirth Sutra <${fromAddress}>`,
       to: email,
@@ -68,4 +73,28 @@ async function sendEmail({ email, subject, html, text }) {
   }
 }
 
-module.exports = sendEmail;
+async function verifyEmailTransport() {
+  if (!verifyPromise) {
+    verifyPromise = createTransporter()
+      .verify()
+      .then(() => {
+        console.log("SMTP transporter verified successfully.");
+        return true;
+      })
+      .catch((error) => {
+        verifyPromise = null;
+        console.error("SMTP transporter verification failed:", error.message);
+        throw new AppError(
+          "Email delivery is configured incorrectly on the server.",
+          500
+        );
+      });
+  }
+
+  return verifyPromise;
+}
+
+module.exports = {
+  sendEmail,
+  verifyEmailTransport,
+};

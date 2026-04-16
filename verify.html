@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Verify Email</title>
+  <title>Open Tirth Sutra</title>
   <!-- Google tag (gtag.js) -->
   <script
     async
@@ -15,42 +15,11 @@
       dataLayer.push(arguments);
     }
     gtag("js", new Date());
-
     gtag("config", "G-BE8S0K4L9H");
   </script>
-  <style>
-    body {
-      margin: 0;
-      min-height: 100vh;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      font-family: Arial, sans-serif;
-      background: #f6efe8;
-      color: #3b2b21;
-      padding: 24px;
-      text-align: center;
-    }
-    a {
-      color: #9a4d1f;
-      font-weight: 700;
-    }
-  </style>
+  <script>
+    window.location.replace("public/verify.html");
+  </script>
 </head>
-<body>
-  <script>
-    const query = window.location.search || "";
-    window.location.replace("public/verify.html" + query);
-  </script>
-  <div>
-    <h1>Redirecting to verification</h1>
-    <p>If this page does not move automatically, open <a id="verifyLink" href="public/verify.html">public/verify.html</a>.</p>
-  </div>
-  <script>
-    const link = document.getElementById("verifyLink");
-    if (link) {
-      link.href += window.location.search || "";
-    }
-  </script>
-</body>
+<body></body>
 </html>

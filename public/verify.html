@@ -1,259 +1,94 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Verify Email - Tirth Sutra</title>
-    <link rel="preload" as="image" href="Brand_Logo.jpg">
-    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Playfair+Display:ital,wght@0,600;1,600&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="Style.css">
-    <!-- Google tag (gtag.js) -->
-    <script
-        async
-        src="https://www.googletagmanager.com/gtag/js?id=G-BE8S0K4L9H"
-    ></script>
-    <script>
-        window.dataLayer = window.dataLayer || [];
-        function gtag() {
-            dataLayer.push(arguments);
-        }
-        gtag("js", new Date());
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Open Tirth Sutra</title>
+  <link rel="preload" as="image" href="Brand_Logo.jpg" />
+  <link rel="stylesheet" href="Style.css" />
+  <!-- Google tag (gtag.js) -->
+  <script
+    async
+    src="https://www.googletagmanager.com/gtag/js?id=G-BE8S0K4L9H"
+  ></script>
+  <script>
+    window.dataLayer = window.dataLayer || [];
+    function gtag() {
+      dataLayer.push(arguments);
+    }
+    gtag("js", new Date());
+    gtag("config", "G-BE8S0K4L9H");
+  </script>
+  <style>
+    body {
+      margin: 0;
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 24px;
+      background: #f6efe8;
+      color: #2f251e;
+      font-family: Arial, sans-serif;
+      text-align: center;
+    }
 
-        gtag("config", "G-BE8S0K4L9H");
-    </script>
-    <style>
-        body {
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            min-height: 100vh;
-            background-color: var(--bg);
-            margin: 0;
-            padding: 20px;
-            font-family: 'Plus Jakarta Sans', sans-serif;
-            text-align: center;
-        }
-        .verify-box {
-            background-color: var(--ca);
-            padding: 40px;
-            border-radius: 20px;
-            box-shadow: 0 10px 30px rgba(0,0,0,0.05);
-            max-width: 420px;
-            width: 100%;
-        }
-        .verify-box h1 {
-            color: var(--p);
-            font-family: 'Playfair Display', serif;
-            margin-bottom: 20px;
-        }
-        .spinner {
-            border: 4px solid rgba(0, 0, 0, 0.1);
-            width: 40px;
-            height: 40px;
-            border-radius: 50%;
-            border-left-color: var(--p);
-            animation: spin 1s linear infinite;
-            margin: 0 auto 20px;
-        }
-        @keyframes spin {
-            0% { transform: rotate(0deg); }
-            100% { transform: rotate(360deg); }
-        }
-        .btn {
-            display: inline-block;
-            margin-top: 20px;
-            padding: 12px 24px;
-            background: linear-gradient(135deg, var(--p), var(--p-h));
-            color: white;
-            text-decoration: none;
-            border-radius: 10px;
-            font-weight: 600;
-            transition: transform 0.2s, opacity 0.2s;
-        }
-        .btn:hover {
-            transform: translateY(-2px);
-            opacity: 0.9;
-        }
-    </style>
+    .card {
+      max-width: 460px;
+      width: 100%;
+      background: #fffaf4;
+      border: 1px solid #ead9cb;
+      border-radius: 28px;
+      box-shadow: 0 18px 42px rgba(74, 46, 42, 0.1);
+      padding: 34px 28px;
+    }
+
+    .logo {
+      width: 84px;
+      height: 84px;
+      border-radius: 24px;
+      object-fit: cover;
+      margin-bottom: 18px;
+      box-shadow: 0 12px 22px rgba(74, 46, 42, 0.16);
+    }
+
+    h1 {
+      margin: 0 0 12px;
+      color: #4a2e2a;
+      font-size: 30px;
+      line-height: 1.2;
+    }
+
+    p {
+      margin: 0 0 14px;
+      color: #5d5046;
+      line-height: 1.8;
+      font-size: 15px;
+    }
+
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      margin-top: 10px;
+      padding: 14px 24px;
+      border-radius: 999px;
+      text-decoration: none;
+      font-weight: 700;
+      color: #fff;
+      background: linear-gradient(135deg, #8d4d22, #b85c1c);
+      box-shadow: 0 10px 22px rgba(184, 92, 28, 0.24);
+    }
+  </style>
 </head>
 <body>
-<div id="brandSplash" aria-hidden="true">
-    <div class="brand-splash-inner">
-        <div class="brand-splash-logo-wrap">
-            <img src="Brand_Logo.jpg" alt="Tirth Sutra" class="brand-splash-logo">
-        </div>
-        <div class="brand-splash-copy">
-            <span class="brand-splash-from">from</span>
-            <strong class="brand-splash-name">Tirth Sutra</strong>
-        </div>
-    </div>
-</div>
-
-<div class="verify-box" id="verifyBox">
-    <div class="spinner" id="spinner"></div>
-    <h1 id="title">Verifying your email...</h1>
-    <p id="message">Please wait while we confirm your account.</p>
-    <a href="index.html" class="btn" id="homeBtn" style="display: none;">Open Tirth Sutra</a>
-</div>
-
-<script>
-    (function () {
-      const splashStart = performance.now();
-      let hidden = false;
-
-      function finalizeHide() {
-        const splash = document.getElementById("brandSplash");
-        if (!splash || hidden) return;
-        hidden = true;
-        splash.classList.add("is-hidden");
-        window.setTimeout(() => splash.remove(), 480);
-      }
-
-      window.hideBrandSplash = function () {
-        const minVisibleMs = 420;
-        const elapsed = performance.now() - splashStart;
-        window.clearTimeout(window.__tsSplashTimer);
-        window.__tsSplashTimer = window.setTimeout(
-          finalizeHide,
-          Math.max(0, minVisibleMs - elapsed)
-        );
-      };
-
-      window.addEventListener(
-        "load",
-        function () {
-          window.setTimeout(window.hideBrandSplash, 80);
-        },
-        { once: true }
-      );
-
-      window.setTimeout(function () {
-        if (typeof window.hideBrandSplash === "function") {
-          window.hideBrandSplash();
-        }
-      }, 1500);
-    })();
-
-    const BACKEND_URL = (
-      window.location.hostname === "localhost" ||
-      window.location.hostname === "127.0.0.1"
-    )
-      ? "http://localhost:5000"
-      : "https://tirth-sutra-backend.onrender.com";
-
-    const titleEl = document.getElementById("title");
-    const messageEl = document.getElementById("message");
-    const spinnerEl = document.getElementById("spinner");
-    const homeBtn = document.getElementById("homeBtn");
-
-    function stopLoading() {
-      spinnerEl.style.display = "none";
-      homeBtn.style.display = "inline-block";
-    }
-
-    async function storeSessionAndRedirect(token, successMessage) {
-      localStorage.setItem("ts_token", token);
-
-      const meRes = await fetch(`${BACKEND_URL}/api/auth/me`, {
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
-      });
-      const meData = await meRes.json();
-
-      if (!meRes.ok) {
-        throw new Error(meData.error || "Could not load your account.");
-      }
-
-      localStorage.setItem("ts_currentUser", JSON.stringify(meData.user));
-      stopLoading();
-      titleEl.textContent = "Email verified successfully";
-      messageEl.textContent =
-        successMessage ||
-        "Your account is active now. We are signing you in and taking you back to Tirth Sutra.";
-
-      setTimeout(() => {
-        window.location.href = "index.html";
-      }, 2200);
-    }
-
-    async function handleHashRedirect() {
-      const hash = window.location.hash.startsWith("#")
-        ? window.location.hash.slice(1)
-        : "";
-      if (!hash) return false;
-
-      const params = new URLSearchParams(hash);
-      const authToken = params.get("authToken");
-      const status = params.get("status");
-      const authError = params.get("authError");
-
-      history.replaceState(null, document.title, window.location.pathname + window.location.search);
-
-      if (authError || status === "error") {
-        stopLoading();
-        titleEl.textContent = "Verification Failed";
-        messageEl.textContent = authError || params.get("message") || "The verification link may have expired or is invalid.";
-        return true;
-      }
-
-      if (!authToken) return false;
-
-      await storeSessionAndRedirect(authToken);
-      return true;
-    }
-
-    async function handleLegacyToken() {
-      const urlParams = new URLSearchParams(window.location.search);
-      const token = urlParams.get("token");
-      const status = urlParams.get("status");
-      const message = urlParams.get("message");
-
-      if (status === "error") {
-        stopLoading();
-        titleEl.textContent = "Verification Failed";
-        messageEl.textContent = message || "The verification link may have expired or is invalid.";
-        return true;
-      }
-
-      if (!token) {
-        stopLoading();
-        titleEl.textContent = "Invalid Link";
-        messageEl.textContent = "No verification token was found in the URL.";
-        return true;
-      }
-
-      const res = await fetch(`${BACKEND_URL}/api/auth/verify-email/${token}`, {
-        method: "POST",
-      });
-      const data = await res.json();
-
-      if (!res.ok) {
-        stopLoading();
-        titleEl.textContent = "Verification Failed";
-        messageEl.textContent = data.error || "The verification link may have expired or is invalid.";
-        return true;
-      }
-
-      await storeSessionAndRedirect(data.token);
-      return true;
-    }
-
-    (async function verifyToken() {
-      try {
-        if (typeof window.hideBrandSplash === "function") {
-          window.hideBrandSplash();
-        }
-        const handledHash = await handleHashRedirect();
-        if (handledHash) return;
-        await handleLegacyToken();
-      } catch (err) {
-        stopLoading();
-        titleEl.textContent = "Network Error";
-        messageEl.textContent = err.message || "Could not connect to the server. Please try again later.";
-      }
-    })();
-</script>
-
+  <div class="card">
+    <img src="Brand_Logo.jpg" alt="Tirth Sutra" class="logo" />
+    <h1>Signup now uses OTP</h1>
+    <p>Email-link verification has been retired.</p>
+    <p>Open Tirth Sutra, sign up with your email, and enter the 6-digit OTP sent to your inbox.</p>
+    <p>Your account is created only after the OTP is verified successfully.</p>
+    <a class="btn" href="index.html">Open Tirth Sutra</a>
+  </div>
 </body>
 </html>

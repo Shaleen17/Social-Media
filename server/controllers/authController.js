@@ -2,26 +2,29 @@ const asyncHandler = require("../utils/asyncHandler");
 const {
   signupLocalUser,
   loginLocalUser,
-  verifyEmailToken,
   verifySignupOtp,
-  resendVerificationEmail,
+  resendSignupOtp,
   loginWithGoogle,
   createGoogleAuthUrl,
   exchangeGoogleCode,
-  buildVerificationSuccessRedirect,
-  buildVerificationErrorRedirect,
   buildGoogleSuccessRedirect,
   buildGoogleErrorRedirect,
   getReturnToFromState,
 } = require("../services/authService");
 
 const signup = asyncHandler(async (req, res) => {
-  const result = await signupLocalUser(req.body, req);
+  const result = await signupLocalUser(req.body, {
+    ip: req.ip,
+    userAgent: req.get("user-agent"),
+  });
   res.status(201).json(result);
 });
 
 const login = asyncHandler(async (req, res) => {
-  const result = await loginLocalUser(req.body);
+  const result = await loginLocalUser(req.body, {
+    ip: req.ip,
+    userAgent: req.get("user-agent"),
+  });
   res.json(result);
 });
 
@@ -29,34 +32,19 @@ const me = asyncHandler(async (req, res) => {
   res.json({ user: req.user.toJSON() });
 });
 
-const verifyEmailJson = asyncHandler(async (req, res) => {
-  const result = await verifyEmailToken(req.params.token);
-  res.json({ success: true, user: result.user, token: result.token });
-});
-
 const verifySignupOtpCode = asyncHandler(async (req, res) => {
-  const result = await verifySignupOtp(req.body);
+  const result = await verifySignupOtp(req.body, {
+    ip: req.ip,
+    userAgent: req.get("user-agent"),
+  });
   res.json({ success: true, user: result.user, token: result.token });
 });
 
-async function verifyEmailRedirect(req, res) {
-  try {
-    const result = await verifyEmailToken(req.params.token);
-    return res.redirect(
-      buildVerificationSuccessRedirect(req, result.redirectUrl, result.token)
-    );
-  } catch (error) {
-    return res.redirect(
-      buildVerificationErrorRedirect(
-        req,
-        error.message || "Verification failed."
-      )
-    );
-  }
-}
-
-const resendVerification = asyncHandler(async (req, res) => {
-  const result = await resendVerificationEmail(req.body, req);
+const resendSignupOtpCode = asyncHandler(async (req, res) => {
+  const result = await resendSignupOtp(req.body, {
+    ip: req.ip,
+    userAgent: req.get("user-agent"),
+  });
   res.json(result);
 });
 
@@ -110,10 +98,8 @@ module.exports = {
   signup,
   login,
   me,
-  verifyEmailJson,
   verifySignupOtpCode,
-  verifyEmailRedirect,
-  resendVerification,
+  resendSignupOtpCode,
   googleAuth,
   googleStart,
   googleCallback,

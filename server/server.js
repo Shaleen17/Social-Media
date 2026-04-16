@@ -8,6 +8,7 @@ const cloudinary = require("cloudinary").v2;
 const connectDB = require("./config/db");
 const setupSocket = require("./socket/chat");
 const AppError = require("./utils/appError");
+const { verifyEmailTransport } = require("./utils/sendEmail");
 
 // ─── Validate Required Environment Variables ───
 const REQUIRED_ENV = [
@@ -188,6 +189,12 @@ if (!process.env.VERCEL) {
       }
     }, 15 * 60 * 1000); // 15 minutes
   });
+
+  if (process.env.SMTP_VERIFY_ON_STARTUP === "true") {
+    verifyEmailTransport().catch((error) => {
+      console.error("SMTP startup verification failed:", error.message);
+    });
+  }
 }
 
 // Export the Express API for Vercel Serverless

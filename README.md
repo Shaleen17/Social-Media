@@ -29,6 +29,6 @@ To empower the Hindu spiritual community by providing a dedicated platform that:
 - **Database:** MongoDB with Mongoose ODM
 - **Real-Time:** Socket.io
 - **Authentication:** JWT (JSON Web Tokens), Google OAuth 2.0
-- **Email:** Nodemailer (SMTP-based email verification)
+- **Email:** Nodemailer (SMTP-based OTP email delivery)
 - **Media Storage:** Cloudinary
 - **Push Notifications:** Web Push (VAPID)

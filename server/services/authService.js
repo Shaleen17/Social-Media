@@ -1,27 +1,31 @@
+const bcrypt = require("bcryptjs");
 const crypto = require("crypto");
 const jwt = require("jsonwebtoken");
 const { OAuth2Client } = require("google-auth-library");
 const User = require("../models/User");
+const PendingSignup = require("../models/PendingSignup");
 const AppError = require("../utils/appError");
-const sendEmail = require("../utils/sendEmail");
+const { sendEmail } = require("../utils/sendEmail");
 const {
-  verificationEmailTemplate,
-  resendVerificationEmailTemplate,
   signupOtpEmailTemplate,
   resendSignupOtpEmailTemplate,
 } = require("../utils/emailTemplates");
 const {
-  createEmailVerificationToken,
   createEmailOtpCode,
-  hashVerificationToken,
   hashOtpCode,
+  compareHashedValues,
+  createPendingSignupExpiryDate,
   signAuthToken,
   EMAIL_OTP_TTL_MS,
+  EMAIL_OTP_LENGTH,
+  OTP_RESEND_COOLDOWN_MS,
+  OTP_MAX_VERIFY_ATTEMPTS,
+  OTP_MAX_SENDS_PER_SESSION,
 } = require("../utils/authTokens");
+const { assertRateLimit } = require("../utils/requestLimiter");
 const {
   getPublicServerUrl,
   resolveClientUrl,
-  buildFrontendFileUrl,
   buildRedirectWithHash,
   buildRedirectWithQuery,
   getFallbackClientUrl,
@@ -30,13 +34,27 @@ const {
 
 const googleClient = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
 
-function sanitizeHandle(handle = "") {
-  return handle.toLowerCase().replace("@", "").replace(/\s+/g, "");
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const SIGNUP_RATE_WINDOW_MS = 15 * 60 * 1000;
+const LOGIN_RATE_WINDOW_MS = 15 * 60 * 1000;
+const VERIFY_RATE_WINDOW_MS = 15 * 60 * 1000;
+const RESEND_RATE_WINDOW_MS = 15 * 60 * 1000;
+
+function normalizeEmail(email = "") {
+  return String(email).trim().toLowerCase();
 }
 
-function createVerificationUrl(req, rawToken) {
-  const serverUrl = getPublicServerUrl(req);
-  return `${serverUrl}/api/auth/verify-email/${rawToken}`;
+function sanitizeHandle(handle = "") {
+  return String(handle)
+    .trim()
+    .toLowerCase()
+    .replace(/^@+/, "")
+    .replace(/\s+/g, "")
+    .replace(/[^a-z0-9_]/g, "");
+}
+
+function normalizeIp(ip = "") {
+  return String(ip || "unknown").trim();
 }
 
 function createGoogleCallbackUrl(req) {
@@ -62,162 +80,392 @@ function getReturnToFromState(state) {
   }
 }
 
+function createVerificationDetails(email) {
+  return {
+    requiresVerification: true,
+    verificationMethod: "otp",
+    email,
+    otpLength: EMAIL_OTP_LENGTH,
+    resendAfterSeconds: Math.ceil(OTP_RESEND_COOLDOWN_MS / 1000),
+  };
+}
+
+function isValidEmail(email) {
+  return EMAIL_RE.test(normalizeEmail(email));
+}
+
+function isLocalUnverifiedUser(user) {
+  return (
+    !!user &&
+    user.authProvider === "local" &&
+    !(user.emailVerified || user.verified)
+  );
+}
+
+function isPendingSignupExpired(pendingSignup) {
+  return (
+    !pendingSignup?.pendingExpiresAt ||
+    new Date(pendingSignup.pendingExpiresAt).getTime() <= Date.now()
+  );
+}
+
+function clearPendingOtpState(pendingSignup) {
+  pendingSignup.otpHash = null;
+  pendingSignup.otpExpiresAt = null;
+  pendingSignup.otpLastSentAt = null;
+  pendingSignup.otpAttemptCount = 0;
+  pendingSignup.lastOtpAttemptAt = null;
+}
+
+function buildOtpResponse(email, message) {
+  return {
+    success: true,
+    otpRequired: true,
+    email,
+    message,
+    verification: {
+      method: "otp",
+      otpLength: EMAIL_OTP_LENGTH,
+      resendAfterSeconds: Math.ceil(OTP_RESEND_COOLDOWN_MS / 1000),
+    },
+  };
+}
+
+function assertOtpResendAllowed(pendingSignup) {
+  if (!pendingSignup?.otpLastSentAt) {
+    return;
+  }
+
+  const elapsedMs =
+    Date.now() - new Date(pendingSignup.otpLastSentAt).getTime();
+  if (elapsedMs >= OTP_RESEND_COOLDOWN_MS) {
+    return;
+  }
+
+  const waitSeconds = Math.ceil((OTP_RESEND_COOLDOWN_MS - elapsedMs) / 1000);
+  throw new AppError(
+    `Please wait ${waitSeconds} seconds before requesting a new OTP.`,
+    429,
+    { retryAfterSeconds: waitSeconds }
+  );
+}
+
+async function deleteExpiredPendingSignup(pendingSignup) {
+  if (!pendingSignup || !isPendingSignupExpired(pendingSignup)) {
+    return false;
+  }
+
+  await PendingSignup.deleteOne({ _id: pendingSignup._id });
+  return true;
+}
+
 async function ensureUniqueHandle(baseHandle) {
-  const normalizedBase = sanitizeHandle(baseHandle).replace(/[^a-z0-9_]/g, "") || "user";
+  const normalizedBase = sanitizeHandle(baseHandle) || "user";
   let candidate = normalizedBase.slice(0, 24);
   let suffix = 0;
 
   while (await User.exists({ handle: candidate })) {
     suffix += 1;
-    candidate = `${normalizedBase.slice(0, Math.max(3, 24 - String(suffix).length))}${suffix}`;
+    candidate = `${normalizedBase.slice(
+      0,
+      Math.max(3, 24 - String(suffix).length)
+    )}${suffix}`;
   }
 
   return candidate;
 }
 
-function clearOtpState(user) {
-  user.emailOtpCode = undefined;
-  user.emailOtpExpires = undefined;
-  user.emailOtpLastSentAt = undefined;
-}
+async function deliverSignupOtpEmail(pendingSignup, templateBuilder) {
+  if ((pendingSignup.otpSendCount || 0) >= OTP_MAX_SENDS_PER_SESSION) {
+    throw new AppError(
+      "You have requested too many OTPs for this signup. Start signup again after some time.",
+      429
+    );
+  }
 
-function clearVerificationState(user) {
-  user.emailVerificationToken = undefined;
-  user.emailVerificationTokenExpires = undefined;
-  user.emailVerificationRedirectUrl = undefined;
-  clearOtpState(user);
-}
-
-async function deliverVerificationEmail(user, templateBuilder, { req, clientUrl }) {
-  const tokenBundle = createEmailVerificationToken();
-  user.emailVerificationToken = tokenBundle.hashedToken;
-  user.emailVerificationTokenExpires = tokenBundle.expiresAt;
-  user.emailVerificationRedirectUrl = resolveClientUrl(req, clientUrl);
-  await user.save({ validateBeforeSave: false });
-
-  const verificationUrl = createVerificationUrl(req, tokenBundle.rawToken);
-  const template = templateBuilder({
-    name: user.name,
-    verificationUrl,
-  });
-
-  await sendEmail({
-    email: user.email,
-    subject: template.subject,
-    html: template.html,
-  });
-
-  return verificationUrl;
-}
-
-async function deliverSignupOtpEmail(user, templateBuilder) {
   const otpBundle = createEmailOtpCode();
-  user.emailOtpCode = otpBundle.hashedOtp;
-  user.emailOtpExpires = otpBundle.expiresAt;
-  user.emailOtpLastSentAt = new Date();
-  user.emailVerificationToken = undefined;
-  user.emailVerificationTokenExpires = undefined;
-  user.emailVerificationRedirectUrl = undefined;
-  await user.save({ validateBeforeSave: false });
+  pendingSignup.otpHash = otpBundle.hashedOtp;
+  pendingSignup.otpExpiresAt = otpBundle.expiresAt;
+  pendingSignup.otpLastSentAt = new Date();
+  pendingSignup.otpAttemptCount = 0;
+  pendingSignup.lastOtpAttemptAt = null;
+  pendingSignup.pendingExpiresAt = createPendingSignupExpiryDate();
+  pendingSignup.otpSendCount = (pendingSignup.otpSendCount || 0) + 1;
 
-  const template = templateBuilder({
-    name: user.name,
-    otpCode: otpBundle.rawOtp,
-    otpExpiryMinutes: Math.round(EMAIL_OTP_TTL_MS / 60000),
-  });
+  await pendingSignup.save();
 
-  await sendEmail({
-    email: user.email,
-    subject: template.subject,
-    html: template.html,
-    text: `Your Tirth Sutra OTP is ${otpBundle.rawOtp}. It expires in ${Math.round(
-      EMAIL_OTP_TTL_MS / 60000
-    )} minutes.`,
-  });
+  try {
+    const template = templateBuilder({
+      name: pendingSignup.name,
+      otpCode: otpBundle.rawOtp,
+      otpExpiryMinutes: Math.round(EMAIL_OTP_TTL_MS / 60000),
+    });
+
+    await sendEmail({
+      email: pendingSignup.email,
+      subject: template.subject,
+      html: template.html,
+      text: `Your Tirth Sutra OTP is ${otpBundle.rawOtp}. It expires in ${Math.round(
+        EMAIL_OTP_TTL_MS / 60000
+      )} minutes.`,
+    });
+  } catch (error) {
+    clearPendingOtpState(pendingSignup);
+    pendingSignup.otpSendCount = Math.max(0, (pendingSignup.otpSendCount || 1) - 1);
+    await pendingSignup.save({ validateBeforeSave: false }).catch(() => {});
+    throw error;
+  }
 }
 
-async function signupLocalUser({ name, handle, email, password, clientUrl }, req) {
+async function findPendingSignupByEmail(email) {
+  const pendingSignup = await PendingSignup.findOne({ email });
+  if (!pendingSignup) {
+    return null;
+  }
+
+  if (await deleteExpiredPendingSignup(pendingSignup)) {
+    return null;
+  }
+
+  return pendingSignup;
+}
+
+async function ensurePendingSignupForLegacyUser(user, context = {}) {
+  if (!user?.password) {
+    throw new AppError(
+      "This signup needs to be restarted. Please sign up again.",
+      400
+    );
+  }
+
+  let pendingSignup = await findPendingSignupByEmail(user.email);
+  if (pendingSignup) {
+    return pendingSignup;
+  }
+
+  pendingSignup = new PendingSignup({
+    name: user.name,
+    handle: user.handle,
+    email: user.email,
+    passwordHash: user.password,
+    createdFromIp: normalizeIp(context.ip),
+    lastRequestIp: normalizeIp(context.ip),
+    userAgent: context.userAgent || null,
+    pendingExpiresAt: createPendingSignupExpiryDate(),
+  });
+
+  await pendingSignup.save();
+  return pendingSignup;
+}
+
+async function ensureSignupInputIsAvailable({ email, handle, legacyUserId }) {
+  const existingHandleUser = await User.findOne({ handle });
+  if (
+    existingHandleUser &&
+    String(existingHandleUser._id) !== String(legacyUserId || "")
+  ) {
+    throw new AppError("Username is already taken.", 409);
+  }
+
+  const pendingHandleOwner = await PendingSignup.findOne({ handle });
+  if (
+    pendingHandleOwner &&
+    pendingHandleOwner.email !== email &&
+    !isPendingSignupExpired(pendingHandleOwner)
+  ) {
+    throw new AppError(
+      "Username is already reserved for another signup. Try a different one.",
+      409
+    );
+  }
+
+  if (pendingHandleOwner && isPendingSignupExpired(pendingHandleOwner)) {
+    await PendingSignup.deleteOne({ _id: pendingHandleOwner._id });
+  }
+}
+
+async function createOrUpdatePendingSignup(
+  { name, handle, email, password },
+  context = {}
+) {
+  const existingUser = await User.findOne({ email }).select("+password");
+  const legacyUser = isLocalUnverifiedUser(existingUser) ? existingUser : null;
+
+  if (existingUser && !legacyUser) {
+    throw new AppError("Email already registered.", 409);
+  }
+
+  await ensureSignupInputIsAvailable({
+    email,
+    handle,
+    legacyUserId: legacyUser?._id,
+  });
+
+  let pendingSignup = await findPendingSignupByEmail(email);
+  if (!pendingSignup) {
+    pendingSignup = new PendingSignup({
+      name,
+      handle,
+      email,
+      passwordHash: await bcrypt.hash(password, 12),
+      createdFromIp: normalizeIp(context.ip),
+      lastRequestIp: normalizeIp(context.ip),
+      userAgent: context.userAgent || null,
+      pendingExpiresAt: createPendingSignupExpiryDate(),
+    });
+  } else {
+    if ((pendingSignup.otpSendCount || 0) >= OTP_MAX_SENDS_PER_SESSION) {
+      clearPendingOtpState(pendingSignup);
+      pendingSignup.otpSendCount = 0;
+    }
+
+    pendingSignup.name = name;
+    pendingSignup.handle = handle;
+    pendingSignup.email = email;
+    pendingSignup.passwordHash = await bcrypt.hash(password, 12);
+    pendingSignup.lastRequestIp = normalizeIp(context.ip);
+    pendingSignup.userAgent = context.userAgent || pendingSignup.userAgent;
+    pendingSignup.pendingExpiresAt = createPendingSignupExpiryDate();
+  }
+
+  const otpStillFresh =
+    pendingSignup.otpHash &&
+    pendingSignup.otpExpiresAt &&
+    new Date(pendingSignup.otpExpiresAt).getTime() > Date.now() &&
+    pendingSignup.otpLastSentAt &&
+    Date.now() - new Date(pendingSignup.otpLastSentAt).getTime() <
+      OTP_RESEND_COOLDOWN_MS;
+
+  await pendingSignup.save();
+
+  if (otpStillFresh) {
+    return buildOtpResponse(
+      pendingSignup.email,
+      "An OTP was already sent recently. Check your inbox and enter it to finish signup."
+    );
+  }
+
+  await deliverSignupOtpEmail(pendingSignup, signupOtpEmailTemplate);
+
+  return buildOtpResponse(
+    pendingSignup.email,
+    "We sent a 6-digit OTP to your email. Enter it to finish creating your account."
+  );
+}
+
+async function upsertVerifiedUserFromPendingSignup(pendingSignup) {
+  const existingUser = await User.findOne({ email: pendingSignup.email }).select(
+    "+password"
+  );
+  const legacyUser = isLocalUnverifiedUser(existingUser) ? existingUser : null;
+
+  if (existingUser && !legacyUser) {
+    throw new AppError("Email already registered.", 409);
+  }
+
+  const conflictingHandleUser = await User.findOne({ handle: pendingSignup.handle });
+  if (
+    conflictingHandleUser &&
+    String(conflictingHandleUser._id) !== String(legacyUser?._id || "")
+  ) {
+    throw new AppError("Username is already taken.", 409);
+  }
+
+  const user = legacyUser || new User();
+  user.name = pendingSignup.name;
+  user.handle = pendingSignup.handle;
+  user.email = pendingSignup.email;
+  user.password = pendingSignup.passwordHash;
+  user.authProvider = "local";
+  user.emailVerified = true;
+
+  await user.save();
+  return user;
+}
+
+async function signupLocalUser(payload = {}, context = {}) {
+  const name = String(payload.name || "").trim();
+  const handle = sanitizeHandle(payload.handle);
+  const email = normalizeEmail(payload.email);
+  const password = String(payload.password || "");
+  const ip = normalizeIp(context.ip);
+
+  assertRateLimit({
+    key: `auth:signup:ip:${ip}`,
+    limit: 10,
+    windowMs: SIGNUP_RATE_WINDOW_MS,
+    message: "Too many signup attempts. Please wait a few minutes and try again.",
+  });
+  assertRateLimit({
+    key: `auth:signup:email:${email}`,
+    limit: 5,
+    windowMs: SIGNUP_RATE_WINDOW_MS,
+    message:
+      "Too many signup attempts for this email. Please wait a few minutes and try again.",
+  });
+
   if (!name || !handle || !email || !password) {
     throw new AppError("All fields are required.", 400);
+  }
+
+  if (!isValidEmail(email)) {
+    throw new AppError("Please enter a valid email address.", 400);
   }
 
   if (password.length < 6) {
     throw new AppError("Password must be at least 6 characters.", 400);
   }
 
-  const cleanHandle = sanitizeHandle(handle);
-  if (cleanHandle.length < 3) {
+  if (handle.length < 3) {
     throw new AppError("Username must be at least 3 characters.", 400);
   }
 
-  const normalizedEmail = email.toLowerCase().trim();
-  const existingEmail = await User.findOne({ email: normalizedEmail }).select("+password");
-  const existingHandle = await User.findOne({ handle: cleanHandle });
-
-  let user = existingEmail;
-
-  if (existingEmail && (existingEmail.emailVerified || existingEmail.verified || existingEmail.authProvider !== "local")) {
-    throw new AppError("Email already registered.", 409);
-  }
-
-  if (existingHandle && (!existingEmail || String(existingHandle._id) !== String(existingEmail._id))) {
-    throw new AppError("Username is already taken.", 409);
-  }
-
-  if (user) {
-    user.name = name.trim();
-    user.handle = cleanHandle;
-    user.email = normalizedEmail;
-    user.password = password;
-    user.authProvider = "local";
-    user.emailVerified = false;
-    clearVerificationState(user);
-    await user.save();
-  } else {
-    user = await User.create({
-      name: name.trim(),
-      handle: cleanHandle,
-      email: normalizedEmail,
+  return createOrUpdatePendingSignup(
+    {
+      name,
+      handle,
+      email,
       password,
-      authProvider: "local",
-      emailVerified: false,
-    });
-  }
-
-  try {
-    await deliverSignupOtpEmail(user, signupOtpEmailTemplate);
-  } catch (error) {
-    if (!existingEmail) {
-      await User.findByIdAndDelete(user._id);
-    }
-    throw error;
-  }
-
-  return {
-    success: true,
-    otpRequired: true,
-    email: user.email,
-    message:
-      "We sent a 6-digit OTP to your email. Enter it to finish creating your account.",
-  };
+    },
+    context
+  );
 }
 
-async function loginLocalUser({ email, password }) {
+async function loginLocalUser(payload = {}, context = {}) {
+  const email = normalizeEmail(payload.email);
+  const password = String(payload.password || "");
+
+  assertRateLimit({
+    key: `auth:login:ip:${normalizeIp(context.ip)}`,
+    limit: 25,
+    windowMs: LOGIN_RATE_WINDOW_MS,
+    message: "Too many login attempts. Please wait a bit and try again.",
+  });
+
   if (!email || !password) {
     throw new AppError("Email and password are required.", 400);
   }
 
-  const user = await User.findOne({ email: email.toLowerCase().trim() }).select("+password");
+  const user = await User.findOne({ email }).select("+password");
   if (!user) {
+    const pendingSignup = await findPendingSignupByEmail(email);
+    if (pendingSignup) {
+      throw new AppError(
+        "Please verify your email with the OTP before logging in.",
+        403,
+        createVerificationDetails(email)
+      );
+    }
+
     throw new AppError("Invalid email or password.", 401);
   }
 
   if (!(user.emailVerified || user.verified)) {
-    throw new AppError("Please verify your email with the OTP before logging in.", 403, {
-      requiresVerification: true,
-      verificationMethod: "otp",
-      email: user.email,
-    });
+    throw new AppError(
+      "Please verify your email with the OTP before logging in.",
+      403,
+      createVerificationDetails(user.email)
+    );
   }
 
   const isMatch = await user.comparePassword(password);
@@ -232,82 +480,159 @@ async function loginLocalUser({ email, password }) {
   };
 }
 
-async function verifyEmailToken(rawToken) {
-  if (!rawToken) {
-    throw new AppError("Verification token is required.", 400);
-  }
+async function verifySignupOtp(payload = {}, context = {}) {
+  const email = normalizeEmail(payload.email);
+  const otp = String(payload.otp || "").trim();
 
-  const hashedToken = hashVerificationToken(rawToken);
-  const user = await User.findOne({
-    emailVerificationToken: hashedToken,
-    emailVerificationTokenExpires: { $gt: new Date() },
+  assertRateLimit({
+    key: `auth:verify:ip:${normalizeIp(context.ip)}`,
+    limit: 25,
+    windowMs: VERIFY_RATE_WINDOW_MS,
+    message:
+      "Too many OTP verification attempts. Please wait a bit before trying again.",
+  });
+  assertRateLimit({
+    key: `auth:verify:email:${email}`,
+    limit: 15,
+    windowMs: VERIFY_RATE_WINDOW_MS,
+    message:
+      "Too many OTP verification attempts for this email. Please wait a bit before trying again.",
   });
 
-  if (!user) {
-    throw new AppError("This verification link is invalid or has expired.", 400);
-  }
-
-  user.emailVerified = true;
-  const redirectUrl = user.emailVerificationRedirectUrl;
-  clearVerificationState(user);
-  await user.save({ validateBeforeSave: false });
-
-  return {
-    user: user.toJSON(),
-    token: signAuthToken(user._id),
-    redirectUrl,
-  };
-}
-
-async function verifySignupOtp({ email, otp }) {
   if (!email || !otp) {
     throw new AppError("Email and OTP are required.", 400);
   }
 
-  const normalizedEmail = email.toLowerCase().trim();
-  const hashedOtp = hashOtpCode(otp.trim());
-  const user = await User.findOne({
-    email: normalizedEmail,
-    emailOtpCode: hashedOtp,
-    emailOtpExpires: { $gt: new Date() },
-  });
-
-  if (!user) {
-    throw new AppError("This OTP is invalid or has expired.", 400);
+  if (!isValidEmail(email)) {
+    throw new AppError("Please enter a valid email address.", 400);
   }
 
-  user.emailVerified = true;
-  clearVerificationState(user);
-  await user.save({ validateBeforeSave: false });
+  if (!new RegExp(`^\\d{${EMAIL_OTP_LENGTH}}$`).test(otp)) {
+    throw new AppError(`OTP must be a ${EMAIL_OTP_LENGTH}-digit code.`, 400);
+  }
 
+  const pendingSignup = await findPendingSignupByEmail(email);
+  if (!pendingSignup) {
+    throw new AppError(
+      "No pending signup was found for this email. Start signup again.",
+      404
+    );
+  }
+
+  if (!pendingSignup.otpHash || !pendingSignup.otpExpiresAt) {
+    throw new AppError("No active OTP was found. Request a new OTP.", 400);
+  }
+
+  if ((pendingSignup.otpAttemptCount || 0) >= OTP_MAX_VERIFY_ATTEMPTS) {
+    throw new AppError(
+      "Maximum OTP attempts reached. Request a new OTP.",
+      429,
+      { requiresResend: true }
+    );
+  }
+
+  if (new Date(pendingSignup.otpExpiresAt).getTime() <= Date.now()) {
+    throw new AppError("This OTP has expired. Request a new OTP.", 400, {
+      requiresResend: true,
+    });
+  }
+
+  const otpHash = hashOtpCode(otp);
+  const matches = compareHashedValues(pendingSignup.otpHash, otpHash);
+
+  if (!matches) {
+    pendingSignup.otpAttemptCount = (pendingSignup.otpAttemptCount || 0) + 1;
+    pendingSignup.lastOtpAttemptAt = new Date();
+
+    const attemptsRemaining = Math.max(
+      0,
+      OTP_MAX_VERIFY_ATTEMPTS - pendingSignup.otpAttemptCount
+    );
+
+    if (attemptsRemaining === 0) {
+      clearPendingOtpState(pendingSignup);
+    }
+
+    await pendingSignup.save({ validateBeforeSave: false });
+
+    if (attemptsRemaining === 0) {
+      throw new AppError(
+        "Maximum OTP attempts reached. Request a new OTP.",
+        429,
+        { requiresResend: true }
+      );
+    }
+
+    throw new AppError("The OTP you entered is incorrect.", 400, {
+      attemptsRemaining,
+    });
+  }
+
+  const user = await upsertVerifiedUserFromPendingSignup(pendingSignup);
+  await PendingSignup.deleteOne({ _id: pendingSignup._id });
+
+  const safeUser = await User.findById(user._id);
   return {
-    user: user.toJSON(),
+    user: safeUser.toJSON(),
     token: signAuthToken(user._id),
   };
 }
 
-async function resendVerificationEmail({ email, clientUrl }, req) {
+async function resendSignupOtp(payload = {}, context = {}) {
+  const email = normalizeEmail(payload.email);
+  const ip = normalizeIp(context.ip);
+
+  assertRateLimit({
+    key: `auth:resend:ip:${ip}`,
+    limit: 10,
+    windowMs: RESEND_RATE_WINDOW_MS,
+    message:
+      "Too many OTP resend requests. Please wait a few minutes and try again.",
+  });
+  assertRateLimit({
+    key: `auth:resend:email:${email}`,
+    limit: 10,
+    windowMs: RESEND_RATE_WINDOW_MS,
+    message:
+      "Too many OTP resend requests for this email. Please wait a few minutes and try again.",
+  });
+
   if (!email) {
     throw new AppError("Email is required.", 400);
   }
 
-  const user = await User.findOne({ email: email.toLowerCase().trim() });
-  if (!user) {
-    throw new AppError("No account was found for that email address.", 404);
+  if (!isValidEmail(email)) {
+    throw new AppError("Please enter a valid email address.", 400);
   }
 
-  if (user.emailVerified || user.verified) {
-    throw new AppError("This email is already verified. You can sign in now.", 400);
+  let pendingSignup = await findPendingSignupByEmail(email);
+
+  if (!pendingSignup) {
+    const existingUser = await User.findOne({ email }).select("+password");
+    if (!existingUser) {
+      throw new AppError(
+        "No pending signup was found for that email. Start signup again.",
+        404
+      );
+    }
+
+    if (!isLocalUnverifiedUser(existingUser)) {
+      throw new AppError("This email is already verified. You can sign in now.", 400);
+    }
+
+    pendingSignup = await ensurePendingSignupForLegacyUser(existingUser, context);
   }
 
-  await deliverSignupOtpEmail(user, resendSignupOtpEmailTemplate);
+  assertOtpResendAllowed(pendingSignup);
+  pendingSignup.lastRequestIp = ip;
+  pendingSignup.userAgent = context.userAgent || pendingSignup.userAgent;
 
-  return {
-    success: true,
-    otpRequired: true,
-    email: user.email,
-    message: "A fresh OTP has been sent to your email.",
-  };
+  await deliverSignupOtpEmail(pendingSignup, resendSignupOtpEmailTemplate);
+
+  return buildOtpResponse(
+    pendingSignup.email,
+    "A fresh OTP has been sent to your email."
+  );
 }
 
 async function getGoogleProfile({ token, tokenType }) {
@@ -356,7 +681,7 @@ async function loginWithGoogle({ token, tokenType }) {
     throw new AppError("Your Google account email could not be verified.", 401);
   }
 
-  const normalizedEmail = email.toLowerCase().trim();
+  const normalizedEmail = normalizeEmail(email);
   let user = await User.findOne({
     $or: [{ email: normalizedEmail }, { googleId: sub }],
   }).select("+password");
@@ -377,12 +702,13 @@ async function loginWithGoogle({ token, tokenType }) {
     user.authProvider = user.authProvider || "google";
     user.googleId = user.googleId || sub;
     user.emailVerified = true;
-    clearVerificationState(user);
     if (picture && !user.avatar) {
       user.avatar = picture;
     }
     await user.save({ validateBeforeSave: false });
   }
+
+  await PendingSignup.deleteOne({ email: normalizedEmail }).catch(() => {});
 
   const safeUser = await User.findById(user._id);
   return {
@@ -446,27 +772,6 @@ async function exchangeGoogleCode(req, { code, state }) {
   };
 }
 
-function buildVerificationSuccessRedirect(req, redirectUrl, token) {
-  const clientUrl = redirectUrl || getFallbackClientUrl(req);
-  const target =
-    buildFrontendFileUrl(clientUrl, "verify.html") ||
-    buildFrontendFileUrl(getFallbackClientUrl(req), "verify.html");
-
-  return buildRedirectWithHash(target, {
-    status: "success",
-    verified: "1",
-    authToken: token,
-  });
-}
-
-function buildVerificationErrorRedirect(req, message) {
-  const target = buildFrontendFileUrl(getFallbackClientUrl(req), "verify.html");
-  return buildRedirectWithQuery(target, {
-    status: "error",
-    message,
-  });
-}
-
 function buildGoogleSuccessRedirect(req, returnTo, token) {
   const parsedReturnTo = normalizeUrl(returnTo);
   const target = parsedReturnTo
@@ -493,14 +798,11 @@ function buildGoogleErrorRedirect(req, returnTo, message) {
 module.exports = {
   signupLocalUser,
   loginLocalUser,
-  verifyEmailToken,
   verifySignupOtp,
-  resendVerificationEmail,
+  resendSignupOtp,
   loginWithGoogle,
   createGoogleAuthUrl,
   exchangeGoogleCode,
-  buildVerificationSuccessRedirect,
-  buildVerificationErrorRedirect,
   buildGoogleSuccessRedirect,
   buildGoogleErrorRedirect,
   getReturnToFromState,

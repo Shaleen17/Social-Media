@@ -1,27 +1,23 @@
 const crypto = require("crypto");
 const jwt = require("jsonwebtoken");
 
-const EMAIL_TOKEN_BYTES = 32;
-const EMAIL_TOKEN_TTL_MS = 24 * 60 * 60 * 1000;
+const EMAIL_OTP_LENGTH = 6;
 const EMAIL_OTP_TTL_MS = 10 * 60 * 1000;
+const OTP_RESEND_COOLDOWN_MS = 30 * 1000;
+const OTP_MAX_VERIFY_ATTEMPTS = 5;
+const OTP_MAX_SENDS_PER_SESSION = 5;
+const PENDING_SIGNUP_TTL_MS = 24 * 60 * 60 * 1000;
+const BCRYPT_HASH_RE = /^\$2[aby]\$\d{2}\$/;
 
 function hashTokenValue(value) {
   return crypto.createHash("sha256").update(String(value || "")).digest("hex");
 }
 
-function createEmailVerificationToken() {
-  const rawToken = crypto.randomBytes(EMAIL_TOKEN_BYTES).toString("hex");
-  const hashedToken = hashTokenValue(rawToken);
-
-  return {
-    rawToken,
-    hashedToken,
-    expiresAt: new Date(Date.now() + EMAIL_TOKEN_TTL_MS),
-  };
-}
-
 function createEmailOtpCode() {
-  const rawOtp = crypto.randomInt(0, 1000000).toString().padStart(6, "0");
+  const rawOtp = crypto
+    .randomInt(0, 10 ** EMAIL_OTP_LENGTH)
+    .toString()
+    .padStart(EMAIL_OTP_LENGTH, "0");
   const hashedOtp = hashTokenValue(rawOtp);
 
   return {
@@ -31,12 +27,31 @@ function createEmailOtpCode() {
   };
 }
 
-function hashVerificationToken(token) {
-  return hashTokenValue(token);
-}
-
 function hashOtpCode(otp) {
   return hashTokenValue(otp);
+}
+
+function compareHashedValues(storedHash, candidateHash) {
+  if (!storedHash || !candidateHash) {
+    return false;
+  }
+
+  const storedBuffer = Buffer.from(String(storedHash));
+  const candidateBuffer = Buffer.from(String(candidateHash));
+
+  if (storedBuffer.length !== candidateBuffer.length) {
+    return false;
+  }
+
+  return crypto.timingSafeEqual(storedBuffer, candidateBuffer);
+}
+
+function createPendingSignupExpiryDate() {
+  return new Date(Date.now() + PENDING_SIGNUP_TTL_MS);
+}
+
+function isBcryptHash(value) {
+  return BCRYPT_HASH_RE.test(String(value || ""));
 }
 
 function signAuthToken(userId) {
@@ -46,10 +61,16 @@ function signAuthToken(userId) {
 }
 
 module.exports = {
-  createEmailVerificationToken,
+  EMAIL_OTP_LENGTH,
   createEmailOtpCode,
-  hashVerificationToken,
   hashOtpCode,
+  compareHashedValues,
+  createPendingSignupExpiryDate,
+  isBcryptHash,
   signAuthToken,
   EMAIL_OTP_TTL_MS,
+  OTP_RESEND_COOLDOWN_MS,
+  OTP_MAX_VERIFY_ATTEMPTS,
+  OTP_MAX_SENDS_PER_SESSION,
+  PENDING_SIGNUP_TTL_MS,
 };
