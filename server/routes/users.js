@@ -6,6 +6,16 @@ const { auth, optionalAuth } = require("../middleware/auth");
 
 const router = express.Router();
 
+function normalizeStringList(values) {
+  if (!Array.isArray(values)) return [];
+
+  return [...new Set(
+    values
+      .map((value) => String(value || "").trim().toLowerCase())
+      .filter(Boolean)
+  )];
+}
+
 // GET /api/users/search?q=query
 router.get("/search", optionalAuth, async (req, res) => {
   try {
@@ -42,7 +52,7 @@ router.get("/search", optionalAuth, async (req, res) => {
 router.get("/all", optionalAuth, async (req, res) => {
   try {
     const users = await User.find()
-      .select("name handle avatar bio verified followers following")
+      .select("name handle avatar bio verified followers following followedMandirs followedSants")
       .limit(50)
       .lean();
 
@@ -56,6 +66,8 @@ router.get("/all", optionalAuth, async (req, res) => {
         verified: u.verified,
         followers: (u.followers || []).map((f) => f.toString()),
         following: (u.following || []).map((f) => f.toString()),
+        followedMandirs: normalizeStringList(u.followedMandirs),
+        followedSants: normalizeStringList(u.followedSants),
         joined: u.joined || "",
       }))
     );
@@ -93,6 +105,8 @@ router.get("/:id", optionalAuth, async (req, res) => {
       joined: user.joined,
       followers: (user.followers || []).map((f) => f.toString()),
       following: (user.following || []).map((f) => f.toString()),
+      followedMandirs: normalizeStringList(user.followedMandirs),
+      followedSants: normalizeStringList(user.followedSants),
       postsCount: posts.length,
     });
   } catch (err) {
@@ -107,7 +121,16 @@ router.put("/:id", auth, async (req, res) => {
       return res.status(403).json({ error: "Not authorized" });
     }
 
-    const { name, bio, location, website, avatar, banner } = req.body;
+    const {
+      name,
+      bio,
+      location,
+      website,
+      avatar,
+      banner,
+      followedMandirs,
+      followedSants,
+    } = req.body;
     const updates = {};
     if (name !== undefined) updates.name = name;
     if (bio !== undefined) updates.bio = bio;
@@ -115,6 +138,12 @@ router.put("/:id", auth, async (req, res) => {
     if (website !== undefined) updates.website = website;
     if (avatar !== undefined) updates.avatar = avatar;
     if (banner !== undefined) updates.banner = banner;
+    if (followedMandirs !== undefined) {
+      updates.followedMandirs = normalizeStringList(followedMandirs);
+    }
+    if (followedSants !== undefined) {
+      updates.followedSants = normalizeStringList(followedSants);
+    }
 
     const user = await User.findByIdAndUpdate(req.params.id, updates, {
       new: true,

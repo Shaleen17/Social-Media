@@ -2787,7 +2787,7 @@ function renderMandir() {
         <div class="sant-info">
           <div class="sant-name">${name}${isVerified ? ` <svg class="sant-chk" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" fill="#1877f2"/><path d="M9 12l2 2 4-4" stroke="#fff" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" fill="none"/></svg>` : ""}</div>
           <div class="sant-title">${s.title}</div>
-          <div class="sant-followers">${s.followers} followers</div>
+          <div class="sant-followers">${getSantFollowersLabel(s)} followers</div>
         </div>
       </div>`;
     }).join("");
@@ -2822,6 +2822,8 @@ function renderSantAll(filter) {
   }
   list.innerHTML = filtered.map((s) => {
     const realIdx = SANTS.indexOf(s);
+    const santKey = getSantFollowKey(s);
+    const followed = isFollowingSant(santKey);
     const u = s.uid ? getUser(s.uid) : null;
     const name = u ? u.name : (s.name || s.handle);
     const isVerified = (s.verified !== undefined) ? s.verified : (u ? u.verified : true);
@@ -2831,8 +2833,9 @@ function renderSantAll(filter) {
       ? `<img src="${avatarSrc}" alt="${name}" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'"><span class="av-ini-fb" style="display:none">${ini}</span>`
       : `<span class="av-ini-fb-only">${ini}</span>`;
     // Sub-line: show "@handle · Xk followers" or "@handle · Following"
-    const followersTxt = (s.followers === "Following" || s.followers === "0" || !s.followers)
-      ? "Following" : `${s.followers} followers`;
+    const followersTxt = followed
+      ? "Following"
+      : `${getSantFollowersLabel(s)} followers`;
     return `<div class="sant-list-item" onclick="openSantProfile(${realIdx})">
       <div class="sant-list-avatar">${imgHtml}</div>
       <div class="sant-list-info">
@@ -2840,7 +2843,7 @@ function renderSantAll(filter) {
         <div class="sant-list-sub">@${s.handle} · ${followersTxt}</div>
         <div class="sant-list-title">${s.title}</div>
       </div>
-      <button class="sant-list-follow" onclick="event.stopPropagation();this.classList.toggle('following');this.textContent=this.classList.contains('following')?'Following ✓':'Follow';">Follow</button>
+      <button class="sant-list-follow ${followed ? "following" : ""}" data-sant-key="${santKey}" onclick="event.stopPropagation();toggleSantFollow('${santKey}',this)">${followed ? "Following ✓" : "Follow"}</button>
     </div>`;
   }).join("");
 }
@@ -2851,6 +2854,7 @@ function openSantProfile(idx) {
   curSantIdx = idx;
   const s = SANTS[idx];
   if (!s) return;
+  const santKey = getSantFollowKey(s);
   const u = s.uid ? getUser(s.uid) : null;
   const name = u ? u.name : (s.name || s.handle);
   const isVerified = (s.verified !== undefined) ? s.verified : (u ? u.verified : true);
@@ -2887,8 +2891,13 @@ function openSantProfile(idx) {
 
   // Stats
   document.getElementById("spPosts").textContent = s.posts || "0";
-  document.getElementById("spFollowers").textContent = s.followers || "0";
+  document.getElementById("spFollowers").textContent = getSantFollowersLabel(s);
   document.getElementById("spFollowing").textContent = s.following || "0";
+  const followBtn = document.getElementById("spFollowBtn");
+  if (followBtn) {
+    followBtn.dataset.santKey = santKey;
+    setSantFollowButtonState(followBtn, santKey);
+  }
 
   // Location
   const locWrap = document.getElementById("spLocationWrap");
@@ -3009,6 +3018,330 @@ let currentMandirSlug = null;
 let currentMandirPosts = [];
 let mandirCompImgData = null;
 
+function listifyStrings(values) {
+  return Array.isArray(values)
+    ? [...new Set(values.map((value) => String(value || "").trim().toLowerCase()).filter(Boolean))]
+    : [];
+}
+
+function getCurrentUserId() {
+  return CU ? String(CU.id || CU._id || "") : "";
+}
+
+function getFollowedMandirs(user) {
+  return listifyStrings(user?.followedMandirs);
+}
+
+function getFollowedSants(user) {
+  return listifyStrings(user?.followedSants);
+}
+
+function getSantFollowKey(sant) {
+  return String(sant?.id || sant?.handle || "")
+    .trim()
+    .toLowerCase();
+}
+
+function findSantByFollowKey(key) {
+  const normalizedKey = String(key || "").trim().toLowerCase();
+  return SANTS.find((sant) => {
+    if (getSantFollowKey(sant) === normalizedKey) return true;
+    return String(sant.handle || "").trim().toLowerCase() === normalizedKey;
+  }) || null;
+}
+
+function isFollowingMandir(slug, user = CU) {
+  return getFollowedMandirs(user).includes(String(slug || "").trim().toLowerCase());
+}
+
+function isFollowingSant(key, user = CU) {
+  return getFollowedSants(user).includes(String(key || "").trim().toLowerCase());
+}
+
+function parseDisplayCount(value) {
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  const raw = String(value || "").trim().toUpperCase();
+  if (!raw) return 0;
+  const match = raw.match(/^(\d+(?:\.\d+)?)([KML])?$/);
+  if (!match) {
+    const fallback = Number(raw.replace(/[^\d.]/g, ""));
+    return Number.isFinite(fallback) ? fallback : 0;
+  }
+  const amount = Number(match[1]);
+  const unit = match[2];
+  if (!Number.isFinite(amount)) return 0;
+  if (unit === "K") return Math.round(amount * 1_000);
+  if (unit === "M") return Math.round(amount * 1_000_000);
+  if (unit === "L") return Math.round(amount * 100_000);
+  return Math.round(amount);
+}
+
+function formatCompactCount(value) {
+  const safeValue = Number.isFinite(value) ? value : 0;
+  try {
+    return new Intl.NumberFormat("en", {
+      notation: "compact",
+      maximumFractionDigits: safeValue >= 1_000_000 ? 1 : 0,
+    }).format(safeValue);
+  } catch {
+    return String(Math.round(safeValue));
+  }
+}
+
+function getSantFollowersLabel(sant, user = CU) {
+  const baseCount = parseDisplayCount(sant?.followersNum ?? sant?.followers);
+  const bonus = isFollowingSant(getSantFollowKey(sant), user) ? 1 : 0;
+  return formatCompactCount(baseCount + bonus);
+}
+
+function getMandirFollowersLabel(slug, user = CU) {
+  const config = MANDIR_CONFIG[String(slug || "").trim().toLowerCase()];
+  const baseCount = parseDisplayCount(config?.followers);
+  const bonus = isFollowingMandir(slug, user) ? 1 : 0;
+  return formatCompactCount(baseCount + bonus);
+}
+
+function renderEntityAvatar(image, name, cls = "av36") {
+  const ini = getIni(name || "?");
+  return `<div class="av ${cls}">${image ? `<img src="${image}" alt="${esc(name || "")}">` : ini}</div>`;
+}
+
+function syncCurrentUserCache(userData) {
+  if (!CU || !userData || typeof userData !== "object") return;
+  Object.assign(CU, userData);
+  const currentUserId = getCurrentUserId();
+  const cachedUser = currentUserId ? getUser(currentUserId) : null;
+  if (cachedUser) Object.assign(cachedUser, userData);
+  if (window.API && typeof API.setUser === "function") {
+    API.setUser(CU);
+  }
+  Store.s("currentUser", CU);
+}
+
+async function persistCurrentUserFollowState(updates) {
+  if (!CU) {
+    openOvl("authOvl");
+    return false;
+  }
+
+  const currentUserId = getCurrentUserId();
+  if (!currentUserId) return false;
+
+  const previousState = {
+    followedMandirs: [...getFollowedMandirs(CU)],
+    followedSants: [...getFollowedSants(CU)],
+  };
+
+  syncCurrentUserCache(updates);
+
+  if (!window.API || !API.getToken || !API.getToken() || !API.updateUser) {
+    return true;
+  }
+
+  try {
+    const savedUser = await API.updateUser(currentUserId, updates);
+    if (savedUser && typeof savedUser === "object") {
+      syncCurrentUserCache(savedUser);
+    }
+    return true;
+  } catch (err) {
+    syncCurrentUserCache(previousState);
+    throw err;
+  }
+}
+
+function setSantFollowButtonState(btn, santKey) {
+  if (!btn) return;
+  const followed = isFollowingSant(santKey);
+  btn.setAttribute("aria-pressed", followed ? "true" : "false");
+  if (btn.classList.contains("sant-list-follow")) {
+    btn.classList.toggle("following", followed);
+    btn.textContent = followed ? "Following ✓" : "Follow";
+    return;
+  }
+  if (btn.classList.contains("btn")) {
+    btn.className = `btn btn-sm ${followed ? "btn-o" : "btn-p"}`;
+    btn.textContent = followed ? "Following" : "Follow";
+    return;
+  }
+  btn.classList.toggle("sp-following", followed);
+  btn.textContent = followed ? "Following ▾" : "Follow";
+}
+
+function setMandirFollowButtonState(btn, slug) {
+  if (!btn) return;
+  const followed = isFollowingMandir(slug);
+  btn.setAttribute("aria-pressed", followed ? "true" : "false");
+  btn.textContent = followed ? "Following ▾" : "Follow";
+  if (btn.classList.contains("btn")) {
+    btn.className = `btn btn-sm ${followed ? "btn-o" : "btn-p"}`;
+  } else {
+    btn.classList.toggle("sp-following", followed);
+  }
+}
+
+function refreshSantFollowUi(santKey) {
+  const normalizedKey = String(santKey || "").trim().toLowerCase();
+  document
+    .querySelectorAll(`[data-sant-key="${normalizedKey}"]`)
+    .forEach((btn) => setSantFollowButtonState(btn, normalizedKey));
+
+  const sant = findSantByFollowKey(normalizedKey);
+  if (!sant) return;
+
+  if (getSantFollowKey(SANTS[curSantIdx]) === normalizedKey) {
+    const followersEl = document.getElementById("spFollowers");
+    if (followersEl) followersEl.textContent = getSantFollowersLabel(sant);
+  }
+
+  const santAllList = document.getElementById("santAllList");
+  if (santAllList && !santAllList.closest(".hide")) {
+    renderSantAll();
+  }
+}
+
+function refreshMandirFollowUi(slug) {
+  const normalizedSlug = String(slug || "").trim().toLowerCase();
+  document
+    .querySelectorAll(`[data-mandir-slug="${normalizedSlug}"]`)
+    .forEach((btn) => setMandirFollowButtonState(btn, normalizedSlug));
+
+  if (currentMandirSlug === normalizedSlug) {
+    const followersEl = document.getElementById("mcFollowers");
+    if (followersEl) followersEl.textContent = getMandirFollowersLabel(normalizedSlug);
+  }
+}
+
+async function toggleSantFollow(santKey, btn) {
+  if (!CU) {
+    openOvl("authOvl");
+    return;
+  }
+
+  const normalizedKey = String(santKey || "").trim().toLowerCase();
+  const followedSants = getFollowedSants(CU);
+  const nextFollowedSants = isFollowingSant(normalizedKey)
+    ? followedSants.filter((key) => key !== normalizedKey)
+    : [...followedSants, normalizedKey];
+
+  try {
+    await persistCurrentUserFollowState({ followedSants: nextFollowedSants });
+    refreshSantFollowUi(normalizedKey);
+    if (curProfId === getCurrentUserId()) renderProfile(curProfId);
+    const sant = findSantByFollowKey(normalizedKey);
+    MC.success(
+      isFollowingSant(normalizedKey)
+        ? `Following ${sant?.name || "verified sant"} 🙏`
+        : `Removed ${sant?.name || "verified sant"} from following`
+    );
+  } catch (err) {
+    refreshSantFollowUi(normalizedKey);
+    MC.error(err?.message || "Could not update sant follow");
+  }
+}
+
+function toggleCurrentSantFollow(btn) {
+  const sant = SANTS[curSantIdx];
+  if (!sant) return;
+  toggleSantFollow(getSantFollowKey(sant), btn);
+}
+
+async function toggleMandirFollow(slug, btn) {
+  if (!CU) {
+    openOvl("authOvl");
+    return;
+  }
+
+  const normalizedSlug = String(slug || "").trim().toLowerCase();
+  const followedMandirs = getFollowedMandirs(CU);
+  const nextFollowedMandirs = isFollowingMandir(normalizedSlug)
+    ? followedMandirs.filter((item) => item !== normalizedSlug)
+    : [...followedMandirs, normalizedSlug];
+
+  try {
+    await persistCurrentUserFollowState({ followedMandirs: nextFollowedMandirs });
+    refreshMandirFollowUi(normalizedSlug);
+    if (curProfId === getCurrentUserId()) renderProfile(curProfId);
+    const mandir = MANDIR_CONFIG[normalizedSlug];
+    MC.success(
+      isFollowingMandir(normalizedSlug)
+        ? `Following ${mandir?.name || "mandir"} 🙏`
+        : `Removed ${mandir?.name || "mandir"} from following`
+    );
+  } catch (err) {
+    refreshMandirFollowUi(normalizedSlug);
+    MC.error(err?.message || "Could not update mandir follow");
+  }
+}
+
+function toggleCurrentMandirFollow(btn) {
+  if (!currentMandirSlug) return;
+  toggleMandirFollow(currentMandirSlug, btn);
+}
+
+function getProfileFollowingItems(user) {
+  const items = [];
+
+  (user?.following || []).forEach((id) => {
+    const profileUser = getUser(id);
+    if (!profileUser) return;
+    items.push({
+      type: "user",
+      id,
+      name: profileUser.name,
+      handle: profileUser.handle,
+      avatar: profileUser.avatar || "",
+      verified: !!profileUser.verified,
+    });
+  });
+
+  getFollowedMandirs(user).forEach((slug) => {
+    const mandir = MANDIR_CONFIG[slug];
+    if (!mandir) return;
+    items.push({
+      type: "mandir",
+      slug,
+      name: mandir.name,
+      handle: mandir.handle || slug,
+      avatar: mandir.image || "",
+      subtitle: mandir.location || mandir.category || "Sacred Mandir",
+    });
+  });
+
+  getFollowedSants(user).forEach((key) => {
+    const sant = findSantByFollowKey(key);
+    if (!sant) return;
+    const linkedUser = sant.uid ? getUser(sant.uid) : null;
+    items.push({
+      type: "sant",
+      key,
+      index: SANTS.indexOf(sant),
+      name: linkedUser?.name || sant.name || sant.handle || "Verified Sant",
+      handle: sant.handle || "sant",
+      avatar: sant.src || linkedUser?.avatar || "",
+      subtitle: sant.title || sant.category || "Verified Sant",
+      verified: sant.verified !== false,
+    });
+  });
+
+  return items;
+}
+
+function renderProfileFollowingItem(item) {
+  if (item.type === "user") {
+    const followed = CU && (CU.following || []).includes(item.id);
+    return `<div class="fol-item">${avHTML(item.id, "av36")}<div style="flex:1;min-width:0;margin-left:10px"><div style="font-weight:600;font-size:14px;cursor:pointer" onclick="vpro('${item.id}')">${item.name}${item.verified ? " 🔱" : ""}</div><div style="font-size:12px;color:var(--t3)">@${item.handle}</div></div><button class="btn btn-sm ${followed ? "btn-o" : "btn-p"}" onclick="toggleFollow('${item.id}',this)">${followed ? "Following" : "Follow"}</button></div>`;
+  }
+
+  if (item.type === "mandir") {
+    const followed = isFollowingMandir(item.slug);
+    return `<div class="fol-item">${renderEntityAvatar(item.avatar, item.name, "av36")}<div style="flex:1;min-width:0;margin-left:10px"><div style="font-weight:600;font-size:14px;cursor:pointer" onclick="openMandirCommunity('${item.slug}')">${esc(item.name)} 🔱</div><div style="font-size:12px;color:var(--t3)">@${esc(item.handle)} · ${esc(item.subtitle || "Sacred Mandir")}</div></div><button data-mandir-slug="${item.slug}" class="btn btn-sm ${followed ? "btn-o" : "btn-p"}" onclick="toggleMandirFollow('${item.slug}',this)">${followed ? "Following" : "Follow"}</button></div>`;
+  }
+
+  const followed = isFollowingSant(item.key);
+  return `<div class="fol-item">${renderEntityAvatar(item.avatar, item.name, "av36")}<div style="flex:1;min-width:0;margin-left:10px"><div style="font-weight:600;font-size:14px;cursor:pointer" onclick="openSantProfile(${item.index})">${esc(item.name)}${item.verified ? " 🔱" : ""}</div><div style="font-size:12px;color:var(--t3)">@${esc(item.handle)} · ${esc(item.subtitle || "Verified Sant")}</div></div><button data-sant-key="${item.key}" class="btn btn-sm ${followed ? "btn-o" : "btn-p"}" onclick="toggleSantFollow('${item.key}',this)">${followed ? "Following" : "Follow"}</button></div>`;
+}
+
 function openMandirCommunity(slug) {
   const config = MANDIR_CONFIG[slug];
   if (!config) {
@@ -3027,8 +3360,13 @@ function openMandirCommunity(slug) {
   document.getElementById("mcCategory").textContent = config.category;
   document.getElementById("mcBio").textContent = config.bio;
   document.getElementById("mcLocation").querySelector("span").textContent = config.location;
-  document.getElementById("mcFollowers").textContent = config.followers;
+  document.getElementById("mcFollowers").textContent = getMandirFollowersLabel(slug);
   document.getElementById("mcFollowing").textContent = config.following;
+  const followBtn = document.getElementById("mcFollowBtn");
+  if (followBtn) {
+    followBtn.dataset.mandirSlug = slug;
+    setMandirFollowButtonState(followBtn, slug);
+  }
 
   // Render highlights
   const hlEl = document.getElementById("mcHighlights");
@@ -5177,11 +5515,11 @@ function renderProfile(uid) {
   if (phName) phName.textContent = u.name;
   const phPosts = document.getElementById("phPosts");
   if (phPosts) phPosts.textContent = myPosts.length + " posts";
-  const fol = u.followers || [],
-    fwg = u.following || [];
+  const fol = u.followers || [];
+  const followingItems = getProfileFollowingItems(u);
   const prStats = document.getElementById("prStats");
   if (prStats)
-    prStats.innerHTML = `<div class="ps" onclick="openFolModal('${u.id}','following')"><strong>${fwg.length}</strong> <span>Following</span></div><div class="ps" onclick="openFolModal('${u.id}','followers')"><strong>${fol.length}</strong> <span>Followers</span></div><div class="ps"><strong>${myPosts.length}</strong> <span>Posts</span></div>`;
+    prStats.innerHTML = `<div class="ps" onclick="openFolModal('${u.id}','following')"><strong>${followingItems.length}</strong> <span>Following</span></div><div class="ps" onclick="openFolModal('${u.id}','followers')"><strong>${fol.length}</strong> <span>Followers</span></div><div class="ps"><strong>${myPosts.length}</strong> <span>Posts</span></div>`;
   renderPTab(u.id, "posts");
 }
 function setPTab(tab, el) {
@@ -5251,18 +5589,25 @@ function openFolModal(uid, type) {
   if (!u) return;
   const ft = document.getElementById("folTtl");
   if (ft) ft.textContent = type === "followers" ? "Followers" : "Following";
-  const ids = type === "followers" ? u.followers || [] : u.following || [];
   const fc = document.getElementById("folContent");
   if (!fc) return;
-  fc.innerHTML = !ids.length
-    ? `<div class="empty"><div class="empty-sub">No ${type} yet</div></div>`
-    : ids
-      .map((id) => {
-        const fu = getUser(id);
-        if (!fu) return "";
-        return `<div class="fol-item">${avHTML(id, "av36")}<div style="flex:1;min-width:0;margin-left:10px"><div style="font-weight:600;font-size:14px;cursor:pointer" onclick="vpro('${fu.id}')">${fu.name}</div><div style="font-size:12px;color:var(--t3)">@${fu.handle}</div></div><button class="btn btn-sm ${CU && (CU.following || []).includes(id) ? "btn-o" : "btn-p"}" onclick="toggleFollow('${id}',this)">${CU && (CU.following || []).includes(id) ? "Following" : "Follow"}</button></div>`;
-      })
-      .join("");
+  if (type === "followers") {
+    const ids = u.followers || [];
+    fc.innerHTML = !ids.length
+      ? `<div class="empty"><div class="empty-sub">No followers yet</div></div>`
+      : ids
+        .map((id) => {
+          const fu = getUser(id);
+          if (!fu) return "";
+          return `<div class="fol-item">${avHTML(id, "av36")}<div style="flex:1;min-width:0;margin-left:10px"><div style="font-weight:600;font-size:14px;cursor:pointer" onclick="vpro('${fu.id}')">${fu.name}</div><div style="font-size:12px;color:var(--t3)">@${fu.handle}</div></div><button class="btn btn-sm ${CU && (CU.following || []).includes(id) ? "btn-o" : "btn-p"}" onclick="toggleFollow('${id}',this)">${CU && (CU.following || []).includes(id) ? "Following" : "Follow"}</button></div>`;
+        })
+        .join("");
+  } else {
+    const followingItems = getProfileFollowingItems(u);
+    fc.innerHTML = !followingItems.length
+      ? `<div class="empty"><div class="empty-sub">No following yet</div></div>`
+      : followingItems.map((item) => renderProfileFollowingItem(item)).join("");
+  }
   openOvl("folOvl");
 }
 function openEP() {
@@ -5628,7 +5973,10 @@ function renderSearchPeopleResults(query) {
     }))
     .filter((item) => item.score >= 0)
     .sort((a, b) => b.score - a.score)
-    .map(({ data: mandir }) => `<div class="s-result" onclick="openMandirCommunity('${mandir.slug}')"><div class="av av40">${mandir.image ? `<img src="${mandir.image}" alt="${esc(mandir.name)}">` : "🛕"}</div><div class="search-result-main"><div class="search-result-top"><div class="who-name">${esc(mandir.name)}</div><span class="search-result-badge">Sacred Mandir</span></div><div class="search-result-meta"><span>@${esc(mandir.handle || mandir.slug)}</span><span>${esc(mandir.location || "India")}</span></div><div class="search-result-copy">${esc(mandir.bio || mandir.category || "Temple community")}</div></div><button class="btn btn-p btn-sm" onclick="event.stopPropagation();openMandirCommunity('${mandir.slug}')">Visit</button></div>`);
+    .map(({ data: mandir }) => {
+      const followed = isFollowingMandir(mandir.slug);
+      return `<div class="s-result" onclick="openMandirCommunity('${mandir.slug}')"><div class="av av40">${mandir.image ? `<img src="${mandir.image}" alt="${esc(mandir.name)}">` : "🛕"}</div><div class="search-result-main"><div class="search-result-top"><div class="who-name">${esc(mandir.name)}</div><span class="search-result-badge">Sacred Mandir</span></div><div class="search-result-meta"><span>@${esc(mandir.handle || mandir.slug)}</span><span>${esc(mandir.location || "India")}</span></div><div class="search-result-copy">${esc(mandir.bio || mandir.category || "Temple community")}</div></div><button data-mandir-slug="${mandir.slug}" class="btn btn-sm ${followed ? "btn-o" : "btn-p"}" onclick="event.stopPropagation();toggleMandirFollow('${mandir.slug}',this)">${followed ? "Following" : "Follow"}</button></div>`;
+    });
 
   const verifiedSants = SANTS
     .filter((sant) => sant.verified !== false)
@@ -5653,9 +6001,11 @@ function renderSearchPeopleResults(query) {
     .sort((a, b) => b.score - a.score)
     .map(({ sant, name }) => {
       const realIdx = SANTS.indexOf(sant);
+      const santKey = getSantFollowKey(sant);
+      const followed = isFollowingSant(santKey);
       const avatar = sant.src || "";
       const ini = getIni(name);
-      return `<div class="s-result" onclick="openSantProfile(${realIdx})"><div class="av av40">${avatar ? `<img src="${avatar}" alt="${esc(name)}">` : ini}</div><div class="search-result-main"><div class="search-result-top"><div class="who-name">${esc(name)} 🔱</div><span class="search-result-badge">Verified Sant</span></div><div class="search-result-meta"><span>@${esc(sant.handle || "sant")}</span><span>${esc(sant.title || sant.category || "Spiritual Guide")}</span></div><div class="search-result-copy">${esc(sant.bio || sant.location || "Blessings and guidance")}</div></div><button class="btn btn-p btn-sm" onclick="event.stopPropagation();openSantProfile(${realIdx})">View</button></div>`;
+      return `<div class="s-result" onclick="openSantProfile(${realIdx})"><div class="av av40">${avatar ? `<img src="${avatar}" alt="${esc(name)}">` : ini}</div><div class="search-result-main"><div class="search-result-top"><div class="who-name">${esc(name)} 🔱</div><span class="search-result-badge">Verified Sant</span></div><div class="search-result-meta"><span>@${esc(sant.handle || "sant")}</span><span>${esc(sant.title || sant.category || "Spiritual Guide")}</span></div><div class="search-result-copy">${esc(sant.bio || sant.location || "Blessings and guidance")}</div></div><button data-sant-key="${santKey}" class="btn btn-sm ${followed ? "btn-o" : "btn-p"}" onclick="event.stopPropagation();toggleSantFollow('${santKey}',this)">${followed ? "Following" : "Follow"}</button></div>`;
     });
 
   const sections = [

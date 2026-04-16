@@ -1925,7 +1925,7 @@
               <!-- Action Buttons -->
               <div class="mc-action-btns">
                 <button class="mc-btn sp-follow-btn" id="spFollowBtn"
-                  onclick="this.classList.toggle('sp-following');this.textContent=this.classList.contains('sp-following')?'Following ▾':'Follow';">
+                  onclick="toggleCurrentSantFollow(this)">
                   Follow
                 </button>
                 <button class="mc-btn mc-btn-message" onclick="MC.info('Messages coming soon! 🙏')">Message</button>
@@ -2010,7 +2010,7 @@
                 </div>
               </div>
               <div class="mc-action-btns">
-                <button class="mc-btn mc-btn-follow" onclick="MC.info('Following! 🙏')">Following ▾</button>
+                <button class="mc-btn mc-btn-follow" id="mcFollowBtn" onclick="toggleCurrentMandirFollow(this)">Follow</button>
                 <button class="mc-btn mc-btn-message" onclick="MC.info('Messages coming soon!')">Message</button>
                 <button class="mc-btn mc-btn-add" onclick="MC.info('Suggest feature coming soon!')">
                   <svg viewBox="0 0 24 24"><path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="8.5" cy="7" r="4"/><line x1="20" y1="8" x2="20" y2="14"/><line x1="23" y1="11" x2="17" y2="11"/></svg>

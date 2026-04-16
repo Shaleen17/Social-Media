@@ -36,6 +36,8 @@ const userSchema = new mongoose.Schema(
     banner: { type: String, default: null },
     followers: [{ type: mongoose.Schema.Types.ObjectId, ref: "User" }],
     following: [{ type: mongoose.Schema.Types.ObjectId, ref: "User" }],
+    followedMandirs: [{ type: String, trim: true, lowercase: true }],
+    followedSants: [{ type: String, trim: true, lowercase: true }],
     verified: { type: Boolean, default: false },
     emailVerified: { type: Boolean, default: false },
     lastSeen: { type: Date, default: Date.now },
