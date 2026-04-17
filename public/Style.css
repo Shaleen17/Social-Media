@@ -3198,7 +3198,7 @@ video {
   gap: 6px;
   scroll-snap-align: start;
 }
-/* Instagram-like bigger story circles for vid-stories */
+/* Larger story circles for vid-stories */
 .vid-stories .s-ring {
   width: 76px;
   height: 76px;
@@ -5233,7 +5233,7 @@ video {
 }
 
 /* ============================================================
-   ★ MANDIR COMMUNITY DETAIL PAGE (Instagram-style)
+   ★ MANDIR COMMUNITY DETAIL PAGE
    ============================================================ */
 
 /* ── Top Bar ── */
@@ -5508,7 +5508,7 @@ video {
   stroke-width: 2;
 }
 
-/* ── Post Grid (Instagram 3-column) ── */
+/* ── Post Grid (3-column) ── */
 .mc-post-grid {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
@@ -9496,6 +9496,23 @@ video {
   font-weight: 700;
   backdrop-filter: blur(12px);
 }
+.live-darshan-sound-btn {
+  width: 36px;
+  min-width: 36px;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.live-darshan-sound-btn svg {
+  width: 18px;
+  height: 18px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
 .live-darshan-close-btn {
   background: rgba(255, 255, 255, 0.14);
   border-color: rgba(255, 255, 255, 0.14);
@@ -9519,6 +9536,15 @@ video {
   backdrop-filter: blur(12px);
   box-shadow: 0 10px 24px rgba(0, 0, 0, 0.24);
 }
+.live-darshan-pranam-pill {
+  color: #174f2c;
+  background: rgba(255, 248, 239, 0.92);
+}
+.live-darshan-pranam-pill svg {
+  width: 18px;
+  height: 18px;
+  fill: currentColor;
+}
 .live-darshan-reaction-lane {
   right: 14px;
   bottom: 128px;
@@ -9526,15 +9552,22 @@ video {
   height: 136px;
   pointer-events: none;
 }
-.live-darshan-float-heart {
+.live-darshan-float-pranam {
   position: absolute;
   bottom: 0;
   right: 0;
-  font-size: 20px;
-  animation: liveDarshanFloatHeart 1.6s ease-out forwards;
+  width: 24px;
+  height: 24px;
+  animation: liveDarshanFloatPranam 1.6s ease-out forwards;
   filter: drop-shadow(0 10px 20px rgba(0, 0, 0, 0.35));
 }
-@keyframes liveDarshanFloatHeart {
+.live-darshan-float-pranam svg {
+  width: 100%;
+  height: 100%;
+  fill: currentColor;
+  display: block;
+}
+@keyframes liveDarshanFloatPranam {
   0% {
     transform: translateY(0) scale(0.8);
     opacity: 0;
@@ -9543,7 +9576,7 @@ video {
     opacity: 1;
   }
   100% {
-    transform: translateY(-145px) translateX(var(--heart-drift, -8px)) scale(1.3);
+    transform: translateY(-145px) translateX(var(--pranam-drift, -8px)) scale(1.16);
     opacity: 0;
   }
 }
@@ -9710,6 +9743,24 @@ video {
   font-size: 11px;
   line-height: 1.5;
   color: rgba(255, 241, 232, 0.74);
+}
+.live-darshan-pranam-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: #fff6ef;
+  background: rgba(104, 67, 56, 0.52);
+  border: 1px solid rgba(255, 234, 220, 0.1);
+  box-shadow: 0 14px 28px rgba(0, 0, 0, 0.16);
+}
+.live-darshan-pranam-btn svg {
+  width: 18px;
+  height: 18px;
+  fill: #174f2c;
+  flex-shrink: 0;
+}
+.live-darshan-pranam-btn span {
+  color: #fff6ef;
 }
 .live-darshan-summary-card {
   padding: 12px 14px;
@@ -10036,6 +10087,11 @@ video {
     height: 38px;
     padding: 0 12px;
     font-size: 11px;
+  }
+  .live-darshan-sound-btn {
+    width: 38px;
+    min-width: 38px;
+    padding: 0;
   }
   .live-darshan-nav-btn {
     display: none;

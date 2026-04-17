@@ -12,15 +12,15 @@
     <meta name="apple-mobile-web-app-title" content="Tirth Sutra" />
     <title>Tirth Sutra — Mandir Community</title>
     <link rel="icon" type="image/png" href="Brand_Logo.jpg" />
-  <link rel="manifest" href="manifest.webmanifest?v=20260417-mandir-live-4" />
-  <link rel="apple-touch-icon" href="apple-touch-icon.png?v=20260417-mandir-live-4" />
+  <link rel="manifest" href="manifest.webmanifest?v=20260417-mandir-live-6" />
+  <link rel="apple-touch-icon" href="apple-touch-icon.png?v=20260417-mandir-live-6" />
     <link rel="preload" as="image" href="Brand_Logo.jpg" />
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link rel="preconnect" href="https://videos-o57d.vercel.app" crossorigin>
     <link rel="dns-prefetch" href="//videos-o57d.vercel.app">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-  <link href="Style.css?v=20260417-mandir-live-4" rel="stylesheet" type="text/css" />
+  <link href="Style.css?v=20260417-mandir-live-6" rel="stylesheet" type="text/css" />
     <script src="https://checkout.razorpay.com/v1/checkout.js"></script>
     <!-- Google tag (gtag.js) -->
     <script
@@ -544,7 +544,7 @@
             </svg>
             <div class="mandir-action-copy">
               <span>Live Darshans</span>
-              <small>Watch immersive Instagram-style live darshan streams from Vrindavan.</small>
+              <small>Watch live darshan streams from Vrindavan in a calm, full-screen experience.</small>
             </div>
           </button>
           <button class="more-menu-item" type="button" onclick="handleMandirActionMenu('seva')">
@@ -601,8 +601,12 @@
                   </div>
                 </div>
                 <div class="live-darshan-top-actions">
-                  <button class="live-darshan-icon-btn" type="button" onclick="toggleLiveDarshanMute()" id="liveDarshanMuteBtn">
-                    Sound On
+                  <button class="live-darshan-icon-btn live-darshan-sound-btn" type="button" onclick="toggleLiveDarshanMute()" id="liveDarshanMuteBtn" aria-label="Sound on" title="Sound on">
+                    <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                      <path d="M5 9.5V14.5H8.5L13 18V6L8.5 9.5H5Z"></path>
+                      <path d="M16 9C17.3 10.2 18 11.9 18 13.5C18 15.1 17.3 16.8 16 18"></path>
+                      <path d="M18.5 6.5C20.6 8.4 21.75 10.9 21.75 13.5C21.75 16.1 20.6 18.6 18.5 20.5"></path>
+                    </svg>
                   </button>
                   <button class="xbtn live-darshan-close-btn" type="button" onclick="closeLiveDarshans()">
                     <svg viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" /></svg>
@@ -614,8 +618,14 @@
               <div class="live-darshan-gradient live-darshan-gradient-bottom"></div>
 
               <div class="live-darshan-side-actions">
-                <button class="live-darshan-action-pill" type="button" onclick="sendLiveDarshanReaction()">
-                  &#10084;
+                <button class="live-darshan-action-pill live-darshan-pranam-pill" type="button" onclick="sendLiveDarshanReaction()" aria-label="Pranam" title="Pranam">
+                  <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                    <path d="M12 3.2c.76 0 1.38.62 1.38 1.38v8.88h-2.76V4.58c0-.76.62-1.38 1.38-1.38Z"></path>
+                    <path d="M9.1 3.95c.5.24.86.69.97 1.22l1.08 5.38-1.82 1.88-2.77-4.56c-.44-.72-.31-1.66.31-2.23l1.12-1.03c.34-.31.83-.39 1.11-.66Z"></path>
+                    <path d="M14.9 3.95c-.5.24-.86.69-.97 1.22l-1.08 5.38 1.82 1.88 2.77-4.56c.44-.72.31-1.66-.31-2.23l-1.12-1.03c-.34-.31-.83-.39-1.11-.66Z"></path>
+                    <path d="M9.27 12.52 5.3 16.4a1.25 1.25 0 0 0 0 1.79l2.55 2.5c.5.49 1.3.49 1.8 0l2.35-2.3-2.73-5.87Z"></path>
+                    <path d="m14.73 12.52 3.97 3.88a1.25 1.25 0 0 1 0 1.79l-2.55 2.5c-.5.49-1.3.49-1.8 0L12 18.39l2.73-5.87Z"></path>
+                  </svg>
                 </button>
                 <button class="live-darshan-action-pill" type="button" onclick="shareActiveLiveDarshan()">
                   &#8599;
@@ -643,10 +653,17 @@
             <div class="live-darshan-panel-head">
               <div>
                 <h3>Live Darshans</h3>
-                <p>Three curated Vrindavan live streams with an Instagram-inspired viewing experience.</p>
+                <p>Curated Vrindavan live streams presented in a serene and immersive darshan experience.</p>
               </div>
-              <button class="donation-link-btn" type="button" onclick="sendLiveDarshanReaction()">
-                Offer Love
+              <button class="donation-link-btn live-darshan-pranam-btn" type="button" onclick="sendLiveDarshanReaction()" aria-label="Pranam" title="Pranam">
+                <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                  <path d="M12 3.2c.76 0 1.38.62 1.38 1.38v8.88h-2.76V4.58c0-.76.62-1.38 1.38-1.38Z"></path>
+                  <path d="M9.1 3.95c.5.24.86.69.97 1.22l1.08 5.38-1.82 1.88-2.77-4.56c-.44-.72-.31-1.66.31-2.23l1.12-1.03c.34-.31.83-.39 1.11-.66Z"></path>
+                  <path d="M14.9 3.95c-.5.24-.86.69-.97 1.22l-1.08 5.38 1.82 1.88 2.77-4.56c.44-.72.31-1.66-.31-2.23l-1.12-1.03c-.34-.31-.83-.39-1.11-.66Z"></path>
+                  <path d="M9.27 12.52 5.3 16.4a1.25 1.25 0 0 0 0 1.79l2.55 2.5c.5.49 1.3.49 1.8 0l2.35-2.3-2.73-5.87Z"></path>
+                  <path d="m14.73 12.52 3.97 3.88a1.25 1.25 0 0 1 0 1.79l-2.55 2.5c-.5.49-1.3.49-1.8 0L12 18.39l2.73-5.87Z"></path>
+                </svg>
+                <span>Pranam</span>
               </button>
             </div>
 
@@ -2150,7 +2167,7 @@
             <div style="height:80px"></div>
           </div>
 
-          <!-- ★ MANDIR COMMUNITY DETAIL PAGE (Instagram-style) -->
+          <!-- ★ MANDIR COMMUNITY DETAIL PAGE -->
           <div class="page hide" id="pgMandirCommunity">
             <!-- Top header bar -->
             <div class="mc-topbar">
@@ -3836,7 +3853,7 @@
     </script>
     <script>
       (function () {
-      const runtimeVersion = "20260417-mandir-live-4";
+      const runtimeVersion = "20260417-mandir-live-6";
         const refreshKey = "ts_frontendRuntimeRefresh_" + runtimeVersion;
         try {
           const storedVersion = localStorage.getItem("ts_frontendRuntimeVersion");
@@ -3889,14 +3906,14 @@
         } catch {}
       })();
     </script>
-  <script src="Script.js?v=20260417-mandir-live-4"></script>
+  <script src="Script.js?v=20260417-mandir-live-6"></script>
     <script src="https://cdn.socket.io/4.7.4/socket.io.min.js"></script>
     <!-- Vercel Config & API Backend Scripts -->
-  <script src="config.js?v=20260417-mandir-live-4"></script>
-  <script src="api.js?v=20260417-mandir-live-4"></script>
-  <script src="socket-client.js?v=20260417-mandir-live-4"></script>
-  <script src="webrtc-client.js?v=20260417-mandir-live-4"></script>
-  <script src="backend-adapter.js?v=20260417-mandir-live-4"></script>
-  <script src="donation-module.js?v=20260417-mandir-live-4"></script>
+  <script src="config.js?v=20260417-mandir-live-6"></script>
+  <script src="api.js?v=20260417-mandir-live-6"></script>
+  <script src="socket-client.js?v=20260417-mandir-live-6"></script>
+  <script src="webrtc-client.js?v=20260417-mandir-live-6"></script>
+  <script src="backend-adapter.js?v=20260417-mandir-live-6"></script>
+  <script src="donation-module.js?v=20260417-mandir-live-6"></script>
   </body>
 </html>

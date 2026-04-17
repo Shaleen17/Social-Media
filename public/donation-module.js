@@ -1015,10 +1015,33 @@
     video.load();
   }
 
+  function getLiveDarshanMuteIconMarkup(isMuted) {
+    if (isMuted) {
+      return `
+        <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+          <path d="M5 9.5V14.5H8.5L13 18V6L8.5 9.5H5Z"></path>
+          <line x1="16.5" y1="8" x2="21" y2="16"></line>
+          <line x1="21" y1="8" x2="16.5" y2="16"></line>
+        </svg>
+      `;
+    }
+
+    return `
+      <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+        <path d="M5 9.5V14.5H8.5L13 18V6L8.5 9.5H5Z"></path>
+        <path d="M16 9C17.3 10.2 18 11.9 18 13.5C18 15.1 17.3 16.8 16 18"></path>
+        <path d="M18.5 6.5C20.6 8.4 21.75 10.9 21.75 13.5C21.75 16.1 20.6 18.6 18.5 20.5"></path>
+      </svg>
+    `;
+  }
+
   function syncLiveDarshanMuteUi() {
     const muteButton = getById("liveDarshanMuteBtn");
     if (muteButton) {
-      muteButton.textContent = state.liveDarshanMuted ? "Sound Off" : "Sound On";
+      const soundState = state.liveDarshanMuted ? "Sound off" : "Sound on";
+      muteButton.innerHTML = getLiveDarshanMuteIconMarkup(state.liveDarshanMuted);
+      muteButton.setAttribute("aria-label", soundState);
+      muteButton.setAttribute("title", soundState);
     }
   }
 
@@ -1299,27 +1322,39 @@
     syncLiveDarshanMuteUi();
   }
 
-  function spawnLiveDarshanHeart() {
+  function getLiveDarshanPranamIconMarkup() {
+    return `
+      <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+        <path d="M12 3.2c.76 0 1.38.62 1.38 1.38v8.88h-2.76V4.58c0-.76.62-1.38 1.38-1.38Z"></path>
+        <path d="M9.1 3.95c.5.24.86.69.97 1.22l1.08 5.38-1.82 1.88-2.77-4.56c-.44-.72-.31-1.66.31-2.23l1.12-1.03c.34-.31.83-.39 1.11-.66Z"></path>
+        <path d="M14.9 3.95c-.5.24-.86.69-.97 1.22l-1.08 5.38 1.82 1.88 2.77-4.56c.44-.72.31-1.66-.31-2.23l-1.12-1.03c-.34-.31-.83-.39-1.11-.66Z"></path>
+        <path d="M9.27 12.52 5.3 16.4a1.25 1.25 0 0 0 0 1.79l2.55 2.5c.5.49 1.3.49 1.8 0l2.35-2.3-2.73-5.87Z"></path>
+        <path d="m14.73 12.52 3.97 3.88a1.25 1.25 0 0 1 0 1.79l-2.55 2.5c-.5.49-1.3.49-1.8 0L12 18.39l2.73-5.87Z"></path>
+      </svg>
+    `;
+  }
+
+  function spawnLiveDarshanPranam() {
     const lane = getById("liveDarshanReactionLane");
     if (!lane) return;
 
-    const heart = document.createElement("span");
-    const shades = ["#ff77a8", "#ffc04d", "#ff8f6b", "#ff5f8f", "#ffd57b"];
-    heart.className = "live-darshan-float-heart";
-    heart.textContent = "❤";
-    heart.style.color = shades[Math.floor(Math.random() * shades.length)];
-    heart.style.right = `${Math.round(Math.random() * 16)}px`;
-    heart.style.setProperty("--heart-drift", `${Math.round(Math.random() * 30 - 15)}px`);
-    lane.appendChild(heart);
+    const pranam = document.createElement("span");
+    const shades = ["#0f4f2b", "#18673a", "#2f7c48", "#8d6a25", "#b88932"];
+    pranam.className = "live-darshan-float-pranam";
+    pranam.innerHTML = getLiveDarshanPranamIconMarkup();
+    pranam.style.color = shades[Math.floor(Math.random() * shades.length)];
+    pranam.style.right = `${Math.round(Math.random() * 16)}px`;
+    pranam.style.setProperty("--pranam-drift", `${Math.round(Math.random() * 26 - 13)}px`);
+    lane.appendChild(pranam);
 
-    window.setTimeout(function removeHeart() {
-      heart.remove();
+    window.setTimeout(function removePranam() {
+      pranam.remove();
     }, 1700);
   }
 
   function sendLiveDarshanReaction() {
     for (let index = 0; index < 4; index += 1) {
-      window.setTimeout(spawnLiveDarshanHeart, index * 120);
+      window.setTimeout(spawnLiveDarshanPranam, index * 120);
     }
   }
 
