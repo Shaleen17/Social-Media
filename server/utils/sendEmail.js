@@ -5,6 +5,10 @@ const AppError = require("./appError");
 let transporter = null;
 let verifyPromise = null;
 
+function shouldVerifyBeforeSend() {
+  return String(process.env.SMTP_VERIFY_BEFORE_SEND || "false").toLowerCase() === "true";
+}
+
 function getEmailTransportSettings() {
   const authUser = process.env.SMTP_USER || process.env.EMAIL_USER;
   const authPass = process.env.SMTP_PASS || process.env.EMAIL_PASS;
@@ -98,6 +102,9 @@ async function sendEmail({ email, subject, html, text }) {
 
   try {
     const transport = createTransporter();
+    if (shouldVerifyBeforeSend()) {
+      await verifyEmailTransport();
+    }
     const info = await transport.sendMail({
       from: `Tirth Sutra <${fromAddress}>`,
       to: email,
@@ -156,4 +163,5 @@ module.exports = {
   verifyEmailTransport,
   isEmailDeliveryConfigured,
   assertEmailDeliveryConfigured,
+  shouldVerifyBeforeSend,
 };

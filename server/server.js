@@ -12,6 +12,7 @@ const {
   verifyEmailTransport,
   isEmailDeliveryConfigured,
   assertEmailDeliveryConfigured,
+  shouldVerifyBeforeSend,
 } = require("./utils/sendEmail");
 
 // ─── Validate Required Environment Variables ───
@@ -204,6 +205,8 @@ app.use((err, req, res, next) => {
 connectDB().catch(console.error);
 
 const PORT = process.env.PORT || 5000;
+const SHOULD_VERIFY_SMTP_ON_STARTUP =
+  String(process.env.SMTP_VERIFY_ON_STARTUP || "false").toLowerCase() === "true";
 
 // Only start the server listening if NOT running on Vercel
 if (!process.env.VERCEL) {
@@ -232,21 +235,28 @@ if (!process.env.VERCEL) {
     }, 15 * 60 * 1000); // 15 minutes
   });
 
-  // Always verify SMTP on startup so Render logs immediately show ✅ or ❌
+  // Verify SMTP on startup only when explicitly enabled in env.
   if (isEmailDeliveryConfigured()) {
-    console.log("📧 SMTP configured — verifying connection on startup...");
-    verifyEmailTransport()
-      .then(() => {
-        console.log("✅ SMTP ready — OTP emails will be delivered.");
-      })
-      .catch((err) => {
-        console.error(
-          "❌ SMTP startup check FAILED — OTP emails will NOT be delivered.\n" +
-          "   Error:", err.message, "\n" +
-          "   Fix: Check SMTP_USER / SMTP_PASS in Render Environment Variables.\n" +
-          "   Gmail requires a 16-char App Password (Google Account → Security → App Passwords)."
-        );
-      });
+    if (SHOULD_VERIFY_SMTP_ON_STARTUP) {
+      console.log("📧 SMTP configured — verifying connection on startup...");
+      verifyEmailTransport()
+        .then(() => {
+          console.log("✅ SMTP ready — OTP emails will be delivered.");
+        })
+        .catch((err) => {
+          console.error(
+            "❌ SMTP startup check FAILED — OTP emails will NOT be delivered.\n" +
+            "   Error:", err.message, "\n" +
+            "   Fix: Check SMTP_USER / SMTP_PASS in Render Environment Variables.\n" +
+            "   Gmail requires a 16-char App Password (Google Account → Security → App Passwords)."
+          );
+        });
+    } else {
+      console.log(
+        `SMTP startup verification skipped (SMTP_VERIFY_ON_STARTUP=false). ` +
+        `Per-send verification is ${shouldVerifyBeforeSend() ? "enabled" : "disabled"}.`
+      );
+    }
   } else {
     console.error(
       "❌ SMTP is NOT configured — OTP emails will NOT be delivered.\n" +

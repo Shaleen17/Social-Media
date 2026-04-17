@@ -237,7 +237,7 @@
 
   let _chatPushSetupPromise = null;
   let _pendingOpenChatId = consumeOpenChatParam();
-  const APP_ASSET_VERSION = "20260416-otpfix-5";
+  const APP_ASSET_VERSION = "20260417-backendfix-1";
   let _appSwPromise = null;
   let _deferredInstallPrompt = null;
   let _installPromptBound = false;
@@ -731,13 +731,52 @@
       : fallbackSeconds;
   }
 
+  function getBackendTargetLabel() {
+    const backendBase =
+      typeof window.getBackendBaseUrl === "function"
+        ? window.getBackendBaseUrl()
+        : typeof CONFIG !== "undefined" && CONFIG && CONFIG.BACKEND_URL
+          ? String(CONFIG.BACKEND_URL).replace(/\/+$/, "")
+          : "";
+
+    if (!backendBase) {
+      return "server";
+    }
+
+    const normalized = String(backendBase).toLowerCase();
+    let hostname = "";
+
+    try {
+      hostname = new URL(backendBase).hostname.toLowerCase();
+    } catch {
+      hostname = "";
+    }
+
+    if (
+      normalized.includes("localhost") ||
+      normalized.includes("127.0.0.1") ||
+      normalized.includes("://10.") ||
+      normalized.includes("://192.168.") ||
+      /:\/\/172\.(1[6-9]|2\d|3[0-1])\./.test(normalized) ||
+      hostname === "::1" ||
+      hostname.endsWith(".local") ||
+      hostname.endsWith(".lan") ||
+      (!hostname.includes(".") && /^[a-z0-9-]+$/.test(hostname))
+    ) {
+      return "local server";
+    }
+
+    return "live server";
+  }
+
   function buildOtpErrorMessage(error, fallbackMessage) {
     const status = Number(error?.status);
     const baseMessage = error?.message || fallbackMessage;
     const attemptsRemaining = Number(error?.details?.attemptsRemaining);
+    const backendTarget = getBackendTargetLabel();
 
     if (status === 404) {
-      return "The live server does not have the OTP verification routes yet. Redeploy the latest backend build and try again.";
+      return `The ${backendTarget} does not have the OTP verification routes yet. Redeploy or restart the latest backend build and try again.`;
     }
 
     if (
@@ -745,7 +784,7 @@
       status === 502 ||
       /email delivery|send the email|configured incorrectly/i.test(baseMessage)
     ) {
-      return "The live server could not send the OTP email. Check your SMTP settings on the deployed backend and try again.";
+      return `The ${backendTarget} could not send the OTP email. Check the SMTP settings on that backend and try again.`;
     }
 
     if (Number.isFinite(attemptsRemaining) && attemptsRemaining > 0) {
@@ -764,9 +803,10 @@
   function buildSignupErrorMessage(error, fallbackMessage) {
     const status = Number(error?.status);
     const baseMessage = error?.message || fallbackMessage;
+    const backendTarget = getBackendTargetLabel();
 
     if (status === 404) {
-      return "The deployed backend is still on an older auth build. Redeploy the latest backend so OTP signup routes are available.";
+      return `The ${backendTarget} is still on an older auth build. Restart or redeploy the latest backend so OTP signup routes are available.`;
     }
 
     if (
@@ -774,7 +814,7 @@
       status === 502 ||
       /email delivery|send the email|configured incorrectly/i.test(baseMessage)
     ) {
-      return "OTP email sending is not working on the live server. Add the SMTP environment variables on your backend deployment first.";
+      return `OTP email sending is not working on the ${backendTarget}. Add or fix the SMTP environment variables on that backend first.`;
     }
 
     return baseMessage;
