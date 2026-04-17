@@ -12,15 +12,15 @@
     <meta name="apple-mobile-web-app-title" content="Tirth Sutra" />
     <title>Tirth Sutra — Mandir Community</title>
     <link rel="icon" type="image/png" href="Brand_Logo.jpg" />
-  <link rel="manifest" href="manifest.webmanifest?v=20260417-backendfix-1" />
-  <link rel="apple-touch-icon" href="apple-touch-icon.png?v=20260417-backendfix-1" />
+  <link rel="manifest" href="manifest.webmanifest?v=20260417-mandir-live-4" />
+  <link rel="apple-touch-icon" href="apple-touch-icon.png?v=20260417-mandir-live-4" />
     <link rel="preload" as="image" href="Brand_Logo.jpg" />
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link rel="preconnect" href="https://videos-o57d.vercel.app" crossorigin>
     <link rel="dns-prefetch" href="//videos-o57d.vercel.app">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-  <link href="Style.css?v=20260417-backendfix-1" rel="stylesheet" type="text/css" />
+  <link href="Style.css?v=20260417-mandir-live-4" rel="stylesheet" type="text/css" />
     <script src="https://checkout.razorpay.com/v1/checkout.js"></script>
     <!-- Google tag (gtag.js) -->
     <script
@@ -516,6 +516,187 @@
             </svg>
             <span id="moreInstallTxt">Install App</span>
           </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- MANDIR ACTION MENU -->
+    <div class="ovl" id="mandirActionMenuOvl">
+      <div class="modal more-menu-modal mandir-action-menu" role="dialog" aria-label="Mandir community actions">
+        <div class="more-menu-list">
+          <button class="more-menu-item" type="button" onclick="handleMandirActionMenu('post')">
+            <svg viewBox="0 0 24 24">
+              <path d="M12 5v14"></path>
+              <path d="M5 12h14"></path>
+            </svg>
+            <div class="mandir-action-copy">
+              <span>Create Post</span>
+              <small>Keep the current community posting flow available.</small>
+            </div>
+          </button>
+          <button class="more-menu-item" type="button" onclick="handleMandirActionMenu('live')">
+            <svg viewBox="0 0 24 24">
+              <path d="M4 12a8 8 0 0 1 8-8"></path>
+              <path d="M20 12a8 8 0 0 0-8-8"></path>
+              <path d="M7 12a5 5 0 0 1 5-5"></path>
+              <path d="M17 12a5 5 0 0 0-5-5"></path>
+              <circle cx="12" cy="15" r="2.2"></circle>
+            </svg>
+            <div class="mandir-action-copy">
+              <span>Live Darshans</span>
+              <small>Watch immersive Instagram-style live darshan streams from Vrindavan.</small>
+            </div>
+          </button>
+          <button class="more-menu-item" type="button" onclick="handleMandirActionMenu('seva')">
+            <svg viewBox="0 0 24 24">
+              <path d="M12 21s-6.75-4.35-8.5-8.27C2.44 10.33 3.78 7 6.9 7c1.98 0 3.15 1.11 3.78 2.14C11.32 8.11 12.49 7 14.47 7c3.12 0 4.46 3.33 3.4 5.73C18.75 16.65 12 21 12 21z"></path>
+            </svg>
+            <div class="mandir-action-copy">
+              <span>Real Seva</span>
+              <small>Make a verified Razorpay donation and receive a receipt instantly.</small>
+            </div>
+          </button>
+          <button class="more-menu-item" type="button" onclick="handleMandirActionMenu('dashboard')">
+            <svg viewBox="0 0 24 24">
+              <path d="M3 13h7V3H3z"></path>
+              <path d="M14 21h7V11h-7z"></path>
+              <path d="M14 3h7v4h-7z"></path>
+              <path d="M3 21h7v-4H3z"></path>
+            </svg>
+            <div class="mandir-action-copy">
+              <span>Donation Dashboard</span>
+              <small>Track live totals, receipts, history and where the seva is helping.</small>
+            </div>
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <div class="ovl" id="liveDarshanOvl">
+      <div class="modal live-darshan-modal">
+        <div class="live-darshan-shell">
+          <div class="live-darshan-stage-wrap">
+            <div class="live-darshan-stage" id="liveDarshanStage">
+              <div class="live-darshan-media-frame">
+                <video
+                  id="liveDarshanVideo"
+                  class="live-darshan-video"
+                  playsinline
+                  webkit-playsinline
+                  loop
+                  preload="metadata"
+                ></video>
+              </div>
+
+              <div class="live-darshan-topbar">
+                <div class="live-darshan-host">
+                  <img id="liveDarshanAvatar" class="live-darshan-avatar" src="images/sants/Radharaman.jpg" alt="Live darshan profile" />
+                  <div class="live-darshan-host-copy">
+                    <div class="live-darshan-host-line">
+                      <strong id="liveDarshanProfileName">Radharaman</strong>
+                      <span class="live-badge">LIVE</span>
+                      <span class="live-darshan-viewers-pill" id="liveDarshanViewers">18.4K watching</span>
+                    </div>
+                    <span id="liveDarshanStarted">Started 8 min ago</span>
+                  </div>
+                </div>
+                <div class="live-darshan-top-actions">
+                  <button class="live-darshan-icon-btn" type="button" onclick="toggleLiveDarshanMute()" id="liveDarshanMuteBtn">
+                    Sound On
+                  </button>
+                  <button class="xbtn live-darshan-close-btn" type="button" onclick="closeLiveDarshans()">
+                    <svg viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" /></svg>
+                  </button>
+                </div>
+              </div>
+
+              <div class="live-darshan-gradient live-darshan-gradient-top"></div>
+              <div class="live-darshan-gradient live-darshan-gradient-bottom"></div>
+
+              <div class="live-darshan-side-actions">
+                <button class="live-darshan-action-pill" type="button" onclick="sendLiveDarshanReaction()">
+                  &#10084;
+                </button>
+                <button class="live-darshan-action-pill" type="button" onclick="shareActiveLiveDarshan()">
+                  &#8599;
+                </button>
+              </div>
+
+              <div class="live-darshan-reaction-lane" id="liveDarshanReactionLane"></div>
+              <button class="live-darshan-nav-btn live-darshan-nav-btn-prev" type="button" onclick="stepLiveDarshan(-1)" aria-label="Previous live darshan stream">
+                <svg viewBox="0 0 24 24"><polyline points="15 18 9 12 15 6"></polyline></svg>
+              </button>
+              <button class="live-darshan-nav-btn live-darshan-nav-btn-next" type="button" onclick="stepLiveDarshan(1)" aria-label="Next live darshan stream">
+                <svg viewBox="0 0 24 24"><polyline points="9 18 15 12 9 6"></polyline></svg>
+              </button>
+
+              <div class="live-darshan-bottom">
+                <div class="live-darshan-heading-wrap">
+                  <div class="live-darshan-heading" id="liveDarshanHeading">Radharamanji Live darshans from vrindavan</div>
+                  <div class="live-darshan-subheading" id="liveDarshanSubheading">Vrindavan dham • Temple stream • Real-time darshan ambience</div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="live-darshan-panel">
+            <div class="live-darshan-panel-head">
+              <div>
+                <h3>Live Darshans</h3>
+                <p>Three curated Vrindavan live streams with an Instagram-inspired viewing experience.</p>
+              </div>
+              <button class="donation-link-btn" type="button" onclick="sendLiveDarshanReaction()">
+                Offer Love
+              </button>
+            </div>
+
+            <div class="live-darshan-summary-card">
+              <div class="live-darshan-summary-top">
+                <span class="live-badge">LIVE NOW</span>
+                <strong id="liveDarshanSummaryTitle">Radharamanji Live darshans from vrindavan</strong>
+              </div>
+              <p id="liveDarshanSummaryMeta">Profile: Radharaman • Vrindavan • Tap any card below to switch streams instantly.</p>
+            </div>
+
+            <div class="live-darshan-summary-nav">
+              <div class="live-darshan-stream-indicator" id="liveDarshanStreamIndicator">Stream 1 of 3</div>
+              <div class="live-darshan-summary-actions">
+                <button class="live-darshan-panel-btn" type="button" onclick="stepLiveDarshan(-1)">
+                  <svg viewBox="0 0 24 24"><polyline points="15 18 9 12 15 6"></polyline></svg>
+                  Previous
+                </button>
+                <button class="live-darshan-panel-btn" type="button" onclick="stepLiveDarshan(1)">
+                  Next
+                  <svg viewBox="0 0 24 24"><polyline points="9 18 15 12 9 6"></polyline></svg>
+                </button>
+              </div>
+            </div>
+            <div class="live-darshan-key-hint">Desktop: use left/right arrow keys or the buttons above.</div>
+
+            <div class="live-darshan-chat-card">
+              <div class="live-darshan-chat-head">
+                <span>Live chat</span>
+                <small>Join the darshan room without covering the video.</small>
+              </div>
+              <div class="live-darshan-comments" id="liveDarshanComments"></div>
+              <form class="live-darshan-comment-form" onsubmit="submitLiveDarshanComment(event)">
+                <input
+                  id="liveDarshanCommentInput"
+                  class="live-darshan-comment-input"
+                  type="text"
+                  maxlength="90"
+                  placeholder="Send Jai Shri Radhe..."
+                />
+                <button class="live-darshan-send-btn" type="submit">Send</button>
+              </form>
+            </div>
+
+            <div class="live-darshan-list-head">
+              <span>Switch stream</span>
+              <small>Profile image and name are taken from `public/images/sants`.</small>
+            </div>
+            <div class="live-darshan-list" id="liveDarshanList"></div>
+          </div>
         </div>
       </div>
     </div>
@@ -1097,7 +1278,7 @@
 
     <!-- GO LIVE MODAL -->
     <div class="ovl" id="goLiveModal">
-      <div class="modal" style="max-width: 440px">
+      <div class="modal donate-modal-shell" style="max-width: 540px">
         <div class="mhdr">
           <button class="xbtn" onclick="closeOvl('goLiveModal')">
             <svg viewBox="0 0 24 24">
@@ -1704,10 +1885,16 @@
               <div class="fhdr-row">
                 <span class="fhdr-title"> Mandir Community</span>
                 <button
-                  class="btn btn-p btn-sm"
-                  onclick="auth(() => openOvl('compOvl'))"
+                  class="mandir-action-trigger"
+                  type="button"
+                  aria-label="Mandir community actions"
+                  onclick="openMandirActionMenu(this, 'community')"
                 >
-                  + Post
+                  <svg viewBox="0 0 24 24" aria-hidden="true">
+                    <circle cx="12" cy="5" r="1.8"></circle>
+                    <circle cx="12" cy="12" r="1.8"></circle>
+                    <circle cx="12" cy="19" r="1.8"></circle>
+                  </svg>
                 </button>
               </div>
             </div>
@@ -1971,7 +2158,7 @@
                 <svg viewBox="0 0 24 24"><polyline points="15 18 9 12 15 6"/></svg>
               </button>
               <span class="mc-topbar-title" id="mcTopTitle">Temple</span>
-              <button class="mc-more-btn" onclick="MC.info('More options coming soon')">
+              <button class="mc-more-btn" type="button" onclick="openMandirActionMenu(this, 'detail')">
                 <svg viewBox="0 0 24 24"><circle cx="12" cy="5" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="12" cy="19" r="1"/></svg>
               </button>
             </div>
@@ -3217,19 +3404,39 @@
      DONATION MODAL
      ============================================================ -->
     <div class="ovl" id="donateOvl">
-      <div class="modal" style="max-width: 440px">
+      <div class="modal donate-modal-shell" style="max-width: 440px">
         <div class="mhdr">
           <button class="xbtn" onclick="closeDonateModal()">
             <svg viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" /></svg>
           </button>
-          <h3>🙏 Donate</h3>
-          <div></div>
+          <h3>Real Seva</h3>
+          <div class="donate-status-chip" id="donateStatusChip">Secure Razorpay checkout</div>
         </div>
         <div class="mpad">
           <!-- Form view -->
           <div id="donateFormView" class="donate-modal-content">
-            <div class="donate-temple-name" id="donateTempleName">Mandir Community</div>
-            <div class="donate-subtitle">Support the sacred community with your contribution</div>
+            <div class="donate-hero-card">
+              <div>
+                <div class="donate-temple-name">Support verified seva in real time</div>
+                <div class="donate-subtitle">
+                  Every successful Razorpay payment is verified on the server, added to your receipt history, and reflected in the live dashboard.
+                </div>
+              </div>
+              <button class="donation-link-btn" type="button" onclick="openDonationDashboard()">
+                View Dashboard
+              </button>
+            </div>
+
+            <div class="donation-section-head">
+              <span>Choose seva</span>
+              <small>Pick the cause you want your donation to support.</small>
+            </div>
+            <div class="donate-campaign-grid" id="donateCampaignGrid"></div>
+
+            <div class="donation-section-head compact">
+              <span>Select amount</span>
+              <small>Minimum online donation is Rs 10.</small>
+            </div>
             <div class="donate-amounts">
               <button class="donate-amt" onclick="selectDonation(51, this)">₹51<small>Seva</small></button>
               <button class="donate-amt" onclick="selectDonation(101, this)">₹101<small>Pooja</small></button>
@@ -3240,13 +3447,34 @@
             </div>
             <div class="donate-custom-wrap">
               <div class="donate-custom-label">Or enter custom amount</div>
-              <input type="number" class="donate-custom-input" id="donateCustomAmt" placeholder="₹ Enter amount" min="1" oninput="handleCustomDonation(this)">
+              <input type="number" class="donate-custom-input" id="donateCustomAmt" placeholder="Rs Enter amount" min="10" oninput="handleCustomDonation(this)">
             </div>
+            <div class="donation-section-head compact">
+              <span>Receipt details</span>
+              <small>Name and email help us label your donation receipt clearly.</small>
+            </div>
+            <div class="donate-donor-grid">
+              <input type="text" class="donate-field-input" id="donateNameInput" placeholder="Donor name" autocomplete="name" />
+              <input type="email" class="donate-field-input" id="donateEmailInput" placeholder="Email for receipts" autocomplete="email" />
+            </div>
+
+            <div class="donate-preview-card">
+              <div class="donate-preview-row">
+                <span>Selected seva</span>
+                <strong id="donatePreviewPurpose">Annadanam Seva</strong>
+              </div>
+              <div class="donate-preview-row">
+                <span>Donation total</span>
+                <strong id="donatePreviewAmount">Rs 251</strong>
+              </div>
+            </div>
+
             <button class="donate-pay-btn" id="donatePayBtn" onclick="startPayment()">
               <svg viewBox="0 0 24 24" style="width:20px;height:20px;stroke:#fff;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round">
                 <rect x="1" y="4" width="22" height="16" rx="2" ry="2"/><line x1="1" y1="10" x2="23" y2="10"/>
               </svg>
-              Proceed to Pay — ₹<span id="donatePayAmount">251</span>
+              <span id="donatePayBtnLabel">Verify and pay</span>
+              <span class="donate-pay-amount" id="donatePayAmount">Rs 251</span>
             </button>
             <div class="donate-secure">
               <svg viewBox="0 0 24 24"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
@@ -3258,10 +3486,132 @@
             <div class="donate-success-icon">
               <svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>
             </div>
-            <h3>Donation Successful! 🎉</h3>
-            <div class="donate-success-amount" id="donateSuccessAmt">₹251</div>
-            <p>Thank you for your generous contribution to the Mandir Community. May your devotion be blessed! 🙏</p>
-            <button class="btn btn-p" style="width:100%;justify-content:center" onclick="closeDonateModal()">Jai Shri Ram 🙏</button>
+            <div class="donate-success-badge">Verified by Razorpay</div>
+            <h3>Donation verified successfully</h3>
+            <div class="donate-success-amount" id="donateSuccessAmt">Rs 251</div>
+            <p id="donateSuccessMessage">
+              Your seva has been recorded and the dashboard will refresh with the latest verified totals.
+            </p>
+
+            <div class="donate-receipt-card">
+              <div class="donate-receipt-head">
+                <strong>Receipt ready</strong>
+                <span id="donateReceiptNumber">TS-000000-000000</span>
+              </div>
+              <div class="donate-receipt-grid">
+                <div>
+                  <span>Purpose</span>
+                  <strong id="donateReceiptPurpose">Annadanam Seva</strong>
+                </div>
+                <div>
+                  <span>Issued</span>
+                  <strong id="donateReceiptIssuedAt">Now</strong>
+                </div>
+                <div>
+                  <span>Payment method</span>
+                  <strong id="donateReceiptMethod">Online</strong>
+                </div>
+                <div>
+                  <span>Donor</span>
+                  <strong id="donateReceiptDonor">Guest Devotee</strong>
+                </div>
+              </div>
+              <div class="donate-receipt-meta">
+                <div><span>Order ID</span><code id="donateReceiptOrder">-</code></div>
+                <div><span>Payment ID</span><code id="donateReceiptPayment">-</code></div>
+              </div>
+            </div>
+
+            <div class="donate-success-actions">
+              <button class="btn btn-p" type="button" onclick="downloadLatestDonationReceipt()">
+                Download Receipt
+              </button>
+              <button class="btn btn-o" type="button" onclick="openDonationDashboard()">
+                Donation Dashboard
+              </button>
+              <button class="donation-link-btn donation-link-btn-muted" type="button" onclick="closeDonateModal()">
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="ovl" id="donationDashboardOvl">
+      <div class="modal donation-dashboard-modal" style="max-width: 920px">
+        <div class="mhdr">
+          <button class="xbtn" onclick="closeDonationDashboard()">
+            <svg viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" /></svg>
+          </button>
+          <h3>Donation Dashboard</h3>
+          <div class="donation-live-pill" id="donationDashboardLivePill">Live updates ready</div>
+        </div>
+        <div class="mpad donation-dashboard-body">
+          <div class="donation-dashboard-hero">
+            <div>
+              <strong>Verified donations, receipts, history and impact updates in one place.</strong>
+              <p>
+                This dashboard refreshes from the backend and also listens for new verified donations while it is open.
+              </p>
+            </div>
+            <div class="donation-dashboard-hero-actions">
+              <button class="btn btn-p" type="button" onclick="openDonateModal()">Start Real Seva</button>
+              <button class="btn btn-o" type="button" onclick="refreshDonationDashboard()">Refresh now</button>
+            </div>
+          </div>
+
+          <div class="donation-dashboard-loading" id="donationDashboardLoading">Loading donation dashboard...</div>
+
+          <div id="donationDashboardContent" class="donation-dashboard-content hide">
+            <div class="donation-summary-grid">
+              <div class="donation-summary-card">
+                <span>Total raised</span>
+                <strong id="donationSummaryRaised">Rs 0</strong>
+                <small id="donationSummaryRaisedHint">Verified community total</small>
+              </div>
+              <div class="donation-summary-card">
+                <span>Total donations</span>
+                <strong id="donationSummaryCount">0</strong>
+                <small id="donationSummaryCountHint">Successful payments captured</small>
+              </div>
+              <div class="donation-summary-card">
+                <span>Average seva</span>
+                <strong id="donationSummaryAverage">Rs 0</strong>
+                <small id="donationSummaryAverageHint">Across verified donations</small>
+              </div>
+              <div class="donation-summary-card">
+                <span>Latest update</span>
+                <strong id="donationSummaryLatest">Just now</strong>
+                <small id="donationSummaryLatestHint">Dashboard refresh status</small>
+              </div>
+            </div>
+
+            <div class="donation-dashboard-section">
+              <div class="donation-section-head">
+                <span>Where your money helped</span>
+                <small>Live progress by verified seva campaign.</small>
+              </div>
+              <div class="donation-impact-grid" id="donationImpactGrid"></div>
+            </div>
+
+            <div class="donation-dashboard-columns">
+              <div class="donation-dashboard-section">
+                <div class="donation-section-head">
+                  <span>Your donation history</span>
+                  <small id="donationHistoryMeta">Signed-in receipts will appear here.</small>
+                </div>
+                <div class="donation-history-list" id="donationHistoryList"></div>
+              </div>
+
+              <div class="donation-dashboard-section">
+                <div class="donation-section-head">
+                  <span>Recent community donations</span>
+                  <small>Masked donor names with real-time verified totals.</small>
+                </div>
+                <div class="donation-recent-list" id="donationRecentList"></div>
+              </div>
+            </div>
           </div>
         </div>
       </div>
@@ -3486,7 +3836,7 @@
     </script>
     <script>
       (function () {
-      const runtimeVersion = "20260416-otpfix-5";
+      const runtimeVersion = "20260417-mandir-live-4";
         const refreshKey = "ts_frontendRuntimeRefresh_" + runtimeVersion;
         try {
           const storedVersion = localStorage.getItem("ts_frontendRuntimeVersion");
@@ -3539,13 +3889,14 @@
         } catch {}
       })();
     </script>
-  <script src="Script.js?v=20260417-backendfix-1"></script>
+  <script src="Script.js?v=20260417-mandir-live-4"></script>
     <script src="https://cdn.socket.io/4.7.4/socket.io.min.js"></script>
     <!-- Vercel Config & API Backend Scripts -->
-  <script src="config.js?v=20260417-backendfix-1"></script>
-  <script src="api.js?v=20260417-backendfix-1"></script>
-  <script src="socket-client.js?v=20260417-backendfix-1"></script>
-  <script src="webrtc-client.js?v=20260417-backendfix-1"></script>
-  <script src="backend-adapter.js?v=20260417-backendfix-1"></script>
+  <script src="config.js?v=20260417-mandir-live-4"></script>
+  <script src="api.js?v=20260417-mandir-live-4"></script>
+  <script src="socket-client.js?v=20260417-mandir-live-4"></script>
+  <script src="webrtc-client.js?v=20260417-mandir-live-4"></script>
+  <script src="backend-adapter.js?v=20260417-mandir-live-4"></script>
+  <script src="donation-module.js?v=20260417-mandir-live-4"></script>
   </body>
 </html>

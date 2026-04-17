@@ -441,6 +441,14 @@ const API = (() => {
       });
     },
 
+    async getDonationDashboard() {
+      return request("/payments/donations/dashboard");
+    },
+
+    async getDonationHistory() {
+      return request("/payments/donations/history");
+    },
+
     // Upload
     uploadFile,
     uploadBase64,

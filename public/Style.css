@@ -8793,6 +8793,1436 @@ video {
 }
 
 /* ============================================================
+   DONATION SYSTEM ENHANCEMENTS
+   ============================================================ */
+.mandir-action-trigger {
+  width: 46px;
+  height: 46px;
+  border: none;
+  border-radius: 16px;
+  background: linear-gradient(135deg, rgba(74, 46, 42, 0.16), rgba(122, 92, 86, 0.22));
+  color: var(--p);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition:
+    transform 0.18s ease,
+    box-shadow 0.18s ease,
+    background 0.18s ease;
+  box-shadow: 0 10px 24px rgba(74, 46, 42, 0.14);
+}
+.mandir-action-trigger:hover {
+  transform: translateY(-1px);
+  background: linear-gradient(135deg, rgba(74, 46, 42, 0.22), rgba(122, 92, 86, 0.28));
+}
+.mandir-action-trigger svg {
+  width: 20px;
+  height: 20px;
+  fill: currentColor;
+}
+#mandirActionMenuOvl {
+  display: none;
+  padding: 0;
+  background: transparent;
+}
+#mandirActionMenuOvl.show {
+  display: block;
+}
+.mandir-action-menu {
+  position: fixed;
+  top: var(--mandir-menu-top, 80px);
+  bottom: auto;
+  left: var(--mandir-menu-left, calc(100vw - 332px));
+  width: min(var(--mandir-menu-width, 320px), calc(100vw - 24px));
+  max-width: 320px;
+  transform-origin: top right;
+}
+.mandir-action-menu .more-menu-item {
+  align-items: flex-start;
+}
+.mandir-action-copy {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  min-width: 0;
+}
+.mandir-action-copy small {
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--t3);
+  font-weight: 500;
+}
+
+.donate-modal-shell {
+  overflow: hidden;
+}
+.donate-status-chip,
+.donation-live-pill {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 32px;
+  padding: 6px 12px;
+  border-radius: 999px;
+  background: rgba(74, 46, 42, 0.08);
+  color: var(--p);
+  font-size: 12px;
+  font-weight: 700;
+  text-align: center;
+}
+.donate-hero-card,
+.donation-dashboard-hero {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 18px;
+  border-radius: 20px;
+  border: 1px solid rgba(74, 46, 42, 0.1);
+  background:
+    radial-gradient(circle at top right, rgba(255, 255, 255, 0.7), transparent 38%),
+    linear-gradient(135deg, rgba(247, 240, 233, 0.98), rgba(255, 249, 243, 0.98));
+  box-shadow:
+    0 18px 34px rgba(74, 46, 42, 0.09),
+    inset 0 1px 0 rgba(255, 255, 255, 0.56);
+}
+.donation-dashboard-hero {
+  padding: 20px 22px;
+}
+.donation-dashboard-hero strong,
+.donate-hero-card strong {
+  display: block;
+  font-size: 16px;
+  line-height: 1.4;
+  color: var(--t);
+  margin-bottom: 6px;
+}
+.donation-dashboard-hero p {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.65;
+  color: var(--t2);
+}
+.donation-link-btn {
+  border: none;
+  background: rgba(74, 46, 42, 0.08);
+  color: var(--p);
+  border-radius: 14px;
+  padding: 11px 14px;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+  white-space: nowrap;
+  transition:
+    background 0.18s ease,
+    transform 0.18s ease;
+}
+.donation-link-btn:hover {
+  background: rgba(74, 46, 42, 0.14);
+}
+.donation-link-btn:active {
+  transform: translateY(1px);
+}
+.donation-link-btn-muted {
+  background: transparent;
+  color: var(--t3);
+}
+.donation-section-head {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 22px 0 10px;
+}
+.donation-section-head.compact {
+  margin-top: 18px;
+}
+.donation-section-head span {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--t);
+}
+.donation-section-head small {
+  font-size: 12px;
+  color: var(--t3);
+  text-align: right;
+}
+.donate-campaign-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+.donate-campaign-card {
+  width: 100%;
+  border: 1px solid rgba(74, 46, 42, 0.1);
+  border-radius: 18px;
+  background: var(--bg);
+  color: var(--t);
+  padding: 14px;
+  text-align: left;
+  cursor: pointer;
+  transition:
+    transform 0.18s ease,
+    border-color 0.18s ease,
+    box-shadow 0.18s ease,
+    background 0.18s ease;
+}
+.donate-campaign-card:hover {
+  transform: translateY(-1px);
+  border-color: rgba(74, 46, 42, 0.24);
+  box-shadow: 0 12px 24px rgba(74, 46, 42, 0.08);
+}
+.donate-campaign-card.selected {
+  border-color: var(--p);
+  background: linear-gradient(135deg, rgba(74, 46, 42, 0.08), rgba(255, 255, 255, 0.95));
+  box-shadow: 0 14px 28px rgba(74, 46, 42, 0.12);
+}
+.donate-campaign-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+.donate-campaign-top strong {
+  font-size: 14px;
+  line-height: 1.4;
+}
+.donate-campaign-dot {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+.donate-campaign-card p {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.55;
+  color: var(--t2);
+}
+.donate-donor-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+.donate-field-input {
+  width: 100%;
+  border: 1.5px solid rgba(74, 46, 42, 0.14);
+  border-radius: 14px;
+  background: var(--bg2);
+  color: var(--t);
+  padding: 12px 14px;
+  font-size: 14px;
+  outline: none;
+  transition:
+    border-color 0.18s ease,
+    background 0.18s ease,
+    box-shadow 0.18s ease;
+}
+.donate-field-input:focus {
+  border-color: var(--p);
+  background: var(--bg);
+  box-shadow: 0 0 0 4px rgba(74, 46, 42, 0.08);
+}
+.donate-preview-card,
+.donate-receipt-card,
+.donation-summary-card,
+.donation-history-item,
+.donation-recent-item,
+.donation-impact-card {
+  border: 1px solid rgba(74, 46, 42, 0.1);
+  border-radius: 18px;
+  background: var(--bg);
+  box-shadow: 0 12px 28px rgba(74, 46, 42, 0.06);
+}
+.donate-preview-card {
+  margin-top: 14px;
+  padding: 14px 16px;
+  background: linear-gradient(135deg, rgba(247, 240, 233, 0.9), rgba(255, 255, 255, 0.96));
+}
+.donate-preview-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: 13px;
+  color: var(--t2);
+}
+.donate-preview-row + .donate-preview-row {
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid rgba(74, 46, 42, 0.08);
+}
+.donate-preview-row strong {
+  color: var(--t);
+}
+.donate-pay-amount {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 28px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.14);
+}
+.donate-success-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0 auto 10px;
+  padding: 7px 14px;
+  border-radius: 999px;
+  background: rgba(67, 160, 71, 0.12);
+  color: #2e7d32;
+  font-size: 12px;
+  font-weight: 800;
+}
+.donate-receipt-card {
+  margin-top: 18px;
+  padding: 16px;
+  text-align: left;
+}
+.donate-receipt-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+.donate-receipt-head strong {
+  font-size: 15px;
+  color: var(--t);
+}
+.donate-receipt-head span {
+  font-size: 12px;
+  color: var(--p);
+  font-weight: 800;
+}
+.donate-receipt-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+.donate-receipt-grid span,
+.donate-receipt-meta span {
+  display: block;
+  font-size: 11px;
+  color: var(--t3);
+  margin-bottom: 4px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.donate-receipt-grid strong,
+.donate-receipt-meta code {
+  font-size: 13px;
+  color: var(--t);
+  font-weight: 700;
+  word-break: break-word;
+}
+.donate-receipt-meta {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 10px;
+  margin-top: 14px;
+  padding-top: 14px;
+  border-top: 1px solid rgba(74, 46, 42, 0.08);
+}
+.donate-receipt-meta code {
+  font-family: inherit;
+}
+.donate-success-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 10px;
+  margin-top: 18px;
+}
+.donation-dashboard-modal .mhdr {
+  align-items: center;
+}
+.donation-dashboard-body {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+.donation-dashboard-hero-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+.donation-dashboard-loading {
+  padding: 24px;
+  border-radius: 18px;
+  background: rgba(74, 46, 42, 0.05);
+  color: var(--t2);
+  text-align: center;
+  font-size: 14px;
+}
+.donation-summary-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+}
+.donation-summary-card {
+  padding: 16px;
+}
+.donation-summary-card span {
+  display: block;
+  font-size: 12px;
+  color: var(--t3);
+  margin-bottom: 8px;
+}
+.donation-summary-card strong {
+  display: block;
+  font-size: 24px;
+  line-height: 1.2;
+  color: var(--p);
+}
+.donation-summary-card small {
+  display: block;
+  margin-top: 8px;
+  font-size: 12px;
+  color: var(--t2);
+}
+.donation-dashboard-columns {
+  display: grid;
+  grid-template-columns: 1.15fr 0.85fr;
+  gap: 16px;
+}
+.donation-dashboard-section {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.donation-impact-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+.donation-impact-card {
+  padding: 16px;
+}
+.donation-impact-top {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 14px;
+  margin-bottom: 12px;
+}
+.donation-impact-top strong {
+  display: block;
+  font-size: 15px;
+  margin-bottom: 6px;
+  color: var(--t);
+}
+.donation-impact-top p {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.55;
+  color: var(--t2);
+}
+.donation-impact-amount {
+  font-size: 13px;
+  font-weight: 800;
+  white-space: nowrap;
+}
+.donation-impact-bar {
+  height: 8px;
+  border-radius: 999px;
+  background: rgba(74, 46, 42, 0.08);
+  overflow: hidden;
+}
+.donation-impact-fill {
+  height: 100%;
+  border-radius: inherit;
+}
+.donation-impact-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 10px;
+  font-size: 12px;
+  color: var(--t3);
+}
+.donation-history-list,
+.donation-recent-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.donation-history-item,
+.donation-recent-item {
+  padding: 14px 16px;
+}
+.donation-history-top,
+.donation-recent-top {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+.donation-history-top strong,
+.donation-recent-top strong {
+  display: block;
+  font-size: 14px;
+  color: var(--t);
+}
+.donation-history-top span,
+.donation-recent-top span {
+  display: block;
+  margin-top: 4px;
+  font-size: 12px;
+  color: var(--t3);
+}
+.donation-history-amount,
+.donation-recent-amount {
+  font-size: 14px;
+  font-weight: 800;
+  color: var(--p);
+  white-space: nowrap;
+}
+.donation-history-meta,
+.donation-recent-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 12px;
+}
+.donation-history-meta span,
+.donation-recent-meta span {
+  display: inline-flex;
+  align-items: center;
+  min-height: 28px;
+  padding: 6px 10px;
+  border-radius: 999px;
+  background: rgba(74, 46, 42, 0.07);
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--t2);
+}
+.donation-history-actions {
+  display: flex;
+  gap: 10px;
+  margin-top: 12px;
+}
+#liveDarshanOvl {
+  padding: 10px;
+  overscroll-behavior: contain;
+}
+.live-darshan-modal {
+  padding: 0;
+  width: min(98vw, 1480px);
+  max-width: min(98vw, 1480px) !important;
+  height: min(calc(100dvh - 20px), 880px);
+  max-height: calc(100dvh - 20px) !important;
+  overflow: hidden;
+  background:
+    radial-gradient(circle at top left, rgba(213, 116, 32, 0.18), transparent 34%),
+    radial-gradient(circle at bottom right, rgba(164, 39, 78, 0.16), transparent 30%),
+    linear-gradient(180deg, #241311 0%, #12090a 100%);
+  color: #fff6ef;
+}
+.live-darshan-shell {
+  display: grid;
+  grid-template-columns: minmax(320px, 470px) minmax(0, 1fr);
+  gap: 14px;
+  padding: 14px;
+  align-items: stretch;
+  height: 100%;
+  min-height: 0;
+}
+.live-darshan-stage-wrap {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  height: 100%;
+  min-height: 0;
+}
+.live-darshan-stage {
+  position: relative;
+  width: auto;
+  height: 100%;
+  max-width: min(100%, 470px);
+  aspect-ratio: 10 / 16.4;
+  border-radius: 28px;
+  overflow: hidden;
+  isolation: isolate;
+  touch-action: pan-y;
+  user-select: none;
+  background:
+    radial-gradient(circle at top center, rgba(255, 169, 109, 0.16), transparent 32%),
+    linear-gradient(180deg, #22100f 0%, #130809 100%);
+  border: 1px solid rgba(255, 235, 225, 0.12);
+  box-shadow: 0 34px 84px rgba(0, 0, 0, 0.42);
+}
+.live-darshan-stage::before {
+  content: "";
+  position: absolute;
+  inset: 8px;
+  border-radius: 20px;
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  pointer-events: none;
+  z-index: 0;
+}
+.live-darshan-media-frame {
+  position: absolute;
+  inset: 60px 12px 70px;
+  z-index: 0;
+  border-radius: 20px;
+  overflow: hidden;
+  transition: transform 0.22s ease;
+  background:
+    radial-gradient(circle at top, rgba(255, 214, 173, 0.12), transparent 38%),
+    linear-gradient(180deg, rgba(28, 12, 12, 0.96), rgba(46, 21, 18, 0.8));
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.08),
+    0 24px 48px rgba(0, 0, 0, 0.2);
+}
+.live-darshan-video {
+  width: 100%;
+  height: 100%;
+  display: block;
+  object-fit: contain;
+  object-position: center center;
+  background:
+    radial-gradient(circle at center, rgba(255, 224, 198, 0.06), transparent 50%),
+    #120708;
+}
+.live-darshan-gradient {
+  position: absolute;
+  left: 0;
+  right: 0;
+  pointer-events: none;
+  z-index: 1;
+}
+.live-darshan-gradient-top {
+  top: 0;
+  height: 22%;
+  background: linear-gradient(180deg, rgba(0, 0, 0, 0.68) 0%, rgba(0, 0, 0, 0) 100%);
+}
+.live-darshan-gradient-bottom {
+  bottom: 0;
+  height: 24%;
+  background: linear-gradient(180deg, rgba(0, 0, 0, 0) 0%, rgba(0, 0, 0, 0.64) 100%);
+}
+.live-darshan-topbar,
+.live-darshan-bottom,
+.live-darshan-side-actions,
+.live-darshan-reaction-lane {
+  position: absolute;
+  z-index: 2;
+}
+.live-darshan-topbar {
+  top: 0;
+  left: 0;
+  right: 0;
+  padding: 12px 12px 0;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+}
+.live-darshan-host {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  min-width: 0;
+}
+.live-darshan-avatar {
+  width: 38px;
+  height: 38px;
+  border-radius: 50%;
+  object-fit: cover;
+  border: 2px solid rgba(255, 255, 255, 0.85);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.28);
+}
+.live-darshan-host-copy {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+.live-darshan-host-line {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.live-darshan-host-line strong {
+  font-size: 13px;
+  font-weight: 800;
+}
+.live-darshan-host-copy span {
+  font-size: 10px;
+  color: rgba(255, 244, 236, 0.78);
+}
+.live-darshan-viewers-pill {
+  padding: 4px 8px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.14);
+  color: #fff;
+  font-size: 11px;
+  font-weight: 700;
+  backdrop-filter: blur(10px);
+}
+.live-darshan-top-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.live-darshan-icon-btn,
+.live-darshan-action-pill,
+.live-darshan-send-btn {
+  border: none;
+  cursor: pointer;
+  transition: transform 0.18s ease, background 0.18s ease, opacity 0.18s ease;
+}
+.live-darshan-icon-btn:hover,
+.live-darshan-action-pill:hover,
+.live-darshan-send-btn:hover {
+  transform: translateY(-1px);
+}
+.live-darshan-icon-btn {
+  min-height: 36px;
+  padding: 0 11px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.14);
+  color: #fff;
+  font-size: 12px;
+  font-weight: 700;
+  backdrop-filter: blur(12px);
+}
+.live-darshan-close-btn {
+  background: rgba(255, 255, 255, 0.14);
+  border-color: rgba(255, 255, 255, 0.14);
+  color: #fff;
+}
+.live-darshan-side-actions {
+  right: 12px;
+  bottom: 82px;
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+.live-darshan-action-pill {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.14);
+  color: #fff;
+  font-size: 18px;
+  font-weight: 700;
+  backdrop-filter: blur(12px);
+  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.24);
+}
+.live-darshan-reaction-lane {
+  right: 14px;
+  bottom: 128px;
+  width: 46px;
+  height: 136px;
+  pointer-events: none;
+}
+.live-darshan-float-heart {
+  position: absolute;
+  bottom: 0;
+  right: 0;
+  font-size: 20px;
+  animation: liveDarshanFloatHeart 1.6s ease-out forwards;
+  filter: drop-shadow(0 10px 20px rgba(0, 0, 0, 0.35));
+}
+@keyframes liveDarshanFloatHeart {
+  0% {
+    transform: translateY(0) scale(0.8);
+    opacity: 0;
+  }
+  20% {
+    opacity: 1;
+  }
+  100% {
+    transform: translateY(-145px) translateX(var(--heart-drift, -8px)) scale(1.3);
+    opacity: 0;
+  }
+}
+.live-darshan-bottom {
+  left: 0;
+  right: 0;
+  bottom: 0;
+  padding: 0 12px 12px;
+}
+.live-darshan-heading-wrap {
+  max-width: calc(100% - 60px);
+  padding: 11px 12px;
+  border-radius: 16px;
+  transition: transform 0.22s ease;
+  background: linear-gradient(180deg, rgba(14, 7, 8, 0.82), rgba(14, 7, 8, 0.52));
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow: 0 18px 34px rgba(0, 0, 0, 0.24);
+  backdrop-filter: blur(16px);
+}
+.live-darshan-mobile-hint {
+  display: none;
+}
+.live-darshan-nav-btn {
+  position: absolute;
+  top: 50%;
+  z-index: 3;
+  width: 42px;
+  height: 42px;
+  margin-top: -21px;
+  border-radius: 50%;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: rgba(14, 7, 8, 0.46);
+  color: #fff;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  backdrop-filter: blur(14px);
+  box-shadow: 0 16px 30px rgba(0, 0, 0, 0.2);
+  transition: transform 0.18s ease, background 0.18s ease, opacity 0.18s ease;
+}
+.live-darshan-nav-btn:hover {
+  transform: translateY(-1px);
+  background: rgba(26, 13, 14, 0.62);
+}
+.live-darshan-nav-btn svg {
+  width: 18px;
+  height: 18px;
+  stroke: currentColor;
+  fill: none;
+  stroke-width: 2.2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.live-darshan-nav-btn-prev {
+  left: 22px;
+}
+.live-darshan-nav-btn-next {
+  right: 22px;
+}
+.live-darshan-heading {
+  font-size: 15px;
+  font-weight: 800;
+  line-height: 1.3;
+}
+.live-darshan-subheading {
+  margin-top: 4px;
+  font-size: 10px;
+  line-height: 1.45;
+  color: rgba(255, 244, 236, 0.8);
+}
+.live-darshan-comments {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-height: none;
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding-right: 6px;
+  margin-right: -6px;
+  scrollbar-width: none;
+}
+.live-darshan-comments::-webkit-scrollbar {
+  display: none;
+}
+.live-darshan-comment {
+  max-width: 100%;
+  padding: 8px 10px;
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.18);
+  backdrop-filter: blur(12px);
+}
+.live-darshan-comment strong {
+  display: block;
+  font-size: 11px;
+  font-weight: 800;
+  margin-bottom: 3px;
+}
+.live-darshan-comment span {
+  display: block;
+  font-size: 11px;
+  line-height: 1.4;
+  color: rgba(255, 247, 240, 0.92);
+}
+.live-darshan-comment-form {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
+}
+.live-darshan-comment-input {
+  flex: 1;
+  min-width: 0;
+  height: 38px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.08);
+  color: #fff;
+  padding: 0 14px;
+  font-size: 13px;
+  outline: none;
+  backdrop-filter: blur(14px);
+}
+.live-darshan-comment-input::placeholder {
+  color: rgba(255, 244, 236, 0.68);
+}
+.live-darshan-send-btn {
+  height: 38px;
+  min-width: 68px;
+  padding: 0 14px;
+  border-radius: 999px;
+  background: linear-gradient(135deg, #ff7b54, #ff416c);
+  color: #fff;
+  font-size: 13px;
+  font-weight: 800;
+  box-shadow: 0 14px 32px rgba(255, 75, 102, 0.3);
+}
+.live-darshan-panel {
+  display: grid;
+  grid-template-rows: auto auto auto auto minmax(0, 1fr) auto auto;
+  gap: 10px;
+  min-width: 0;
+  min-height: 0;
+  height: 100%;
+  overflow: hidden;
+}
+.live-darshan-panel-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+.live-darshan-panel-head h3 {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 800;
+  color: #fff6ef;
+}
+.live-darshan-panel-head p {
+  margin: 6px 0 0;
+  font-size: 11px;
+  line-height: 1.5;
+  color: rgba(255, 241, 232, 0.74);
+}
+.live-darshan-summary-card {
+  padding: 12px 14px;
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow: 0 18px 38px rgba(0, 0, 0, 0.2);
+}
+.live-darshan-chat-card {
+  padding: 12px 14px;
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow: 0 18px 38px rgba(0, 0, 0, 0.2);
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+.live-darshan-chat-head {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 6px;
+}
+.live-darshan-chat-head span {
+  font-size: 13px;
+  font-weight: 800;
+  color: #fff;
+}
+.live-darshan-chat-head small {
+  font-size: 10px;
+  color: rgba(255, 241, 232, 0.58);
+}
+.live-darshan-summary-top {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.live-darshan-summary-top strong {
+  font-size: 13px;
+  font-weight: 800;
+  color: #fff;
+}
+.live-darshan-summary-card p {
+  margin: 6px 0 0;
+  font-size: 11px;
+  line-height: 1.45;
+  color: rgba(255, 241, 232, 0.76);
+}
+.live-darshan-summary-nav {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 0;
+  padding: 10px 12px;
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+.live-darshan-stream-indicator {
+  display: inline-flex;
+  align-items: center;
+  min-height: 32px;
+  padding: 6px 10px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  color: rgba(255, 244, 236, 0.9);
+  font-size: 11px;
+  font-weight: 800;
+}
+.live-darshan-summary-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.live-darshan-panel-btn {
+  min-height: 32px;
+  padding: 0 11px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.06);
+  color: #fff;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  cursor: pointer;
+  font-size: 11px;
+  font-weight: 800;
+  transition: transform 0.18s ease, background 0.18s ease, border-color 0.18s ease;
+}
+.live-darshan-panel-btn:hover {
+  transform: translateY(-1px);
+  background: rgba(255, 255, 255, 0.1);
+  border-color: rgba(255, 255, 255, 0.18);
+}
+.live-darshan-panel-btn svg {
+  width: 14px;
+  height: 14px;
+  stroke: currentColor;
+  fill: none;
+  stroke-width: 2.2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.live-darshan-key-hint {
+  margin-top: 0;
+  padding: 0 2px;
+  font-size: 10px;
+  color: rgba(255, 241, 232, 0.58);
+}
+.live-darshan-list-head {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 12px;
+}
+.live-darshan-list-head span {
+  font-size: 14px;
+  font-weight: 800;
+  color: #fff;
+}
+.live-darshan-list-head small {
+  font-size: 11px;
+  color: rgba(255, 241, 232, 0.58);
+}
+.live-darshan-list {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  align-content: start;
+}
+.live-darshan-card {
+  padding: 10px;
+  border-radius: 14px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.05);
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: transform 0.18s ease, border-color 0.18s ease, background 0.18s ease, box-shadow 0.18s ease;
+}
+.live-darshan-card:hover {
+  transform: translateY(-2px);
+  border-color: rgba(255, 190, 150, 0.38);
+  box-shadow: 0 18px 36px rgba(0, 0, 0, 0.18);
+}
+.live-darshan-card.active {
+  border-color: rgba(255, 139, 84, 0.62);
+  background: linear-gradient(180deg, rgba(255, 126, 84, 0.14), rgba(255, 255, 255, 0.08));
+  box-shadow: 0 20px 40px rgba(255, 92, 92, 0.16);
+}
+.live-darshan-card-top {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin-bottom: 7px;
+}
+.live-darshan-card-top img {
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  object-fit: cover;
+  border: 2px solid rgba(255, 255, 255, 0.8);
+}
+.live-darshan-card-top strong {
+  display: block;
+  font-size: 12px;
+  font-weight: 800;
+  color: #fff;
+}
+.live-darshan-card-top span {
+  display: block;
+  margin-top: 2px;
+  font-size: 9px;
+  color: rgba(255, 240, 232, 0.72);
+}
+.live-darshan-card-title {
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1.35;
+  color: rgba(255, 248, 242, 0.96);
+  min-height: 0;
+}
+.live-darshan-card-meta {
+  margin-top: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  font-size: 9px;
+  color: rgba(255, 240, 232, 0.68);
+}
+.live-darshan-card-meta .live-badge {
+  font-size: 9px;
+  padding: 2px 6px;
+}
+[data-dark] .live-darshan-modal {
+  background:
+    radial-gradient(circle at top left, rgba(213, 116, 32, 0.18), transparent 34%),
+    radial-gradient(circle at bottom right, rgba(164, 39, 78, 0.16), transparent 30%),
+    linear-gradient(180deg, #241311 0%, #12090a 100%);
+}
+@media (max-width: 1180px) {
+  .live-darshan-shell {
+    grid-template-columns: 1fr;
+    height: 100%;
+  }
+  .live-darshan-stage {
+    width: auto;
+    height: min(100%, 620px);
+    max-width: min(100%, 560px);
+  }
+  .live-darshan-stage-wrap {
+    height: auto;
+  }
+  .live-darshan-panel {
+    height: auto;
+    grid-template-rows: auto;
+    overflow: visible;
+  }
+  .live-darshan-chat-card {
+    min-height: 260px;
+  }
+  .live-darshan-summary-nav {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+  .live-darshan-list {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+@media (min-width: 821px) and (max-height: 900px) {
+  #liveDarshanOvl {
+    padding: 8px;
+  }
+  .live-darshan-modal {
+    height: calc(100dvh - 16px);
+    max-height: calc(100dvh - 16px) !important;
+  }
+  .live-darshan-shell {
+    gap: 12px;
+    padding: 12px;
+  }
+  .live-darshan-panel {
+    gap: 8px;
+  }
+  .live-darshan-comments {
+    gap: 6px;
+  }
+}
+@media (max-width: 820px) {
+  #liveDarshanOvl {
+    padding: 0;
+  }
+  .live-darshan-modal {
+    width: 100vw;
+    max-width: 100vw !important;
+    height: 100dvh;
+    max-height: 100dvh !important;
+    border-radius: 0;
+    overflow: hidden;
+  }
+  .live-darshan-shell {
+    display: block;
+    height: 100%;
+    padding: 0;
+  }
+  .live-darshan-stage-wrap {
+    height: 100%;
+  }
+  .live-darshan-stage {
+    width: 100%;
+    height: 100%;
+    max-width: none;
+    aspect-ratio: auto;
+    border-radius: 0;
+    border: none;
+    box-shadow: none;
+    touch-action: none;
+  }
+  .live-darshan-stage::before {
+    display: none;
+  }
+  .live-darshan-media-frame {
+    inset: 0;
+    border-radius: 0;
+    border: none;
+    box-shadow: none;
+    background: #000;
+  }
+  .live-darshan-video {
+    object-fit: cover;
+  }
+  .live-darshan-gradient-top {
+    height: 24%;
+  }
+  .live-darshan-gradient-bottom {
+    height: 30%;
+  }
+  .live-darshan-topbar {
+    padding: max(12px, env(safe-area-inset-top, 0px)) 12px 0;
+    gap: 8px;
+  }
+  .live-darshan-host {
+    gap: 8px;
+  }
+  .live-darshan-avatar {
+    width: 38px;
+    height: 38px;
+  }
+  .live-darshan-host-line strong {
+    font-size: 14px;
+  }
+  .live-darshan-host-copy span {
+    font-size: 11px;
+  }
+  .live-darshan-icon-btn {
+    height: 38px;
+    padding: 0 12px;
+    font-size: 11px;
+  }
+  .live-darshan-nav-btn {
+    display: none;
+  }
+  .live-darshan-side-actions {
+    right: 10px;
+    bottom: calc(env(safe-area-inset-bottom, 0px) + 112px);
+    gap: 8px;
+  }
+  .live-darshan-action-pill {
+    width: 38px;
+    height: 38px;
+    font-size: 16px;
+  }
+  .live-darshan-reaction-lane {
+    right: 12px;
+    bottom: calc(env(safe-area-inset-bottom, 0px) + 164px);
+    height: 138px;
+  }
+  .live-darshan-bottom {
+    padding: 0 12px calc(env(safe-area-inset-bottom, 0px) + 18px);
+  }
+  .live-darshan-heading-wrap {
+    max-width: calc(100% - 58px);
+    padding: 12px 12px 13px;
+    border-radius: 18px;
+  }
+  .live-darshan-mobile-hint {
+    display: inline-flex;
+    align-items: center;
+    margin-top: 10px;
+    padding: 6px 10px;
+    max-width: min(100%, 280px);
+    border-radius: 999px;
+    background: rgba(14, 7, 8, 0.56);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    color: rgba(255, 244, 236, 0.76);
+    font-size: 10px;
+    font-weight: 700;
+    backdrop-filter: blur(14px);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .live-darshan-panel {
+    display: none;
+  }
+  .live-darshan-heading {
+    font-size: 15px;
+  }
+  .live-darshan-subheading {
+    font-size: 11px;
+  }
+}
+.donation-inline-btn {
+  border: none;
+  background: rgba(74, 46, 42, 0.08);
+  color: var(--p);
+  border-radius: 12px;
+  padding: 9px 12px;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+}
+.donation-empty-state {
+  padding: 26px 18px;
+  text-align: center;
+  border-radius: 18px;
+  border: 1px dashed rgba(74, 46, 42, 0.16);
+  color: var(--t3);
+  background: rgba(74, 46, 42, 0.03);
+}
+
+[data-dark] .mandir-action-trigger {
+  background: linear-gradient(135deg, rgba(251, 238, 219, 0.08), rgba(251, 238, 219, 0.12));
+  color: #f3d9c8;
+  box-shadow: 0 12px 24px rgba(0, 0, 0, 0.28);
+}
+[data-dark] .mandir-action-copy small {
+  color: var(--dark-muted-text);
+}
+[data-dark] .donate-status-chip,
+[data-dark] .donation-live-pill {
+  background: rgba(243, 217, 200, 0.1);
+  color: #f3d9c8;
+}
+[data-dark] .donate-hero-card,
+[data-dark] .donation-dashboard-hero,
+[data-dark] .donate-campaign-card,
+[data-dark] .donate-preview-card,
+[data-dark] .donate-receipt-card,
+[data-dark] .donation-summary-card,
+[data-dark] .donation-history-item,
+[data-dark] .donation-recent-item,
+[data-dark] .donation-impact-card {
+  border-color: rgba(251, 238, 219, 0.08);
+  background:
+    radial-gradient(circle at top right, rgba(255, 255, 255, 0.04), transparent 40%),
+    linear-gradient(135deg, rgba(37, 24, 21, 0.96), rgba(28, 18, 15, 0.98));
+  box-shadow: 0 18px 32px rgba(0, 0, 0, 0.26);
+}
+[data-dark] .donation-link-btn,
+[data-dark] .donation-inline-btn {
+  background: rgba(243, 217, 200, 0.1);
+  color: #f3d9c8;
+}
+[data-dark] .donation-link-btn-muted {
+  background: transparent;
+  color: var(--dark-muted-text);
+}
+[data-dark] .donation-section-head small,
+[data-dark] .donation-dashboard-loading,
+[data-dark] .donation-history-top span,
+[data-dark] .donation-recent-top span,
+[data-dark] .donation-impact-meta,
+[data-dark] .donate-preview-row,
+[data-dark] .donate-receipt-grid span,
+[data-dark] .donate-receipt-meta span {
+  color: var(--dark-muted-text);
+}
+[data-dark] .donate-field-input {
+  border-color: rgba(251, 238, 219, 0.12);
+  background: rgba(43, 28, 24, 0.92);
+}
+[data-dark] .donate-field-input:focus {
+  border-color: #f3d9c8;
+  background: rgba(57, 38, 33, 0.98);
+  box-shadow: 0 0 0 4px rgba(243, 217, 200, 0.08);
+}
+[data-dark] .donation-history-meta span,
+[data-dark] .donation-recent-meta span {
+  background: rgba(243, 217, 200, 0.08);
+  color: #f4ebdf;
+}
+[data-dark] .donation-empty-state {
+  border-color: rgba(243, 217, 200, 0.16);
+  background: rgba(243, 217, 200, 0.03);
+}
+
+@media (max-width: 880px) {
+  .donation-summary-grid,
+  .donation-dashboard-columns,
+  .donation-impact-grid {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+@media (max-width: 640px) {
+  .mandir-action-menu {
+    top: var(--mandir-menu-top, 74px);
+    width: min(var(--mandir-menu-width, 320px), calc(100vw - 18px));
+  }
+  .donate-hero-card,
+  .donation-dashboard-hero {
+    flex-direction: column;
+  }
+  .donate-campaign-grid,
+  .donate-donor-grid,
+  .donation-summary-grid,
+  .donation-dashboard-columns,
+  .donation-impact-grid,
+  .donate-receipt-grid {
+    grid-template-columns: 1fr;
+  }
+  .donation-section-head {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+  .donation-section-head small {
+    text-align: left;
+  }
+  .donation-dashboard-hero-actions,
+  .donate-success-actions,
+  .donation-history-actions {
+    width: 100%;
+    justify-content: stretch;
+  }
+  .donation-dashboard-hero-actions .btn,
+  .donate-success-actions .btn,
+  .donation-dashboard-hero-actions .donation-link-btn,
+  .donate-success-actions .donation-link-btn {
+    width: 100%;
+    justify-content: center;
+  }
+}
+
+/* ============================================================
    ★ SCROLL & RENDERING PERFORMANCE
    ============================================================ */
 .stories,
