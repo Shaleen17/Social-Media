@@ -2216,7 +2216,9 @@ function showTranslationNoticeOnce(kind, languageCode) {
 
 // ─── Direct MyMemory translation (works without backend) ──────────────────────
 async function translateOneMyMemory(text, targetLang) {
-  const langPair = `auto|${targetLang}`;
+  // MyMemory requires explicit source language — "auto" is NOT supported and
+  // causes it to silently return the original text unchanged.
+  const langPair = `en|${targetLang}`;
   const url = new URL("https://api.mymemory.translated.net/get");
   url.searchParams.set("q", text);
   url.searchParams.set("langpair", langPair);
@@ -2229,9 +2231,14 @@ async function translateOneMyMemory(text, targetLang) {
       headers: { Accept: "application/json" },
     });
     const data = await res.json().catch(() => null);
-    if (!data || data.responseStatus !== 200) return text;
+    if (!data) return text;
+    if (data.responseStatus !== 200) {
+      console.warn("[Translation] MyMemory status:", data.responseStatus, "for lang:", targetLang);
+      return text;
+    }
     return data.responseData?.translatedText || text;
-  } catch {
+  } catch (err) {
+    console.warn("[Translation] MyMemory fetch error:", err.message);
     return text;
   } finally {
     clearTimeout(timer);

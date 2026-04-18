@@ -1,4 +1,4 @@
-self.__TS_SW_VERSION__ = "20260418-translate-fix-1";
+self.__TS_SW_VERSION__ = "20260418-translate-fix-2";
 const TS_STATIC_CACHE = `ts-static-${self.__TS_SW_VERSION__}`;
 
 self.addEventListener("install", (event) => {
