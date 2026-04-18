@@ -1,61 +1,89 @@
 /**
  * translationService.js
  *
- * Uses MyMemory (https://mymemory.translated.net) — a completely free
- * translation API that requires NO installation and NO API key.
- * Works perfectly on Render, Vercel, Railway, and any cloud host.
+ * Dual-provider translation system for Tirth Sutra.
  *
- * Free tier limits:
- *   - 5,000 words / day (anonymous)
- *   - 10,000 words / day if you set MYMEMORY_EMAIL in .env (optional)
+ * Provider 1 (PRIMARY):   Self-hosted LibreTranslate
+ *   → Used when LIBRETRANSLATE_URL is set to a real public HTTPS domain.
+ *   → Free, unlimited, private — runs on your own VPS.
+ *   → Setup guide: see libretranslate_self_hosting_guide.md
  *
- * Supports all your app languages:
- *   en, hi, bn, ta, te, mr (and many more)
+ * Provider 2 (FALLBACK):  MyMemory
+ *   → Used automatically if LibreTranslate is not configured or fails.
+ *   → Free, no installation, no API key, works on Render/Vercel as-is.
+ *   → Limit: 5,000 words/day (10,000 with MYMEMORY_EMAIL set in .env)
+ *
+ * Environment variables (server/.env):
+ *   LIBRETRANSLATE_URL=https://translate.yourdomain.com   ← your VPS domain
+ *   LIBRETRANSLATE_API_KEY=                               ← leave empty for self-hosted
+ *   MYMEMORY_EMAIL=tirthsutra@gmail.com                   ← optional, boosts fallback limit
  */
+
+"use strict";
 
 const AppError = require("../utils/appError");
 
-// ─── Configuration ──────────────────────────────────────────────────────────
+// ─── Configuration helpers ────────────────────────────────────────────────────
 
-const MYMEMORY_BASE_URL = "https://api.mymemory.translated.net";
-const TIMEOUT_MS = 15000;
+const TIMEOUT_MS = 20000;
 
-// Optional: set MYMEMORY_EMAIL in .env to double the daily free limit (10k words/day)
+function getLibreTranslateUrl() {
+  return (process.env.LIBRETRANSLATE_URL || "").trim().replace(/\/+$/, "");
+}
+
+function getLibreTranslateApiKey() {
+  return (process.env.LIBRETRANSLATE_API_KEY || "").trim();
+}
+
 function getMyMemoryEmail() {
   return (process.env.MYMEMORY_EMAIL || "").trim();
 }
 
-// ─── Supported Languages ─────────────────────────────────────────────────────
+/**
+ * Returns true only when LibreTranslate URL is set AND is a real public domain
+ * (not localhost/127.0.0.1) — prevents production config mistakes.
+ */
+function isLibreTranslateConfigured() {
+  const url = getLibreTranslateUrl();
+  if (!url) return false;
+  if (url.includes("127.0.0.1") || url.includes("localhost")) {
+    console.warn(
+      "[Translation] LIBRETRANSLATE_URL is set to localhost — this will NOT work in production.\n" +
+      "             Set it to your public VPS domain, e.g. https://translate.yourdomain.com"
+    );
+    return false;
+  }
+  return true;
+}
 
-// MyMemory supports all standard BCP-47 language codes.
-// We hard-code the list your app actually uses, so no network call is needed
-// to fetch supported languages — which also removes a failure point.
+// ─── Supported languages (static list, no network call needed) ───────────────
+
 const SUPPORTED_LANGUAGES = [
-  { code: "en",    name: "English" },
-  { code: "hi",    name: "Hindi" },
-  { code: "bn",    name: "Bengali" },
-  { code: "ta",    name: "Tamil" },
-  { code: "te",    name: "Telugu" },
-  { code: "mr",    name: "Marathi" },
-  { code: "gu",    name: "Gujarati" },
-  { code: "kn",    name: "Kannada" },
-  { code: "ml",    name: "Malayalam" },
-  { code: "pa",    name: "Punjabi" },
-  { code: "ur",    name: "Urdu" },
-  { code: "sa",    name: "Sanskrit" },
-  { code: "or",    name: "Odia" },
-  { code: "as",    name: "Assamese" },
-  { code: "fr",    name: "French" },
-  { code: "de",    name: "German" },
-  { code: "es",    name: "Spanish" },
-  { code: "pt",    name: "Portuguese" },
-  { code: "ar",    name: "Arabic" },
-  { code: "zh",    name: "Chinese (Simplified)" },
-  { code: "ja",    name: "Japanese" },
-  { code: "ko",    name: "Korean" },
-  { code: "ru",    name: "Russian" },
-  { code: "it",    name: "Italian" },
-  { code: "nl",    name: "Dutch" },
+  { code: "en", name: "English" },
+  { code: "hi", name: "Hindi" },
+  { code: "bn", name: "Bengali" },
+  { code: "ta", name: "Tamil" },
+  { code: "te", name: "Telugu" },
+  { code: "mr", name: "Marathi" },
+  { code: "gu", name: "Gujarati" },
+  { code: "kn", name: "Kannada" },
+  { code: "ml", name: "Malayalam" },
+  { code: "pa", name: "Punjabi" },
+  { code: "ur", name: "Urdu" },
+  { code: "sa", name: "Sanskrit" },
+  { code: "or", name: "Odia" },
+  { code: "as", name: "Assamese" },
+  { code: "fr", name: "French" },
+  { code: "de", name: "German" },
+  { code: "es", name: "Spanish" },
+  { code: "pt", name: "Portuguese" },
+  { code: "ar", name: "Arabic" },
+  { code: "zh", name: "Chinese (Simplified)" },
+  { code: "ja", name: "Japanese" },
+  { code: "ko", name: "Korean" },
+  { code: "ru", name: "Russian" },
+  { code: "it", name: "Italian" },
+  { code: "nl", name: "Dutch" },
 ];
 
 // ─── Validation ───────────────────────────────────────────────────────────────
@@ -64,102 +92,161 @@ function normalizeTexts(texts) {
   if (!Array.isArray(texts)) {
     throw new AppError("texts must be an array", 400);
   }
-
-  const normalized = texts.map((text) => String(text ?? ""));
-
+  const normalized = texts.map((t) => String(t ?? ""));
   if (!normalized.length) {
     throw new AppError("texts array cannot be empty", 400);
   }
-
   if (normalized.length > 100) {
     throw new AppError("Too many texts in one translation request", 400);
   }
-
-  const totalChars = normalized.reduce((sum, text) => sum + text.length, 0);
+  const totalChars = normalized.reduce((s, t) => s + t.length, 0);
   if (totalChars > 30000) {
     throw new AppError("Translation request is too large", 400);
   }
-
   return normalized;
 }
 
-function isLanguageSupported(languageCode) {
-  if (!languageCode || languageCode === "auto") return true;
-  return SUPPORTED_LANGUAGES.some((entry) => entry.code === languageCode);
+function isLanguageSupported(code) {
+  if (!code || code === "auto") return true;
+  return SUPPORTED_LANGUAGES.some((l) => l.code === code);
 }
 
-// ─── MyMemory API call (translates ONE text segment) ─────────────────────────
+// ─── Provider 1: Self-hosted LibreTranslate ───────────────────────────────────
 
-async function translateOneText(text, source, target) {
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), TIMEOUT_MS);
+async function translateWithLibreTranslate(texts, source, target) {
+  const baseUrl = getLibreTranslateUrl();
+  const apiKey = getLibreTranslateApiKey();
 
-  // MyMemory uses "en|hi" format for language pairs
-  const langPair = `${source === "auto" ? "en" : source}|${target}`;
-
-  const url = new URL(`${MYMEMORY_BASE_URL}/get`);
-  url.searchParams.set("q", text);
-  url.searchParams.set("langpair", langPair);
-
-  const email = getMyMemoryEmail();
-  if (email) {
-    url.searchParams.set("de", email);
+  const payload = {
+    q: texts,
+    source: source === "auto" ? "en" : source,
+    target,
+    format: "text",
+  };
+  if (apiKey) {
+    payload.api_key = apiKey;
   }
 
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
+
   try {
-    const response = await fetch(url.toString(), {
-      method: "GET",
+    const response = await fetch(`${baseUrl}/translate`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
       signal: controller.signal,
-      headers: {
-        "Accept": "application/json",
-      },
     });
 
     const data = await response.json().catch(() => null);
 
     if (!response.ok || !data) {
-      throw new AppError("MyMemory translation request failed", 502);
+      throw new AppError(data?.error || "LibreTranslate request failed", 502);
     }
 
-    // MyMemory returns responseStatus 200 on success
-    if (data.responseStatus !== 200) {
-      // 429 = quota exceeded, 403 = language pair unavailable
-      if (data.responseStatus === 429) {
-        throw new AppError(
-          "Translation daily limit reached. Set MYMEMORY_EMAIL in .env to double your quota.",
-          429
-        );
-      }
-      throw new AppError(
-        data.responseDetails || "MyMemory translation failed",
-        502
-      );
-    }
+    // LibreTranslate returns translatedText as array when q is array
+    const translated = Array.isArray(data.translatedText)
+      ? data.translatedText
+      : [data.translatedText];
 
-    return data.responseData?.translatedText || text;
-  } catch (error) {
-    if (error.name === "AbortError") {
-      throw new AppError("Translation request timed out", 504);
+    return {
+      provider: "libretranslate",
+      source,
+      target,
+      translatedTexts: texts.map((t, i) =>
+        typeof translated[i] === "string" ? translated[i] : t
+      ),
+    };
+  } catch (err) {
+    if (err.name === "AbortError") {
+      throw new AppError("LibreTranslate timed out", 504);
     }
-    if (error instanceof AppError) {
-      throw error;
-    }
-    throw new AppError(
-      "Could not reach translation service. Check your internet connection.",
-      502
-    );
+    if (err instanceof AppError) throw err;
+    throw new AppError("Could not reach LibreTranslate at " + baseUrl, 502);
   } finally {
-    clearTimeout(timeout);
+    clearTimeout(timer);
   }
 }
 
-// ─── Public API ───────────────────────────────────────────────────────────────
+// ─── Provider 2: MyMemory (fallback) ─────────────────────────────────────────
+
+async function translateOneWithMyMemory(text, source, target) {
+  const langPair = `${source === "auto" ? "en" : source}|${target}`;
+  const url = new URL("https://api.mymemory.translated.net/get");
+  url.searchParams.set("q", text);
+  url.searchParams.set("langpair", langPair);
+
+  const email = getMyMemoryEmail();
+  if (email) url.searchParams.set("de", email);
+
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
+
+  try {
+    const response = await fetch(url.toString(), {
+      signal: controller.signal,
+      headers: { Accept: "application/json" },
+    });
+    const data = await response.json().catch(() => null);
+    if (!data || data.responseStatus !== 200) return text;
+    return data.responseData?.translatedText || text;
+  } catch {
+    return text; // Return original on any failure
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+async function translateWithMyMemory(texts, source, target) {
+  const CONCURRENCY = 3; // MyMemory rate limit protection
+  const results = new Array(texts.length).fill("");
+
+  for (let i = 0; i < texts.length; i += CONCURRENCY) {
+    const chunk = texts.slice(i, i + CONCURRENCY);
+    const translated = await Promise.all(
+      chunk.map((t) =>
+        t.trim()
+          ? translateOneWithMyMemory(t, source, target).catch(() => t)
+          : Promise.resolve(t)
+      )
+    );
+    translated.forEach((t, j) => {
+      results[i + j] = t;
+    });
+  }
+
+  return {
+    provider: "mymemory",
+    source,
+    target,
+    translatedTexts: results,
+  };
+}
+
+// ─── Public API (used by routes/translation.js) ───────────────────────────────
 
 /**
- * Returns the list of supported languages.
- * Compatible with the old LibreTranslate format so routes don't change.
+ * Returns supported language list.
+ * If LibreTranslate is live, fetches from it (live language list).
+ * Otherwise returns the static built-in list.
  */
 async function getSupportedLanguages() {
+  if (isLibreTranslateConfigured()) {
+    try {
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), 5000);
+      const res = await fetch(`${getLibreTranslateUrl()}/languages`, {
+        signal: controller.signal,
+      });
+      clearTimeout(timer);
+      const langs = await res.json();
+      if (Array.isArray(langs) && langs.length > 0) return langs;
+    } catch {
+      // Fall through to static list
+    }
+  }
+
+  // Return static list (compatible with LibreTranslate format)
   return SUPPORTED_LANGUAGES.map((lang) => ({
     code: lang.code,
     name: lang.name,
@@ -171,7 +258,7 @@ async function getSupportedLanguages() {
 
 /**
  * Translates an array of texts to the target language.
- * Compatible with the old LibreTranslate-based translateBatch signature.
+ * Uses LibreTranslate if configured, falls back to MyMemory.
  */
 async function translateBatch({ texts, source = "auto", target, format = "text" }) {
   const normalizedTexts = normalizeTexts(texts);
@@ -182,10 +269,10 @@ async function translateBatch({ texts, source = "auto", target, format = "text" 
     throw new AppError("target language is required", 400);
   }
 
-  // No translation needed if source == target
+  // Skip translation when source == target
   if (normalizedTarget === normalizedSource) {
     return {
-      provider: "mymemory",
+      provider: "none",
       source: normalizedSource,
       target: normalizedTarget,
       translatedTexts: normalizedTexts,
@@ -193,10 +280,10 @@ async function translateBatch({ texts, source = "auto", target, format = "text" 
     };
   }
 
-  // Check if target language is supported
+  // Language not in our supported list
   if (!isLanguageSupported(normalizedTarget)) {
     return {
-      provider: "mymemory",
+      provider: "none",
       source: normalizedSource,
       target: normalizedTarget,
       translatedTexts: normalizedTexts,
@@ -204,31 +291,26 @@ async function translateBatch({ texts, source = "auto", target, format = "text" 
     };
   }
 
-  // Translate each text individually (MyMemory doesn't support batch in free tier)
-  // We do them in parallel but with a small concurrency limit to avoid rate limiting
-  const CONCURRENCY = 3;
-  const results = new Array(normalizedTexts.length).fill("");
-
-  for (let i = 0; i < normalizedTexts.length; i += CONCURRENCY) {
-    const chunk = normalizedTexts.slice(i, i + CONCURRENCY);
-    const translated = await Promise.all(
-      chunk.map((text) => {
-        // Skip obviously blank or non-translatable text
-        if (!text.trim()) return Promise.resolve(text);
-        return translateOneText(text, normalizedSource, normalizedTarget).catch(() => text);
-      })
-    );
-    translated.forEach((t, j) => {
-      results[i + j] = t;
-    });
+  // ── Try LibreTranslate first ─────────────────────────────────────────────
+  if (isLibreTranslateConfigured()) {
+    try {
+      const result = await translateWithLibreTranslate(
+        normalizedTexts,
+        normalizedSource,
+        normalizedTarget
+      );
+      return result;
+    } catch (err) {
+      // Log the failure and fall through to MyMemory
+      console.warn(
+        "[Translation] LibreTranslate failed — falling back to MyMemory.",
+        err.message
+      );
+    }
   }
 
-  return {
-    provider: "mymemory",
-    source: normalizedSource,
-    target: normalizedTarget,
-    translatedTexts: results,
-  };
+  // ── Fall back to MyMemory ────────────────────────────────────────────────
+  return translateWithMyMemory(normalizedTexts, normalizedSource, normalizedTarget);
 }
 
 module.exports = {
