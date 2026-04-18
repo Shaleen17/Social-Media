@@ -449,6 +449,25 @@ const API = (() => {
       return request("/payments/donations/history");
     },
 
+    // Translation
+    async translateTexts(texts, target, source = "auto", format = "text") {
+      return request("/translate/batch", {
+        method: "POST",
+        body: JSON.stringify({ texts, target, source, format }),
+      });
+    },
+
+    async getTranslationLanguages() {
+      return request("/translate/languages");
+    },
+
+    async submitSupportReport(payload) {
+      return request("/support/report", {
+        method: "POST",
+        body: JSON.stringify(payload),
+      });
+    },
+
     // Upload
     uploadFile,
     uploadBase64,

@@ -179,6 +179,9 @@
       profile: () => renderProfile(CU ? CU.id : curProfId || "u1"),
       chats: () => renderChatsPage(),
       about: () => {},
+      language: () => renderLanguagePage(),
+      helpSupport: () => renderHelpSupportPage(),
+      settingsPrivacy: () => renderSettingsPrivacyPage(),
     };
 
     const render = refreshMap[curPage] || refreshMap.home;
@@ -237,7 +240,7 @@
 
   let _chatPushSetupPromise = null;
   let _pendingOpenChatId = consumeOpenChatParam();
-  const APP_ASSET_VERSION = "20260417-backendfix-1";
+  const APP_ASSET_VERSION = "20260418-more-menu-1";
   let _appSwPromise = null;
   let _deferredInstallPrompt = null;
   let _installPromptBound = false;
@@ -1371,6 +1374,10 @@
       return;
     }
     if (uid === (CU.id || CU._id || "").toString()) return;
+    if (typeof isUserBlocked === "function" && isUserBlocked(uid)) {
+      MC.warn("Unblock this user from Settings & Privacy before following.");
+      return;
+    }
 
     try {
       const result = await API.toggleFollow(uid);
@@ -1412,11 +1419,14 @@
       const c = document.getElementById("notifsWrap");
       if (!c) return;
 
-      let filtered = notifs;
+      let filtered =
+        typeof filterVisibleNotifications === "function"
+          ? filterVisibleNotifications(notifs)
+          : notifs;
       if (filter === "mentions")
-        filtered = notifs.filter((n) => n.type === "comment");
+        filtered = filtered.filter((n) => n.type === "comment");
       if (filter === "pranams")
-        filtered = notifs.filter((n) => n.type === "like");
+        filtered = filtered.filter((n) => n.type === "like");
 
       const icons = {
         like: "❤️",
@@ -1428,6 +1438,9 @@
       if (!filtered.length) {
         c.innerHTML =
           '<div class="empty"><div class="empty-ico">🔔</div><div class="empty-ttl">No notifications yet</div></div>';
+        if (typeof refreshNotificationBadges === "function") {
+          refreshNotificationBadges();
+        }
         return;
       }
 
@@ -1469,10 +1482,9 @@
 
       // Mark read
       API.markNotificationsRead().catch(() => {});
-      const d = document.getElementById("ndot");
-      if (d) d.style.display = "none";
-      const bd = document.getElementById("bnNotifBadge");
-      if (bd) bd.style.display = "none";
+      if (typeof setNotificationBadgeVisible === "function") {
+        setNotificationBadgeVisible(false);
+      }
     } catch {
       _origRenderNotifs(filter);
     }
@@ -1613,15 +1625,18 @@
   async function checkNotifications() {
     if (!API.getToken()) return;
     try {
-      const { count } = await API.getUnreadCount();
-      if (count > 0) {
-        const d = document.getElementById("ndot");
-        if (d) d.style.display = "block";
-        const bd = document.getElementById("bnNotifBadge");
-        if (bd) bd.style.display = "block";
+      const notifs = await API.getNotifications();
+      const unread = (
+        typeof filterVisibleNotifications === "function"
+          ? filterVisibleNotifications(notifs)
+          : notifs
+      ).some((item) => item.unread);
+      if (typeof setNotificationBadgeVisible === "function") {
+        setNotificationBadgeVisible(unread);
       }
     } catch {}
   }
+  window.checkNotifications = checkNotifications;
 
   // =============================================
   // ======= REAL-TIME CHAT MODULE =======
@@ -2230,6 +2245,10 @@
       };
     });
 
+    if (typeof isUserBlocked === "function") {
+      items = items.filter((item) => item.type === "group" || !isUserBlocked(item.uid));
+    }
+
     // Apply filters
     const q = (
       document.getElementById("chatsSearchIn")?.value || ""
@@ -2238,6 +2257,14 @@
     if (chatFilter === "groups") items = items.filter((i) => i.type === "group");
     if (chatFilter === "unread") items = items.filter((i) => i.unread > 0);
     if (q) items = items.filter((i) => i.name.toLowerCase().includes(q));
+
+    if (
+      activeChatId &&
+      !items.some((item) => item.id === activeChatId) &&
+      typeof closeChatWindow === "function"
+    ) {
+      closeChatWindow();
+    }
 
     if (!items.length) {
       c.innerHTML =
@@ -2809,6 +2836,9 @@
   // =============================================
   window.renderConvs = async function () {
     const cl = document.getElementById("convsList");
+    const cv = document.getElementById("chatView");
+    if (cl) cl.style.display = "block";
+    if (cv) cv.classList.add("hide");
     if (!CU) {
       if (cl)
         cl.innerHTML =
@@ -2819,7 +2849,14 @@
     if (cl) cl.innerHTML = '<div style="padding:20px;text-align:center;color:var(--t3)">Loading messages…</div>';
     try {
       const data = await API.getConversations();
-      const convs = data.conversations || data || [];
+      let convs = data.conversations || data || [];
+      if (typeof isUserBlocked === "function") {
+        convs = convs.filter((conv) => {
+          const other =
+            conv.otherUser || conv.participants?.find((p) => p._id !== CU.id) || {};
+          return !isUserBlocked(other._id || other.id || "");
+        });
+      }
       if (!convs.length) {
         if (cl) cl.innerHTML = '<div class="empty"><div class="empty-ico">✉️</div><div class="empty-ttl">No messages yet</div><div class="empty-sub">Start a conversation from someone\'s profile</div></div>';
         return;
@@ -2903,6 +2940,15 @@
 
   window.openDM = function (uid) {
     if (!auth(() => openDM(uid))) return;
+    if (typeof canStartDirectMessageWith === "function" && !canStartDirectMessageWith(uid)) {
+      const user = typeof getUser === "function" ? getUser(uid) : null;
+      MC.info(
+        typeof isUserBlocked === "function" && isUserBlocked(uid)
+          ? `Unblock ${user?.name || "this user"} in Settings & Privacy before messaging.`
+          : `Follow @${user?.handle || "user"} first to message this private account.`,
+      );
+      return;
+    }
     gp("chats");
     setTimeout(() => {
       startDMWith(uid);

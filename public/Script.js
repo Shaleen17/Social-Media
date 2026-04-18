@@ -122,6 +122,8 @@ let vidUploadFile = null,
   storyUploadFile = null,
   liveFile = null,
   thumbFile = null;
+let morePrevPage = "home",
+  blockedUserSearchQuery = "";
 
 const REELS_UPLOADER_NAME = "Tirth Sutra Community";
 const REELS_LIBRARY = [
@@ -1146,6 +1148,7 @@ function openOvl(id) {
     syncMoreMenu();
     syncMoreNavState(true);
   }
+  scheduleGoogleTranslate({ force: true, delay: 140 });
 }
 function setVideoDetailTitle(title = "Tirth Tube") {
   const el = document.getElementById("videoDetailTitle");
@@ -1787,6 +1790,9 @@ const PAGE_IDS = [
   "profile",
   "chats",
   "about",
+  "language",
+  "helpSupport",
+  "settingsPrivacy",
 ];
 function resetProfileTabs(defaultTab = "posts") {
   const tabLabel = defaultTab === "likes" ? "pranams" : defaultTab;
@@ -1808,7 +1814,1521 @@ function openProfilePageAndClose() {
   closeDrawer();
 }
 
-const MORE_NAV_PAGES = ["search", "bookmarks", "about"];
+const MORE_NAV_PAGES = [
+  "search",
+  "bookmarks",
+  "about",
+  "language",
+  "helpSupport",
+  "settingsPrivacy",
+];
+const MORE_SUPPORT_EMAIL = "tirthsutra@gmail.com";
+const MORE_SUPPORT_PHONE = "+91 8707757628";
+const MORE_LANGUAGE_OPTIONS = [
+  {
+    id: "english",
+    label: "English",
+    native: "English",
+    hint: "Clean and familiar for everyday browsing.",
+    sample: "Darshan updates, chats, and stories in English.",
+    group: "popular",
+    htmlLang: "en",
+  },
+  {
+    id: "hindi",
+    label: "Hindi",
+    native: "हिंदी",
+    hint: "A comfortable devotional reading flow in Hindi.",
+    sample: "दर्शन, भक्ति और समुदाय की बातें हिंदी में।",
+    group: "popular",
+    htmlLang: "hi",
+  },
+  {
+    id: "bengali",
+    label: "Bengali",
+    native: "বাংলা",
+    hint: "Regional language option for eastern devotees.",
+    sample: "ভক্তि, মন্দির ও যাত্রার অভিজ্ঞতা বাংলায়।",
+    group: "regional",
+    htmlLang: "bn",
+  },
+  {
+    id: "tamil",
+    label: "Tamil",
+    native: "தமிழ்",
+    hint: "A warm experience for Tamil-speaking devotees.",
+    sample: "பக்தி, தரிசனம் மற்றும் சமூகம் தமிழில்.",
+    group: "regional",
+    htmlLang: "ta",
+  },
+  {
+    id: "telugu",
+    label: "Telugu",
+    native: "తెలుగు",
+    hint: "Regional browsing support for Telugu audiences.",
+    sample: "భక్తి, దర్శనం మరియు సంఘం తెలుగులో.",
+    group: "regional",
+    htmlLang: "te",
+  },
+  {
+    id: "marathi",
+    label: "Marathi",
+    native: "मराठी",
+    hint: "A familiar choice for Maharashtra devotees.",
+    sample: "भक्ती, दर्शन आणि समुदाय मराठीत.",
+    group: "regional",
+    htmlLang: "mr",
+  },
+];
+const MORE_NOTIFICATION_OPTIONS = [
+  {
+    id: "festivalReminders",
+    title: "Festival reminders",
+    desc: "Get timely nudges for aartis, vrat dates, and major celebrations.",
+  },
+  {
+    id: "chatMessages",
+    title: "Chat messages",
+    desc: "Know when someone replies or starts a new spiritual conversation.",
+  },
+  {
+    id: "communityHighlights",
+    title: "Community highlights",
+    desc: "See important updates from mandirs, saints, and featured posts.",
+  },
+  {
+    id: "donationUpdates",
+    title: "Donation & seva updates",
+    desc: "Receive receipts and helpful updates around seva activity.",
+  },
+];
+const MORE_FAQS = [
+  {
+    q: "How do I save posts for later?",
+    a: "Use the bookmark icon on any post. Saved posts will appear in Bookmarks from the More menu.",
+  },
+  {
+    q: "How do I change how the app looks?",
+    a: "Open Settings & Privacy from More, then choose your theme or notification preferences anytime.",
+  },
+  {
+    q: "I cannot access my account. What should I do?",
+    a: "Use Account Help to sign in again, then contact support with your registered email if you still feel stuck.",
+  },
+  {
+    q: "How can I report a bug or wrong content?",
+    a: "Open Help & Support and use Report Issue. You can send the details by email or copy them in one tap.",
+  },
+];
+const MORE_DEFAULT_PREFS = {
+  language: "english",
+  notificationSettings: {
+    festivalReminders: true,
+    chatMessages: true,
+    communityHighlights: true,
+    donationUpdates: true,
+  },
+  privateAccount: false,
+  blockedUsers: [],
+};
+const APP_TRANSLATION_CODES = Array.from(
+  new Set(
+    MORE_LANGUAGE_OPTIONS.map((option) => option.htmlLang).filter(Boolean),
+  ),
+);
+const APP_TRANSLATION_STATE = {
+  ready: false,
+  applyTimer: 0,
+  observer: null,
+  lastAppliedCode: "en",
+  lastRequestedCode: "en",
+  pauseUntil: 0,
+  requestId: 0,
+  persistTimer: 0,
+  sourceTitle: document.title,
+  cache: Store.g("translationCache", {}) || {},
+  textNodes: new WeakMap(),
+  attrNodes: new WeakMap(),
+  lastNoticeKey: "",
+};
+const APP_TRANSLATION_ATTRS = ["placeholder", "title", "aria-label", "alt", "value"];
+const APP_TRANSLATION_BATCH_SEPARATOR = "\n<ts-sep-918273645/>\n";
+
+function getMorePrefs() {
+  const saved = Store.g("morePrefs", {}) || {};
+  const userNotifications = CU?.notificationSettings || {};
+  const savedNotifications =
+    saved.notificationSettings && typeof saved.notificationSettings === "object"
+      ? { ...userNotifications, ...saved.notificationSettings }
+      : userNotifications;
+  const validLang = MORE_LANGUAGE_OPTIONS.some((opt) => opt.id === saved.language)
+    ? saved.language
+    : MORE_DEFAULT_PREFS.language;
+  return {
+    language: validLang,
+    notificationSettings: {
+      festivalReminders:
+        typeof savedNotifications.festivalReminders === "boolean"
+          ? savedNotifications.festivalReminders
+          : MORE_DEFAULT_PREFS.notificationSettings.festivalReminders,
+      chatMessages:
+        typeof savedNotifications.chatMessages === "boolean"
+          ? savedNotifications.chatMessages
+          : MORE_DEFAULT_PREFS.notificationSettings.chatMessages,
+      communityHighlights:
+        typeof savedNotifications.communityHighlights === "boolean"
+          ? savedNotifications.communityHighlights
+          : MORE_DEFAULT_PREFS.notificationSettings.communityHighlights,
+      donationUpdates:
+        typeof savedNotifications.donationUpdates === "boolean"
+          ? savedNotifications.donationUpdates
+          : MORE_DEFAULT_PREFS.notificationSettings.donationUpdates,
+    },
+    privateAccount:
+      typeof saved.privateAccount === "boolean"
+        ? saved.privateAccount
+        : typeof CU?.privateAccount === "boolean"
+          ? CU.privateAccount
+        : MORE_DEFAULT_PREFS.privateAccount,
+    blockedUsers: Array.isArray(saved.blockedUsers)
+      ? Array.from(new Set(saved.blockedUsers.filter(Boolean)))
+      : Array.isArray(CU?.blockedUsers)
+        ? Array.from(new Set(CU.blockedUsers.filter(Boolean)))
+      : [],
+  };
+}
+
+function getMoreLanguageOption(languageId) {
+  return (
+    MORE_LANGUAGE_OPTIONS.find((option) => option.id === languageId) ||
+    MORE_LANGUAGE_OPTIONS[0]
+  );
+}
+
+function getCurrentLanguageCode() {
+  return getMoreLanguageOption(getMorePrefs().language).htmlLang || "en";
+}
+
+function isGoogleTranslateNode(node) {
+  if (!node) return false;
+  const base =
+    node.nodeType === Node.ELEMENT_NODE ? node : node.parentElement || null;
+  return !!(
+    base &&
+    base.closest(
+      "#googleTranslateHost, .goog-te-banner-frame, .goog-te-menu-frame, .goog-tooltip, .skiptranslate",
+    )
+  );
+}
+
+function getTranslationCacheBucket(languageCode) {
+  if (!APP_TRANSLATION_STATE.cache[languageCode]) {
+    APP_TRANSLATION_STATE.cache[languageCode] = {};
+  }
+  return APP_TRANSLATION_STATE.cache[languageCode];
+}
+
+function persistTranslationCache() {
+  window.clearTimeout(APP_TRANSLATION_STATE.persistTimer);
+  APP_TRANSLATION_STATE.persistTimer = window.setTimeout(() => {
+    Store.s("translationCache", APP_TRANSLATION_STATE.cache);
+  }, 180);
+}
+
+function splitTextForTranslation(text) {
+  const source = String(text || "");
+  const match = source.match(/^(\s*)([\s\S]*?)(\s*)$/) || ["", "", "", ""];
+  return {
+    leading: match[1] || "",
+    core: match[2] || "",
+    trailing: match[3] || "",
+  };
+}
+
+function looksTranslatable(text) {
+  const value = String(text || "").trim();
+  if (!value) return false;
+  if (!/\p{L}/u.test(value)) return false;
+  if (/^(https?:\/\/\S+|www\.\S+)$/i.test(value)) return false;
+  if (/^[\w.+-]+@[\w.-]+\.\w{2,}$/i.test(value)) return false;
+  return true;
+}
+
+function shouldSkipTranslationElement(element) {
+  if (!element) return true;
+  if (element.closest("#googleTranslateHost, [data-no-translate], .skiptranslate")) {
+    return true;
+  }
+  const tag = element.tagName;
+  return ["SCRIPT", "STYLE", "NOSCRIPT", "TEXTAREA", "IFRAME"].includes(tag);
+}
+
+function rememberNodeSourceText(node, nextValue) {
+  if (!node) return "";
+  const source =
+    typeof nextValue === "string" ? nextValue : String(node.textContent || "");
+  APP_TRANSLATION_STATE.textNodes.set(node, source);
+  return source;
+}
+
+function getNodeSourceText(node) {
+  if (!node) return "";
+  if (!APP_TRANSLATION_STATE.textNodes.has(node)) {
+    APP_TRANSLATION_STATE.textNodes.set(node, String(node.textContent || ""));
+  }
+  return APP_TRANSLATION_STATE.textNodes.get(node) || "";
+}
+
+function rememberAttributeSource(element, attribute, nextValue) {
+  if (!element || !attribute) return "";
+  const source =
+    typeof nextValue === "string"
+      ? nextValue
+      : String(element.getAttribute(attribute) || "");
+  const known = APP_TRANSLATION_STATE.attrNodes.get(element) || {};
+  known[attribute] = source;
+  APP_TRANSLATION_STATE.attrNodes.set(element, known);
+  return source;
+}
+
+function getAttributeSource(element, attribute) {
+  if (!element || !attribute) return "";
+  const known = APP_TRANSLATION_STATE.attrNodes.get(element) || {};
+  if (!(attribute in known)) {
+    known[attribute] = String(element.getAttribute(attribute) || "");
+    APP_TRANSLATION_STATE.attrNodes.set(element, known);
+  }
+  return known[attribute] || "";
+}
+
+function collectTextNodesForTranslation(root = document.body) {
+  if (!root) return [];
+  const nodes = [];
+  const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, {
+    acceptNode(node) {
+      if (!node || !node.parentElement) return NodeFilter.FILTER_REJECT;
+      if (shouldSkipTranslationElement(node.parentElement)) {
+        return NodeFilter.FILTER_REJECT;
+      }
+      return looksTranslatable(node.textContent)
+        ? NodeFilter.FILTER_ACCEPT
+        : NodeFilter.FILTER_REJECT;
+    },
+  });
+
+  let current = walker.nextNode();
+  while (current) {
+    nodes.push(current);
+    current = walker.nextNode();
+  }
+  return nodes;
+}
+
+function collectAttributeTargetsForTranslation(root = document.body) {
+  if (!root || typeof root.querySelectorAll !== "function") return [];
+  const targets = [];
+  const selector =
+    "[placeholder], [title], [aria-label], img[alt], input[type='button'][value], input[type='submit'][value], input[type='reset'][value]";
+  const elements = root.matches?.(selector)
+    ? [root, ...root.querySelectorAll(selector)]
+    : Array.from(root.querySelectorAll(selector));
+
+  elements.forEach((element) => {
+    if (shouldSkipTranslationElement(element)) return;
+    APP_TRANSLATION_ATTRS.forEach((attribute) => {
+      if (!element.hasAttribute(attribute)) return;
+      if (attribute === "value" && element.tagName !== "INPUT") return;
+      const source = getAttributeSource(element, attribute);
+      if (!looksTranslatable(source)) return;
+      targets.push({ element, attribute, source });
+    });
+  });
+
+  return targets;
+}
+
+function chunkTextsForTranslation(texts, maxItems = 10, maxChars = 1800) {
+  const chunks = [];
+  let current = [];
+  let currentChars = 0;
+
+  texts.forEach((text) => {
+    const size = text.length;
+    const projectedChars =
+      currentChars + size + APP_TRANSLATION_BATCH_SEPARATOR.length;
+    if (
+      current.length &&
+      (current.length >= maxItems || projectedChars > maxChars)
+    ) {
+      chunks.push(current);
+      current = [];
+      currentChars = 0;
+    }
+    current.push(text);
+    currentChars += size + APP_TRANSLATION_BATCH_SEPARATOR.length;
+  });
+
+  if (current.length) chunks.push(current);
+  return chunks;
+}
+
+function getTranslationApiBase() {
+  if (typeof API !== "undefined" && API && typeof API.translateTexts === "function") {
+    return null;
+  }
+
+  if (typeof window.getBackendBaseUrl === "function") {
+    return window.getBackendBaseUrl() + "/api";
+  }
+
+  if (typeof CONFIG !== "undefined" && CONFIG && CONFIG.BACKEND_URL) {
+    return String(CONFIG.BACKEND_URL).replace(/\/+$/, "") + "/api";
+  }
+
+  const origin =
+    window.location.hostname === "localhost" ||
+    window.location.hostname === "127.0.0.1"
+      ? "http://localhost:5000"
+      : window.location.origin;
+  return origin.replace(/\/+$/, "") + "/api";
+}
+
+function showTranslationNoticeOnce(kind, languageCode) {
+  const option =
+    MORE_LANGUAGE_OPTIONS.find((entry) => entry.htmlLang === languageCode) ||
+    MORE_LANGUAGE_OPTIONS.find((entry) => entry.id === languageCode);
+  const label = option ? option.label : languageCode;
+  const key = `${kind}:${languageCode}`;
+  if (APP_TRANSLATION_STATE.lastNoticeKey === key) return;
+  APP_TRANSLATION_STATE.lastNoticeKey = key;
+
+  if (kind === "unsupported") {
+    MC.info(
+      `${label} is not installed on your LibreTranslate server yet, so the website is staying in its original text.`,
+    );
+    return;
+  }
+
+  MC.warn(
+    "Language translation server is not connected. Start LibreTranslate and set LIBRETRANSLATE_URL on the backend.",
+  );
+}
+
+async function requestTranslationBatch(texts, targetLanguage) {
+  if (typeof API !== "undefined" && API && typeof API.translateTexts === "function") {
+    return API.translateTexts(texts, targetLanguage, "auto", "text");
+  }
+
+  const response = await fetch(getTranslationApiBase() + "/translate/batch", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      texts,
+      target: targetLanguage,
+      source: "auto",
+      format: "text",
+    }),
+  });
+
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    throw new Error(data?.error || "translation_request_failed");
+  }
+  return data;
+}
+
+async function fetchTranslatedBatch(texts, targetLanguage) {
+  const data = await requestTranslationBatch(texts, targetLanguage);
+  if (data?.unsupportedTarget || data?.unsupportedSource) {
+    showTranslationNoticeOnce("unsupported", targetLanguage);
+  }
+  const translatedTexts = Array.isArray(data?.translatedTexts)
+    ? data.translatedTexts
+    : [];
+
+  if (translatedTexts.length !== texts.length) {
+    throw new Error("translation_response_mismatch");
+  }
+
+  return translatedTexts.map((text, index) =>
+    typeof text === "string" && text.trim() ? text : texts[index]
+  );
+}
+
+async function getTranslatedTexts(texts, targetLanguage) {
+  const bucket = getTranslationCacheBucket(targetLanguage);
+  const uniqueTexts = Array.from(
+    new Set(texts.filter((text) => looksTranslatable(text))),
+  );
+  const missingTexts = uniqueTexts.filter((text) => !bucket[text]);
+
+  for (const chunk of chunkTextsForTranslation(missingTexts)) {
+    try {
+      const translatedChunk = await fetchTranslatedBatch(chunk, targetLanguage);
+      chunk.forEach((text, index) => {
+        bucket[text] = translatedChunk[index] || text;
+      });
+    } catch {
+      chunk.forEach((text) => {
+        bucket[text] = text;
+      });
+    }
+  }
+
+  if (missingTexts.length) persistTranslationCache();
+  return uniqueTexts.reduce((acc, text) => {
+    acc[text] = bucket[text] || text;
+    return acc;
+  }, {});
+}
+
+function restoreTranslatedDom() {
+  collectTextNodesForTranslation().forEach((node) => {
+    const source = getNodeSourceText(node);
+    if (source) node.textContent = source;
+  });
+
+  collectAttributeTargetsForTranslation().forEach(({ element, attribute }) => {
+    const source = getAttributeSource(element, attribute);
+    if (source || element.hasAttribute(attribute)) {
+      element.setAttribute(attribute, source);
+    }
+  });
+
+  document.title = APP_TRANSLATION_STATE.sourceTitle;
+  APP_TRANSLATION_STATE.lastAppliedCode = "en";
+}
+
+async function syncGoogleTranslate(languageCode, force = false) {
+  const nextCode = languageCode || "en";
+  APP_TRANSLATION_STATE.lastRequestedCode = nextCode;
+  APP_TRANSLATION_STATE.ready = true;
+  ensureAppTranslationObserver();
+
+  if (!force && APP_TRANSLATION_STATE.lastAppliedCode === nextCode) {
+    return;
+  }
+
+  APP_TRANSLATION_STATE.requestId += 1;
+  const requestId = APP_TRANSLATION_STATE.requestId;
+  APP_TRANSLATION_STATE.pauseUntil = Date.now() + 900;
+
+  if (nextCode === "en") {
+    restoreTranslatedDom();
+    APP_TRANSLATION_STATE.pauseUntil = Date.now() + 400;
+    return;
+  }
+
+  const textNodes = collectTextNodesForTranslation();
+  const attributeTargets = collectAttributeTargetsForTranslation();
+  const textRecords = textNodes
+    .map((node) => {
+      const source = getNodeSourceText(node);
+      const parts = splitTextForTranslation(source);
+      if (!looksTranslatable(parts.core)) return null;
+      return { node, parts };
+    })
+    .filter(Boolean);
+
+  const attributeRecords = attributeTargets
+    .map(({ element, attribute }) => {
+      const source = getAttributeSource(element, attribute);
+      if (!looksTranslatable(source)) return null;
+      return { element, attribute, source };
+    })
+    .filter(Boolean);
+
+  const textsToTranslate = [
+    ...textRecords.map((record) => record.parts.core),
+    ...attributeRecords.map((record) => record.source),
+  ];
+  if (looksTranslatable(APP_TRANSLATION_STATE.sourceTitle)) {
+    textsToTranslate.push(APP_TRANSLATION_STATE.sourceTitle);
+  }
+
+  const translatedLookup = await getTranslatedTexts(textsToTranslate, nextCode);
+  if (
+    requestId !== APP_TRANSLATION_STATE.requestId ||
+    APP_TRANSLATION_STATE.lastRequestedCode !== nextCode
+  ) {
+    return;
+  }
+
+  textRecords.forEach(({ node, parts }) => {
+    const translated = translatedLookup[parts.core] || parts.core;
+    node.textContent = parts.leading + translated + parts.trailing;
+  });
+
+  attributeRecords.forEach(({ element, attribute, source }) => {
+    element.setAttribute(attribute, translatedLookup[source] || source);
+  });
+
+  if (looksTranslatable(APP_TRANSLATION_STATE.sourceTitle)) {
+    document.title =
+      translatedLookup[APP_TRANSLATION_STATE.sourceTitle] ||
+      APP_TRANSLATION_STATE.sourceTitle;
+  }
+
+  APP_TRANSLATION_STATE.lastAppliedCode = nextCode;
+  APP_TRANSLATION_STATE.pauseUntil = Date.now() + 700;
+}
+
+function scheduleGoogleTranslate(options = {}) {
+  const nextCode = options.languageCode || getCurrentLanguageCode();
+  const force = options.force === true;
+  const immediate = options.immediate === true;
+  const delay = typeof options.delay === "number" ? options.delay : 220;
+
+  window.clearTimeout(APP_TRANSLATION_STATE.applyTimer);
+  const run = () => {
+    syncGoogleTranslate(nextCode, force).catch(() => {
+      if (nextCode !== "en") {
+        showTranslationNoticeOnce("offline", nextCode);
+      }
+    });
+  };
+
+  if (immediate) {
+    run();
+    return;
+  }
+
+  APP_TRANSLATION_STATE.applyTimer = window.setTimeout(run, delay);
+}
+
+function ensureAppTranslationObserver() {
+  if (
+    APP_TRANSLATION_STATE.observer ||
+    typeof MutationObserver !== "function" ||
+    !document.body
+  ) {
+    return;
+  }
+
+  APP_TRANSLATION_STATE.observer = new MutationObserver((mutations) => {
+    if (!APP_TRANSLATION_STATE.ready) return;
+    if (Date.now() < APP_TRANSLATION_STATE.pauseUntil) return;
+
+    const shouldRefresh = mutations.some((mutation) => {
+      if (isGoogleTranslateNode(mutation.target)) return false;
+
+      if (mutation.type === "characterData") {
+        if (!looksTranslatable(mutation.target.textContent)) return false;
+        rememberNodeSourceText(mutation.target, mutation.target.textContent);
+        return true;
+      }
+
+      if (mutation.type === "attributes") {
+        if (shouldSkipTranslationElement(mutation.target)) return false;
+        const attribute = mutation.attributeName;
+        if (!attribute || !mutation.target.hasAttribute(attribute)) return false;
+        const value = mutation.target.getAttribute(attribute) || "";
+        if (!looksTranslatable(value)) return false;
+        rememberAttributeSource(mutation.target, attribute, value);
+        return true;
+      }
+
+      return Array.from(mutation.addedNodes || []).some((node) => {
+        if (isGoogleTranslateNode(node)) return false;
+        if (node.nodeType === Node.TEXT_NODE) {
+          if (!looksTranslatable(node.textContent)) return false;
+          rememberNodeSourceText(node, node.textContent);
+          return true;
+        }
+        if (node.nodeType !== Node.ELEMENT_NODE) return false;
+        if (shouldSkipTranslationElement(node)) return false;
+        collectTextNodesForTranslation(node).forEach((textNode) => {
+          rememberNodeSourceText(textNode, textNode.textContent);
+        });
+        collectAttributeTargetsForTranslation(node).forEach(
+          ({ element, attribute, source }) => {
+            rememberAttributeSource(element, attribute, source);
+          },
+        );
+        return !!((node.innerText || node.textContent || "").trim());
+      });
+    });
+
+    if (shouldRefresh) {
+      scheduleGoogleTranslate({ force: true, delay: 280 });
+    }
+  });
+
+  APP_TRANSLATION_STATE.observer.observe(document.body, {
+    childList: true,
+    characterData: true,
+    attributes: true,
+    attributeFilter: APP_TRANSLATION_ATTRS,
+    subtree: true,
+  });
+}
+
+window.googleTranslateElementInit = function googleTranslateElementInit() {
+  APP_TRANSLATION_STATE.ready = true;
+  ensureAppTranslationObserver();
+  scheduleGoogleTranslate({ force: true, immediate: true });
+};
+
+function getCurrentThemeLabel() {
+  return document.documentElement.hasAttribute("data-dark")
+    ? "Dark theme"
+    : "Light theme";
+}
+
+function rememberMoreOrigin() {
+  if (!MORE_NAV_PAGES.includes(curPage)) {
+    morePrevPage = curPage || "home";
+  }
+}
+
+function goBackFromMorePage() {
+  gp(morePrevPage || "home");
+}
+
+function updateMoreMenuSummaries() {
+  const prefs = getMorePrefs();
+  const selectedLanguage = getMoreLanguageOption(prefs.language);
+  const languageSummary = document.getElementById("moreLanguageSummary");
+  const settingsSummary = document.getElementById("moreSettingsSummary");
+  if (languageSummary) {
+    languageSummary.textContent = `${selectedLanguage.native} interface`;
+  }
+  if (settingsSummary) {
+    settingsSummary.textContent = `${prefs.privateAccount ? "Private account" : "Public account"} | ${getCurrentThemeLabel()}`;
+  }
+}
+
+function applyLanguagePreference() {
+  const prefs = getMorePrefs();
+  const selectedLanguage = getMoreLanguageOption(prefs.language);
+  document.documentElement.lang = selectedLanguage.htmlLang || "en";
+  document.documentElement.setAttribute("data-app-language", selectedLanguage.id);
+  updateMoreMenuSummaries();
+  scheduleGoogleTranslate({
+    languageCode: selectedLanguage.htmlLang || "en",
+    force:
+      APP_TRANSLATION_STATE.lastAppliedCode !==
+      (selectedLanguage.htmlLang || "en"),
+  });
+}
+
+function refreshMorePreferencePages() {
+  if (curPage === "language") renderLanguagePage();
+  if (curPage === "helpSupport") renderHelpSupportPage();
+  if (curPage === "settingsPrivacy") renderSettingsPrivacyPage();
+}
+
+function saveMorePrefs(prefs) {
+  Store.s("morePrefs", prefs);
+  updateMoreMenuSummaries();
+  refreshMorePreferencePages();
+}
+
+function setAppLanguage(languageId) {
+  const prefs = getMorePrefs();
+  prefs.language = getMoreLanguageOption(languageId).id;
+  saveMorePrefs(prefs);
+  applyLanguagePreference();
+  scheduleGoogleTranslate({
+    languageCode: getMoreLanguageOption(prefs.language).htmlLang || "en",
+    force: true,
+    immediate: true,
+  });
+  const selectedLanguage = getMoreLanguageOption(prefs.language);
+  MC.success(`${selectedLanguage.label} selected for this device.`);
+}
+
+function toggleNotificationPreference(key) {
+  const prefs = getMorePrefs();
+  if (!(key in prefs.notificationSettings)) return;
+  prefs.notificationSettings[key] = !prefs.notificationSettings[key];
+  saveMorePrefs(prefs);
+  if (CU) updateUser(CU.id, { notificationSettings: prefs.notificationSettings });
+  refreshPrivacyRealtimeViews();
+  const option = MORE_NOTIFICATION_OPTIONS.find((item) => item.id === key);
+  MC.info(
+    `${option ? option.title : "Notification"} ${prefs.notificationSettings[key] ? "enabled" : "disabled"}.`,
+  );
+}
+
+function togglePrivateAccountPreference() {
+  if (!CU) {
+    openOvl("authOvl");
+    return;
+  }
+  const prefs = getMorePrefs();
+  prefs.privateAccount = !prefs.privateAccount;
+  saveMorePrefs(prefs);
+  updateUser(CU.id, { privateAccount: prefs.privateAccount });
+  refreshPrivacyRealtimeViews();
+  MC.info(
+    prefs.privateAccount
+      ? "Your profile is now private."
+      : "Your profile is now public.",
+  );
+}
+
+function setThemePreference(mode) {
+  const wantsDark = mode === "dark";
+  const isDark = document.documentElement.hasAttribute("data-dark");
+  if (wantsDark !== isDark) {
+    toggleDark();
+  } else {
+    updateMoreMenuSummaries();
+    refreshMorePreferencePages();
+  }
+}
+
+function copyTextToClipboard(text, successMessage = "Copied.") {
+  if (!text) return;
+  const copyTask =
+    navigator.clipboard && window.isSecureContext
+      ? navigator.clipboard.writeText(text)
+      : new Promise((resolve, reject) => {
+          try {
+            const area = document.createElement("textarea");
+            area.value = text;
+            area.setAttribute("readonly", "");
+            area.style.position = "fixed";
+            area.style.opacity = "0";
+            document.body.appendChild(area);
+            area.focus();
+            area.select();
+            const ok = document.execCommand("copy");
+            area.remove();
+            ok ? resolve() : reject(new Error("copy_failed"));
+          } catch (err) {
+            reject(err);
+          }
+        });
+
+  copyTask
+    .then(() => MC.success(successMessage))
+    .catch(() => MC.error("Could not copy right now."));
+}
+
+function buildSupportDraft(kind = "support") {
+  const prefs = getMorePrefs();
+  const selectedLanguage = getMoreLanguageOption(prefs.language);
+  const issueCategory =
+    document.getElementById("supportCategorySelect")?.value || "General";
+  const detail =
+    (document.getElementById("supportMessageInput")?.value || "").trim() ||
+    (kind === "issue"
+      ? "Please describe the issue, what you expected, and what happened."
+      : "Please share how we can help you.");
+  const title =
+    kind === "issue" ? "Issue report for Tirth Sutra" : "Support request for Tirth Sutra";
+  const userLabel = CU
+    ? `${CU.name || "User"} (@${CU.handle || "user"})`
+    : "Guest user";
+  const notificationSummary = MORE_NOTIFICATION_OPTIONS.filter(
+    (item) => prefs.notificationSettings[item.id],
+  )
+    .map((item) => item.title)
+    .join(", ");
+  const currentPageTitle = ANALYTICS_PAGE_TITLES[curPage] || curPage;
+  const themeLabel = getCurrentThemeLabel();
+  const accountPrivacyLabel = prefs.privateAccount ? "Private" : "Public";
+
+  return {
+    subject: `${title} - ${issueCategory}`,
+    category: issueCategory,
+    detail,
+    kind,
+    currentPage: currentPageTitle,
+    preferredLanguage: selectedLanguage.label,
+    theme: themeLabel,
+    accountPrivacy: accountPrivacyLabel,
+    notificationSummary: notificationSummary || "None",
+    userLabel,
+    body: [
+      title,
+      "",
+      `Category: ${issueCategory}`,
+      `User: ${userLabel}`,
+      `Current page: ${currentPageTitle}`,
+      `Preferred language: ${selectedLanguage.label}`,
+      `Theme: ${themeLabel}`,
+      `Account privacy: ${accountPrivacyLabel}`,
+      `Notifications enabled: ${notificationSummary || "None"}`,
+      "",
+      detail,
+    ].join("\n"),
+  };
+}
+
+function emailSupport(kind = "support") {
+  const draft = buildSupportDraft(kind);
+  window.location.href =
+    `mailto:${MORE_SUPPORT_EMAIL}?subject=${encodeURIComponent(draft.subject)}&body=${encodeURIComponent(draft.body)}`;
+  MC.info("Opening your email app.");
+}
+
+function callSupport() {
+  window.location.href = `tel:${MORE_SUPPORT_PHONE.replace(/\s+/g, "")}`;
+  MC.info("Opening your phone app.");
+}
+
+function copySupportDetails(kind = "support") {
+  const draft = buildSupportDraft(kind);
+  copyTextToClipboard(draft.body, "Support details copied.");
+}
+
+async function submitSupportReport(kind = "issue", btn = null) {
+  const messageInput = document.getElementById("supportMessageInput");
+  const detail = (messageInput?.value || "").trim();
+  if (!detail) {
+    MC.warn("Please describe the issue before sending the report.");
+    messageInput?.focus();
+    return;
+  }
+
+  const draft = buildSupportDraft(kind);
+  const originalText = btn ? btn.textContent : "";
+
+  if (btn) {
+    btn.disabled = true;
+    btn.textContent = "Sending...";
+  }
+
+  try {
+    if (!API || typeof API.submitSupportReport !== "function") {
+      throw new Error("Support reporting is not available right now.");
+    }
+
+    await API.submitSupportReport({
+      kind: draft.kind,
+      subject: draft.subject,
+      body: draft.body,
+      category: draft.category,
+      detail: draft.detail,
+      currentPage: draft.currentPage,
+      preferredLanguage: draft.preferredLanguage,
+      theme: draft.theme,
+      accountPrivacy: draft.accountPrivacy,
+      notificationSummary: draft.notificationSummary,
+      userLabel: draft.userLabel,
+    });
+
+    if (messageInput) messageInput.value = "";
+    const categoryInput = document.getElementById("supportCategorySelect");
+    if (categoryInput) categoryInput.value = "General";
+    MC.success("Report sent successfully to Tirth Sutra support.");
+  } catch (err) {
+    MC.error(err?.message || "Could not send the report right now.");
+  } finally {
+    if (btn) {
+      btn.disabled = false;
+      btn.textContent = originalText || "Send Report";
+    }
+  }
+}
+
+function openAccountHelp() {
+  if (CU) {
+    openProfilePage();
+    return;
+  }
+  openOvl("authOvl");
+}
+
+function updateBlockedUserSearch(query) {
+  blockedUserSearchQuery = (query || "").trim();
+  renderBlockedUsersPanel();
+}
+
+function blockUserFromSettings(uid) {
+  if (!CU) {
+    openOvl("authOvl");
+    return;
+  }
+  if (!uid || uid === CU.id) return;
+  const prefs = getMorePrefs();
+  if (prefs.blockedUsers.includes(uid)) return;
+  prefs.blockedUsers = [...prefs.blockedUsers, uid];
+  saveMorePrefs(prefs);
+  updateUser(CU.id, { blockedUsers: prefs.blockedUsers });
+  renderBlockedUsersPanel();
+  refreshPrivacyRealtimeViews();
+  const user = getUser(uid);
+  MC.warn(`${user?.name || "User"} added to your blocked list.`);
+}
+
+function unblockUserFromSettings(uid) {
+  if (!uid) return;
+  const prefs = getMorePrefs();
+  prefs.blockedUsers = prefs.blockedUsers.filter((id) => id !== uid);
+  saveMorePrefs(prefs);
+  updateUser(CU.id, { blockedUsers: prefs.blockedUsers });
+  renderBlockedUsersPanel();
+  refreshPrivacyRealtimeViews();
+  const user = getUser(uid);
+  MC.info(`${user?.name || "User"} removed from your blocked list.`);
+}
+
+function renderLanguagePage() {
+  const page = document.getElementById("pgLanguage");
+  if (!page) return;
+  const prefs = getMorePrefs();
+  const currentLanguage = getMoreLanguageOption(prefs.language);
+  const primaryLanguages = MORE_LANGUAGE_OPTIONS.filter(
+    (item) => item.group === "popular",
+  );
+  const regionalLanguages = MORE_LANGUAGE_OPTIONS.filter(
+    (item) => item.group === "regional",
+  );
+
+  page.innerHTML = `
+    <div class="fhdr about-page-header">
+      <div class="fhdr-row">
+        <div class="about-page-heading">
+          <button class="sb about-back-btn" type="button" onclick="goBackFromMorePage()" aria-label="Back">
+            <svg viewBox="0 0 24 24">
+              <polyline points="15 18 9 12 15 6" />
+            </svg>
+          </button>
+          <div>
+            <span class="fhdr-title">Language</span>
+            <div class="about-page-subtitle">Choose the language you feel most comfortable with</div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="more-page-shell">
+      <section class="more-page-hero">
+        <div>
+          <span class="about-card-label">Personalization</span>
+          <h1>Keep Tirth Sutra closer to your language.</h1>
+          <p>
+            We remember your preferred language on this device so the app feels
+            more natural each time you return.
+          </p>
+        </div>
+        <div class="more-page-badge">Current: ${esc(currentLanguage.native)}</div>
+      </section>
+      <section class="more-card-stack">
+        <div class="more-section-head">
+          <div>
+            <h2>Popular choices</h2>
+            <p>Quick picks for the languages most devotees switch to first.</p>
+          </div>
+        </div>
+        <div class="more-card-grid">
+          ${primaryLanguages
+            .map(
+              (option) => `
+                <button
+                  class="more-option-card${prefs.language === option.id ? " on" : ""}"
+                  type="button"
+                  onclick="setAppLanguage('${option.id}')"
+                  aria-pressed="${prefs.language === option.id}"
+                >
+                  <div class="more-option-top">
+                    <span class="more-option-title">${esc(option.label)}</span>
+                    <span class="more-option-native">${esc(option.native)}</span>
+                  </div>
+                  <p>${esc(option.hint)}</p>
+                  <div class="more-option-sample">${esc(option.sample)}</div>
+                </button>
+              `,
+            )
+            .join("")}
+        </div>
+      </section>
+      <section class="more-card-stack">
+        <div class="more-section-head">
+          <div>
+            <h2>Regional languages</h2>
+            <p>Choose the language that feels most personal to your community.</p>
+          </div>
+        </div>
+        <div class="more-card-grid more-card-grid-compact">
+          ${regionalLanguages
+            .map(
+              (option) => `
+                <button
+                  class="more-option-card more-option-card-compact${prefs.language === option.id ? " on" : ""}"
+                  type="button"
+                  onclick="setAppLanguage('${option.id}')"
+                  aria-pressed="${prefs.language === option.id}"
+                >
+                  <div class="more-option-top">
+                    <span class="more-option-title">${esc(option.label)}</span>
+                    <span class="more-option-native">${esc(option.native)}</span>
+                  </div>
+                  <p>${esc(option.hint)}</p>
+                </button>
+              `,
+            )
+            .join("")}
+        </div>
+      </section>
+    </div>
+  `;
+}
+
+function renderHelpSupportPage() {
+  const page = document.getElementById("pgHelpSupport");
+  if (!page) return;
+  const accountCta = CU
+    ? {
+        title: "Open your profile",
+        desc: "Manage your public details and account activity from one place.",
+        label: "Open Profile",
+      }
+    : {
+        title: "Sign in or create an account",
+        desc: "Get help with login, bookmarks, community activity, and more.",
+        label: "Open Account Help",
+      };
+
+  page.innerHTML = `
+    <div class="fhdr about-page-header">
+      <div class="fhdr-row">
+        <div class="about-page-heading">
+          <button class="sb about-back-btn" type="button" onclick="goBackFromMorePage()" aria-label="Back">
+            <svg viewBox="0 0 24 24">
+              <polyline points="15 18 9 12 15 6" />
+            </svg>
+          </button>
+          <div>
+            <span class="fhdr-title">Help &amp; Support</span>
+            <div class="about-page-subtitle">FAQs, support contact, issue reporting, and account help</div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="more-page-shell more-page-shell-support">
+      <section class="more-page-hero more-page-hero-support">
+        <div>
+          <span class="about-card-label">Support Hub</span>
+          <h1>Get help quickly, report issues clearly, and keep moving.</h1>
+          <p>
+            Everything important is here in one clean place: fast contact
+            options, a simple account-help path, and issue reports with app
+            context already included.
+          </p>
+        </div>
+        <div class="more-hero-actions">
+          <a class="more-inline-action" href="mailto:${esc(MORE_SUPPORT_EMAIL)}">
+            <span>Email support</span>
+            <strong>${esc(MORE_SUPPORT_EMAIL)}</strong>
+          </a>
+          <a class="more-inline-action" href="tel:${esc(MORE_SUPPORT_PHONE.replace(/\s+/g, ""))}">
+            <span>Call support</span>
+            <strong>${esc(MORE_SUPPORT_PHONE)}</strong>
+          </a>
+        </div>
+      </section>
+      <div class="more-support-grid more-support-grid-refined">
+        <article class="more-surface-card more-surface-card-feature">
+          <div class="more-feature-head">
+            <div class="more-feature-icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24">
+                <path d="M4 6.5A2.5 2.5 0 0 1 6.5 4h11A2.5 2.5 0 0 1 20 6.5v11a2.5 2.5 0 0 1-2.5 2.5h-11A2.5 2.5 0 0 1 4 17.5z"></path>
+                <path d="m6.5 7 5.5 4.5L17.5 7"></path>
+              </svg>
+            </div>
+            <div>
+              <span class="about-card-label">Contact support</span>
+              <h2>Reach the team quickly</h2>
+            </div>
+          </div>
+          <p>Use the official Tirth Sutra support email or call directly for account and app help.</p>
+          <div class="more-contact-list">
+            <a class="more-contact-item" href="mailto:${esc(MORE_SUPPORT_EMAIL)}">
+              <span>Email</span>
+              <strong>${esc(MORE_SUPPORT_EMAIL)}</strong>
+            </a>
+            <a class="more-contact-item" href="tel:${esc(MORE_SUPPORT_PHONE.replace(/\s+/g, ""))}">
+              <span>Phone</span>
+              <strong>${esc(MORE_SUPPORT_PHONE)}</strong>
+            </a>
+          </div>
+          <div class="more-action-row more-action-row-equal">
+            <button class="btn btn-p" type="button" onclick="emailSupport('support')">Email Support</button>
+            <button class="btn about-secondary-btn" type="button" onclick="callSupport()">Call Support</button>
+            <button class="btn about-secondary-btn" type="button" onclick="copySupportDetails('support')">Copy Details</button>
+          </div>
+        </article>
+        <article class="more-surface-card more-surface-card-feature">
+          <div class="more-feature-head">
+            <div class="more-feature-icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24">
+                <circle cx="12" cy="8" r="3.5"></circle>
+                <path d="M5 19a7 7 0 0 1 14 0"></path>
+              </svg>
+            </div>
+            <div>
+              <span class="about-card-label">Account help</span>
+              <h2>${esc(accountCta.title)}</h2>
+            </div>
+          </div>
+          <p>${esc(accountCta.desc)}</p>
+          <div class="more-help-points">
+            <div class="more-help-point">
+              <strong>Profile and access</strong>
+              <span>Open the right place for sign-in, profile details, and account activity.</span>
+            </div>
+            <div class="more-help-point">
+              <strong>Support-ready context</strong>
+              <span>Your current page, theme, language, and settings are already included when needed.</span>
+            </div>
+          </div>
+          <div class="more-action-row">
+            <button class="btn btn-p" type="button" onclick="openAccountHelp()">${esc(accountCta.label)}</button>
+          </div>
+        </article>
+      </div>
+      <section class="more-surface-card more-surface-card-feature">
+        <div class="more-section-head">
+          <div>
+            <span class="about-card-label">Report issue</span>
+            <h2>Share what went wrong</h2>
+            <p>Send a clean report with category, details, and current app context.</p>
+          </div>
+        </div>
+        <div class="more-report-layout">
+          <div class="more-step-list">
+            <div class="more-step-item">
+              <strong>1. Choose a category</strong>
+              <span>Pick the area that best matches the problem so support can route it faster.</span>
+            </div>
+            <div class="more-step-item">
+              <strong>2. Describe the issue</strong>
+              <span>Share what happened, what you expected, and any steps to reproduce it.</span>
+            </div>
+            <div class="more-step-item">
+              <strong>3. Send or copy</strong>
+              <span>Email the report right away or copy it for later without losing context.</span>
+            </div>
+          </div>
+          <div class="more-report-form">
+            <div class="more-field">
+              <label class="fl" for="supportCategorySelect">Issue category</label>
+              <select class="fi" id="supportCategorySelect">
+                <option>General</option>
+                <option>Login / Account</option>
+                <option>Community / Posts</option>
+                <option>Chats / Messages</option>
+                <option>Payments / Seva</option>
+                <option>Visual bug</option>
+              </select>
+            </div>
+            <div class="more-field">
+              <label class="fl" for="supportMessageInput">Details</label>
+              <textarea class="fi more-support-textarea" id="supportMessageInput" placeholder="What happened, what you expected, and how we can reproduce it."></textarea>
+            </div>
+            <div class="more-action-row more-action-row-equal">
+              <button class="btn btn-p" type="button" onclick="submitSupportReport('issue', this)">Send Report</button>
+              <button class="btn about-secondary-btn" type="button" onclick="copySupportDetails('issue')">Copy Report</button>
+            </div>
+          </div>
+        </div>
+      </section>
+      <section class="more-surface-card more-surface-card-feature">
+        <div class="more-section-head">
+          <div>
+            <span class="about-card-label">FAQs</span>
+            <h2>Common questions</h2>
+            <p>Quick answers for the most common help requests.</p>
+          </div>
+        </div>
+        <div class="more-faq-list">
+          ${MORE_FAQS.map(
+            (item, idx) => `
+              <details class="more-faq"${idx === 0 ? " open" : ""}>
+                <summary>${esc(item.q)}</summary>
+                <p>${esc(item.a)}</p>
+              </details>
+            `,
+          ).join("")}
+        </div>
+      </section>
+    </div>
+  `;
+}
+
+function renderBlockedUsersPanel() {
+  const listEl = document.getElementById("blockedUsersList");
+  const suggestionsEl = document.getElementById("blockedUserSuggestions");
+  const input = document.getElementById("blockedUserSearch");
+  if (!listEl || !suggestionsEl || !input) return;
+
+  const prefs = getMorePrefs();
+  const blockedUsers = prefs.blockedUsers
+    .map((uid) => getUser(uid))
+    .filter(Boolean);
+  const query = blockedUserSearchQuery.toLowerCase();
+  const suggestions = getUsers()
+    .filter((user) => user.id !== CU?.id && !prefs.blockedUsers.includes(user.id))
+    .filter((user) => {
+      if (!query) return true;
+      const haystack = `${user.name || ""} ${user.handle || ""}`.toLowerCase();
+      return haystack.includes(query);
+    })
+    .slice(0, query ? 6 : 4);
+
+  input.value = blockedUserSearchQuery;
+
+  listEl.innerHTML = blockedUsers.length
+    ? blockedUsers
+        .map(
+          (user) => `
+            <div class="more-user-row">
+              <div class="more-user-main">
+                ${avHTML(user.id, "av40")}
+                <div class="more-user-copy">
+                  <strong>${esc(user.name)}</strong>
+                  <span>@${esc(user.handle)}</span>
+                </div>
+              </div>
+              <button class="btn btn-sm btn-o" type="button" onclick="unblockUserFromSettings('${user.id}')">
+                Unblock
+              </button>
+            </div>
+          `,
+        )
+        .join("")
+    : `
+        <div class="more-empty-note">
+          No blocked users yet. Search below to manage your list.
+        </div>
+      `;
+
+  suggestionsEl.innerHTML = suggestions.length
+    ? suggestions
+        .map(
+          (user) => `
+            <button class="more-user-suggestion" type="button" onclick="blockUserFromSettings('${user.id}')">
+              <div class="more-user-main">
+                ${avHTML(user.id, "av36")}
+                <div class="more-user-copy">
+                  <strong>${esc(user.name)}</strong>
+                  <span>@${esc(user.handle)}</span>
+                </div>
+              </div>
+              <span class="more-suggestion-cta">Block</span>
+            </button>
+          `,
+        )
+        .join("")
+    : `
+        <div class="more-empty-note">
+          ${query ? "No devotees matched your search." : "Suggestions will appear here."}
+        </div>
+      `;
+}
+
+function renderSettingsPrivacyPage() {
+  const page = document.getElementById("pgSettingsPrivacy");
+  if (!page) return;
+  const prefs = getMorePrefs();
+  const isDark = document.documentElement.hasAttribute("data-dark");
+  const selectedLanguage = getMoreLanguageOption(prefs.language);
+
+  page.innerHTML = `
+    <div class="fhdr about-page-header">
+      <div class="fhdr-row">
+        <div class="about-page-heading">
+          <button class="sb about-back-btn" type="button" onclick="goBackFromMorePage()" aria-label="Back">
+            <svg viewBox="0 0 24 24">
+              <polyline points="15 18 9 12 15 6" />
+            </svg>
+          </button>
+          <div>
+            <span class="fhdr-title">Settings &amp; Privacy</span>
+            <div class="about-page-subtitle">Notification controls, privacy, blocked users, and theme</div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="more-page-shell more-page-shell-settings">
+      <section class="more-page-hero more-page-hero-settings">
+        <div>
+          <span class="about-card-label">Preferences</span>
+          <h1>Adjust your app experience with clean, simple controls.</h1>
+          <p>
+            Fine-tune notifications, theme, privacy, and community controls
+            from one tidy space without leaving the app flow.
+          </p>
+        </div>
+        <div class="more-settings-overview">
+          <div class="more-overview-chip">
+            <span>Account</span>
+            <strong>${prefs.privateAccount ? "Private" : "Public"}</strong>
+          </div>
+          <div class="more-overview-chip">
+            <span>Theme</span>
+            <strong>${getCurrentThemeLabel()}</strong>
+          </div>
+          <div class="more-overview-chip">
+            <span>Language</span>
+            <strong>${esc(selectedLanguage.label)}</strong>
+          </div>
+        </div>
+      </section>
+      <section class="more-surface-card more-surface-card-feature">
+        <div class="more-section-head">
+          <div>
+            <span class="about-card-label">Notifications</span>
+            <h2>Choose what reaches you</h2>
+            <p>Keep the updates you care about and silence the rest.</p>
+          </div>
+        </div>
+        <div class="more-settings-list more-settings-list-cards">
+          ${MORE_NOTIFICATION_OPTIONS.map(
+            (item) => `
+              <div class="more-settings-row more-settings-row-card">
+                <div class="more-settings-copy">
+                  <strong>${esc(item.title)}</strong>
+                  <span>${esc(item.desc)}</span>
+                </div>
+                <button
+                  class="more-switch${prefs.notificationSettings[item.id] ? " on" : ""}"
+                  type="button"
+                  onclick="toggleNotificationPreference('${item.id}')"
+                  aria-pressed="${prefs.notificationSettings[item.id]}"
+                >
+                  <span></span>
+                </button>
+              </div>
+            `,
+          ).join("")}
+        </div>
+      </section>
+      <div class="more-settings-grid more-settings-grid-refined">
+        <section class="more-surface-card more-surface-card-feature">
+          <div class="more-section-head">
+            <div>
+              <span class="about-card-label">Privacy</span>
+              <h2>Manage account visibility</h2>
+              <p>Decide how open or private your account should feel.</p>
+            </div>
+          </div>
+          <div class="more-settings-row">
+            <div class="more-settings-copy">
+              <strong>Private account</strong>
+              <span>
+                ${CU
+                  ? "Control who can follow and view your profile activity."
+                  : "Sign in to manage account privacy settings."}
+              </span>
+            </div>
+            <button
+              class="more-switch${prefs.privateAccount ? " on" : ""}"
+              type="button"
+              onclick="togglePrivateAccountPreference()"
+              aria-pressed="${prefs.privateAccount}"
+            >
+              <span></span>
+            </button>
+          </div>
+          ${
+            CU
+              ? `
+                <div class="more-privacy-note">
+                  Your account is currently
+                  <span class="more-status-pill">${prefs.privateAccount ? "private" : "public"}</span>
+                  for new profile access.
+                </div>
+              `
+              : `
+                <div class="more-empty-note">
+                  Sign in to save privacy settings to your account.
+                </div>
+              `
+          }
+        </section>
+        <section class="more-surface-card more-surface-card-feature">
+          <div class="more-section-head">
+            <div>
+              <span class="about-card-label">Theme</span>
+              <h2>Pick your look</h2>
+              <p>Switch instantly between a bright and calm viewing style.</p>
+            </div>
+          </div>
+          <div class="more-theme-grid">
+            <button
+              class="more-theme-card${!isDark ? " on" : ""}"
+              type="button"
+              onclick="setThemePreference('light')"
+              aria-pressed="${!isDark}"
+            >
+              <div class="more-theme-preview more-theme-preview-light">
+                <span></span><span></span><span></span>
+              </div>
+              <span>Light</span>
+              <small>Soft ivory surfaces and warm accents</small>
+            </button>
+            <button
+              class="more-theme-card${isDark ? " on" : ""}"
+              type="button"
+              onclick="setThemePreference('dark')"
+              aria-pressed="${isDark}"
+            >
+              <div class="more-theme-preview more-theme-preview-dark">
+                <span></span><span></span><span></span>
+              </div>
+              <span>Dark</span>
+              <small>Low-glare reading for evenings and long sessions</small>
+            </button>
+          </div>
+        </section>
+      </div>
+      <section class="more-surface-card more-surface-card-feature">
+        <div class="more-section-head">
+          <div>
+            <span class="about-card-label">Blocked users</span>
+            <h2>Control who stays on your personal block list</h2>
+            <p>Search devotees by name or handle and manage them from one place.</p>
+          </div>
+        </div>
+        ${
+          CU
+            ? `
+              <div class="more-block-search">
+                <svg viewBox="0 0 24 24">
+                  <circle cx="11" cy="11" r="8"></circle>
+                  <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+                </svg>
+                <input
+                  id="blockedUserSearch"
+                  type="text"
+                  class="fi"
+                  placeholder="Search devotees to block"
+                  oninput="updateBlockedUserSearch(this.value)"
+                />
+              </div>
+              <div class="more-block-layout">
+                <div class="more-block-column">
+                  <div class="more-subcard-title">Blocked now</div>
+                  <div id="blockedUsersList"></div>
+                </div>
+                <div class="more-block-column">
+                  <div class="more-subcard-title">Suggestions</div>
+                  <div id="blockedUserSuggestions"></div>
+                </div>
+              </div>
+            `
+            : `
+              <div class="more-empty-note">
+                Sign in to keep a blocked-users list for your account.
+              </div>
+              <div class="more-action-row">
+                <button class="btn btn-p" type="button" onclick="openOvl('authOvl')">Sign In</button>
+              </div>
+            `
+        }
+      </section>
+    </div>
+  `;
+
+  if (CU) renderBlockedUsersPanel();
+}
 
 function syncMoreNavState(forceOpen = false) {
   const isActive = forceOpen || MORE_NAV_PAGES.includes(curPage);
@@ -1821,9 +3341,13 @@ function syncMoreNavState(forceOpen = false) {
 function syncMoreMenu() {
   const moreInstallBtn = document.getElementById("moreInstallBtn");
   const divider = document.getElementById("moreUtilityDivider");
+  const footer = document.getElementById("moreUtilityFooter");
+  updateMoreMenuSummaries();
+  const showUtility =
+    !!moreInstallBtn && moreInstallBtn.style.display !== "none";
+  if (footer) footer.style.display = showUtility ? "block" : "none";
   if (divider) {
-    divider.style.display =
-      moreInstallBtn && moreInstallBtn.style.display !== "none" ? "block" : "none";
+    divider.style.display = showUtility ? "block" : "none";
   }
 }
 
@@ -1857,6 +3381,7 @@ function openMoreMenu(trigger) {
     closeMoreMenu();
     return;
   }
+  rememberMoreOrigin();
   setMoreMenuAnchor(trigger || document.getElementById("snAbout"));
   const fromDrawer =
     trigger &&
@@ -1871,6 +3396,7 @@ function closeMoreMenu() {
 }
 
 function moreGo(page) {
+  rememberMoreOrigin();
   closeMoreMenu();
   closeDrawer();
   gp(page);
@@ -1901,6 +3427,9 @@ const ANALYTICS_PAGE_TITLES = {
   chats: "Chats",
   messages: "Messages",
   about: "About",
+  language: "Language",
+  helpSupport: "Help & Support",
+  settingsPrivacy: "Settings & Privacy",
 };
 
 window.__tsLastTrackedPage = window.__tsLastTrackedPage || "home";
@@ -1976,9 +3505,15 @@ function gp(page) {
     profile: () => renderProfile(CU ? CU.id : curProfId),
     chats: () => renderChatsPage(),
     about: () => {},
+    language: () => renderLanguagePage(),
+    helpSupport: () => renderHelpSupportPage(),
+    settingsPrivacy: () => renderSettingsPrivacyPage(),
   };
   const isReelsPage = page === "reels";
-  const isWidePage = page === "chats" || isReelsPage || page === "about";
+  const isWidePage =
+    page === "chats" ||
+    isReelsPage ||
+    ["about", "language", "helpSupport", "settingsPrivacy"].includes(page);
   document.body.classList.toggle("reels-mode", isReelsPage);
   //* pgChats needs flex not block */
   const cp = document.getElementById("pgChats");
@@ -1992,6 +3527,12 @@ function gp(page) {
   }
   if (!isReelsPage) pauseAllReels();
   if (renderers[page]) renderers[page]();
+  applyLanguagePreference();
+  scheduleGoogleTranslate({
+    languageCode: getCurrentLanguageCode(),
+    force: getCurrentLanguageCode() !== "en",
+    delay: 140,
+  });
   window.scrollTo({
     top: 0,
     behavior: isReelsPage || REELS_PREFERS_REDUCED_MOTION ? "auto" : "smooth",
@@ -2246,7 +3787,7 @@ function renderFeed() {
   const fp = document.getElementById("feedPosts");
   if (!fp) return;
   if (sk) sk.style.display = "none";
-  let posts = getPosts().sort((a, b) => b.ts - a.ts);
+  let posts = filterVisiblePosts(getPosts()).sort((a, b) => b.ts - a.ts);
   if (curFTab === "following" && CU) {
     const fl = CU.following || [];
     posts = posts.filter((p) => fl.includes(p.uid) || p.uid === CU.id);
@@ -2264,7 +3805,7 @@ function renderFeed() {
 }
 function mkPost(p) {
   const u = getUser(p.uid);
-  if (!u) return "";
+  if (!u || isUserBlocked(u.id) || !canCurrentUserViewUser(u.id)) return "";
   const ini = getIni(u.name);
   const avH = u.avatar ? `<img src="${u.avatar}" alt="">` : ini;
   const liked = CU && p.likes.includes(CU.id);
@@ -2298,7 +3839,7 @@ function mkPost(p) {
                </iframe>
              </div>`
     : "";
-  const cmts = p.cmts || [];
+  const cmts = (p.cmts || []).filter((c) => !isUserBlocked(c.uid));
   return `<div class="post" id="pt_${p.id}"><div class="post-row"><div style="position:relative;flex-shrink:0"><div class="av av40" onclick="vpro('${u.id}')" style="cursor:pointer">${avH}</div>${rp ? `<div style="position:absolute;bottom:-3px;right:-3px;width:18px;height:18px;background:#43a047;border-radius:50%;display:flex;align-items:center;justify-content:center;border:2px solid var(--bg)"><svg style="width:9px;height:9px;stroke:#fff;fill:none;stroke-width:2" viewBox="0 0 24 24"><polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg></div>` : ""}</div><div class="post-body"><div class="post-meta"><span class="post-name" onclick="vpro('${u.id}')">${u.name}</span>${u.verified ? `<span class="vbadge"><svg viewBox="0 0 24 24"><path d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg></span>` : ""}<span class="post-handle">@${u.handle}</span><span class="post-time">· ${p.t}</span><div class="more-wrap"><button class="sb" style="width:26px;height:26px;border-radius:6px" onclick="toggleMore('${p.id}',event)"><svg style="width:15px;height:15px" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/><circle cx="5" cy="12" r="1"/></svg></button><div class="more-menu" id="mm_${p.id}">${isOwn ? `<button class="mi red" onclick="delPost('${p.id}')"><svg viewBox="0 0 24 24"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>Delete</button>` : ""}<button class="mi" onclick="copyLink()"><svg viewBox="0 0 24 24"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>Copy link</button><button class="mi" onclick="closeMore()"><svg viewBox="0 0 24 24"><path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/><line x1="4" y1="22" x2="4" y2="15"/></svg>Report</button></div></div></div><div class="post-txt" onclick="openPD('${p.id}')">${esc(p.txt)}</div>${p.img ? `<img src="${p.img}" class="post-img" onclick="openPD('${p.id}')" alt="" loading="lazy">` : ""}${ytH}${pollH}<div class="post-acts"><button class="pa" onclick="toggleCmts('${p.id}',event)"><svg viewBox="0 0 24 24"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>${cmts.length}</button><button class="pa${rp ? " reposted" : ""}" onclick="openRP('${p.id}',event)"><svg viewBox="0 0 24 24"><polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg>${p.reposts.length}</button><button class="pa${liked ? " liked" : ""}" onclick="toggleLike('${p.id}',this,event)"><svg viewBox="0 0 24 24" ${liked ? 'style="fill:#e53935;stroke:#e53935"' : ""}><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg><span id="lc_${p.id}" onclick="openLikes('${p.id}',event)">${p.likes.length}</span></button><button class="pa${bm ? " saved" : ""}" onclick="toggleBM('${p.id}',this,event)"><svg viewBox="0 0 24 24" ${bm ? 'style="fill:var(--ad);stroke:var(--ad)"' : ""}><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg></button><button class="pa" onclick="openSH('${p.id}',event)"><svg viewBox="0 0 24 24"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg></button></div></div></div><div class="cmts" id="cm_${p.id}">${cmts
     .map((c) => {
       const cu = getUser(c.uid);
@@ -2494,10 +4035,19 @@ function openLikes(id, e) {
 function openPD(id) {
   const p = getPost(id);
   if (!p) return;
+  if (isUserBlocked(p.uid) || !canCurrentUserViewUser(p.uid)) {
+    MC.info("This post is hidden by your privacy settings.");
+    return;
+  }
   const c = document.getElementById("pdContent");
   if (!c) return;
+  const postHtml = mkPost(p);
+  if (!postHtml) {
+    MC.info("This post is hidden by your privacy settings.");
+    return;
+  }
   c.innerHTML =
-    mkPost(p) +
+    postHtml +
     `<div style="padding:12px 16px"><div class="cmt-row">${avHTML(CU ? CU.id : "u1", "av36")}<input class="cmt-in" id="pdc_${id}" placeholder="Post a reply…" onkeydown="if(event.key==='Enter'){event.preventDefault();submitCmt('${id}')}"><button class="btn btn-p btn-sm" onclick="submitCmt('${id}')">Reply</button></div></div>`;
   openOvl("pdOvl");
 }
@@ -3028,6 +4578,131 @@ function getCurrentUserId() {
   return CU ? String(CU.id || CU._id || "") : "";
 }
 
+const MORE_NOTIFICATION_TYPE_MAP = {
+  like: "communityHighlights",
+  comment: "communityHighlights",
+  repost: "communityHighlights",
+  follow: "communityHighlights",
+  message: "chatMessages",
+  chat: "chatMessages",
+  dm: "chatMessages",
+  festival: "festivalReminders",
+  donation: "donationUpdates",
+  seva: "donationUpdates",
+  receipt: "donationUpdates",
+};
+
+function idsMatch(a, b) {
+  return String(a || "") === String(b || "");
+}
+
+function isCurrentUserId(uid) {
+  return !!uid && idsMatch(uid, getCurrentUserId());
+}
+
+function isNotificationEnabledForType(type) {
+  const prefs = getMorePrefs();
+  const prefKey = MORE_NOTIFICATION_TYPE_MAP[type] || "communityHighlights";
+  return prefs.notificationSettings[prefKey] !== false;
+}
+
+function getBlockedUserIds() {
+  return new Set((getMorePrefs().blockedUsers || []).map((id) => String(id)));
+}
+
+function isUserBlocked(uid) {
+  return !!uid && getBlockedUserIds().has(String(uid));
+}
+
+function getUserPrivateAccountState(uid) {
+  if (!uid) return false;
+  if (isCurrentUserId(uid)) return !!getMorePrefs().privateAccount;
+  return !!getUser(uid)?.privateAccount;
+}
+
+function isFollowingUser(uid) {
+  return !!uid && !!CU && (CU.following || []).some((id) => idsMatch(id, uid));
+}
+
+function isPrivateProfileLocked(uid) {
+  return (
+    !!uid &&
+    !isCurrentUserId(uid) &&
+    getUserPrivateAccountState(uid) &&
+    !isFollowingUser(uid)
+  );
+}
+
+function canCurrentUserViewUser(uid) {
+  if (!uid) return false;
+  if (isCurrentUserId(uid)) return true;
+  if (isUserBlocked(uid)) return false;
+  return !isPrivateProfileLocked(uid);
+}
+
+function canStartDirectMessageWith(uid) {
+  return !!uid && !isUserBlocked(uid) && !isPrivateProfileLocked(uid);
+}
+
+function filterDiscoverableUsers(users) {
+  return (Array.isArray(users) ? users : []).filter(
+    (user) => user && !isUserBlocked(user.id || user._id),
+  );
+}
+
+function filterVisiblePosts(posts) {
+  return (Array.isArray(posts) ? posts : []).filter(
+    (post) => post && !isUserBlocked(post.uid) && canCurrentUserViewUser(post.uid),
+  );
+}
+
+function filterVisibleNotifications(notifs) {
+  return (Array.isArray(notifs) ? notifs : []).filter((item) => {
+    const from =
+      item?.from || item?.sender?._id || item?.sender?.id || item?.uid || "";
+    if (from && isUserBlocked(from)) return false;
+    return isNotificationEnabledForType(item?.type);
+  });
+}
+
+function setNotificationBadgeVisible(isVisible) {
+  const dot = document.getElementById("ndot");
+  if (dot) dot.style.display = isVisible ? "block" : "none";
+  const badge = document.getElementById("bnNotifBadge");
+  if (badge) badge.style.display = isVisible ? "block" : "none";
+}
+
+function refreshNotificationBadges() {
+  const unreadVisible = filterVisibleNotifications(
+    Store.g("notifs", SEED_NOTIFS),
+  ).some((item) => item.unread);
+  setNotificationBadgeVisible(unreadVisible);
+}
+
+function refreshPrivacyRealtimeViews() {
+  refreshNotificationBadges();
+  if (typeof window.checkNotifications === "function") {
+    window.checkNotifications();
+  }
+  updateMoreMenuSummaries();
+  if (document.getElementById("trendW") || document.getElementById("wtfW")) {
+    renderWidgets();
+  }
+  if (curPage === "home") renderFeed();
+  if (curPage === "search") {
+    doSearch(document.getElementById("srchIn")?.value || "");
+    renderWidgets();
+  }
+  if (curPage === "bookmarks") renderBM();
+  if (curPage === "notifs") renderNotifs();
+  if (curPage === "profile") renderProfile(curProfId || getCurrentUserId());
+  if (curPage === "chats") renderChatsPage();
+  if (curPage === "messages") renderConvs();
+  if (document.getElementById("dmUserList")) {
+    filterDMSearch(document.getElementById("dmSearchIn")?.value || "");
+  }
+}
+
 function getFollowedMandirs(user) {
   return listifyStrings(user?.followedMandirs);
 }
@@ -3283,6 +4958,7 @@ function getProfileFollowingItems(user) {
   const items = [];
 
   (user?.following || []).forEach((id) => {
+    if (isUserBlocked(id)) return;
     const profileUser = getUser(id);
     if (!profileUser) return;
     items.push({
@@ -5462,6 +7138,64 @@ function renderGuestProfilePrompt(
     prPosts.innerHTML = `<div class="empty"><div class="empty-ico">👤</div><div class="empty-ttl">${title}</div><div class="empty-sub">${subtitle}</div><button class="btn btn-p" style="margin-top:12px" onclick="openOvl('authOvl')">Sign In</button></div>`;
   }
 }
+
+function renderProfileAccessState(
+  user,
+  {
+    postsLabel = "Profile",
+    title = "Profile unavailable",
+    description = "This profile cannot be shown right now.",
+    icon = "🔒",
+    actionHtml = "",
+    bioText = "",
+  } = {},
+) {
+  if (!user) return;
+  resetProfileTabs();
+  curProfId = user.id;
+  const totalPosts = getPosts().filter((p) => p.uid === user.id).length;
+  const visibleFollowers = (user.followers || []).filter((id) => !isUserBlocked(id));
+  const followingItems = getProfileFollowingItems(user);
+  const ini = getIni(user.name);
+  const bi = document.getElementById("prBannerImg");
+  if (bi) {
+    bi.src = user.banner || "";
+    bi.style.display = user.banner ? "block" : "none";
+  }
+  const prAv = document.getElementById("prAv");
+  if (prAv) prAv.innerHTML = user.avatar ? `<img src="${user.avatar}" alt="">` : ini;
+  const prActions = document.getElementById("prActions");
+  if (prActions) prActions.innerHTML = actionHtml;
+  const prName = document.getElementById("prName");
+  if (prName) {
+    prName.innerHTML =
+      esc(user.name) +
+      (user.verified
+        ? ' <span class="vbadge"><svg viewBox="0 0 24 24"><path d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0 1 18 0z"/></svg></span>'
+        : "");
+  }
+  const prHdl = document.getElementById("prHdl");
+  if (prHdl) prHdl.textContent = "@" + (user.handle || "user");
+  const prBio = document.getElementById("prBio");
+  if (prBio) prBio.textContent = bioText || user.bio || "";
+  const prMeta = document.getElementById("prMeta");
+  if (prMeta) {
+    prMeta.innerHTML = `<span><svg viewBox="0 0 24 24"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg>${esc(postsLabel)}</span>`;
+  }
+  const prStats = document.getElementById("prStats");
+  if (prStats) {
+    prStats.innerHTML = `<div class="ps"><strong>${followingItems.length}</strong> <span>Following</span></div><div class="ps"><strong>${visibleFollowers.length}</strong> <span>Followers</span></div><div class="ps"><strong>${totalPosts}</strong> <span>Posts</span></div>`;
+  }
+  const phName = document.getElementById("phName");
+  if (phName) phName.textContent = user.name;
+  const phPosts = document.getElementById("phPosts");
+  if (phPosts) phPosts.textContent = postsLabel;
+  const prPosts = document.getElementById("prPosts");
+  if (prPosts) {
+    prPosts.innerHTML = `<div class="empty"><div class="empty-ico">${icon}</div><div class="empty-ttl">${title}</div><div class="empty-sub">${description}</div></div>`;
+  }
+}
+
 function renderProfile(uid) {
   if (!uid) {
     renderGuestProfilePrompt();
@@ -5475,10 +7209,38 @@ function renderProfile(uid) {
     );
     return;
   }
+  if (isUserBlocked(u.id)) {
+    renderProfileAccessState(u, {
+      postsLabel: "Blocked profile",
+      title: "This account is blocked",
+      description:
+        "You blocked this devotee in Settings & Privacy. Unblock them to restore profile, chat, and notification access instantly.",
+      icon: "🚫",
+      actionHtml: `<button class="btn btn-w" onclick="unblockUserFromSettings('${u.id}')">Unblock</button>`,
+      bioText: "This account is hidden by your blocked-users preference.",
+    });
+    return;
+  }
+  if (isPrivateProfileLocked(u.id)) {
+    renderProfileAccessState(u, {
+      postsLabel: "Private account",
+      title: "This account is private",
+      description: CU
+        ? "Follow this devotee to view their posts, media, and profile activity."
+        : "Sign in and follow this devotee to view their posts, media, and profile activity.",
+      icon: "🔒",
+      actionHtml: CU
+        ? `<button class="btn btn-p" onclick="toggleFollow('${u.id}',this)">Follow to view</button>`
+        : `<button class="btn btn-p" onclick="openOvl('authOvl')">Sign In to follow</button>`,
+      bioText: u.bio || "Private devotional profile",
+    });
+    return;
+  }
   resetProfileTabs();
   curProfId = u.id;
   const isOwn = CU && CU.id === u.id;
   const isFollowing = CU && (CU.following || []).includes(u.id);
+  const isPrivate = getUserPrivateAccountState(u.id);
   const ini = getIni(u.name);
   const bi = document.getElementById("prBannerImg");
   if (bi) {
@@ -5508,14 +7270,17 @@ function renderProfile(uid) {
     meta += `<span><svg viewBox="0 0 24 24"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>${u.location}</span>`;
   if (u.joined)
     meta += `<span><svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>Joined ${u.joined}</span>`;
+  if (isPrivate) {
+    meta += `<span><svg viewBox="0 0 24 24"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg>Private account</span>`;
+  }
   const prMeta = document.getElementById("prMeta");
   if (prMeta) prMeta.innerHTML = meta;
-  const myPosts = getPosts().filter((p) => p.uid === u.id);
+  const myPosts = filterVisiblePosts(getPosts().filter((p) => p.uid === u.id));
   const phName = document.getElementById("phName");
   if (phName) phName.textContent = u.name;
   const phPosts = document.getElementById("phPosts");
   if (phPosts) phPosts.textContent = myPosts.length + " posts";
-  const fol = u.followers || [];
+  const fol = (u.followers || []).filter((id) => !isUserBlocked(id));
   const followingItems = getProfileFollowingItems(u);
   const prStats = document.getElementById("prStats");
   if (prStats)
@@ -5542,6 +7307,7 @@ function renderPTab(uid, tab) {
     posts = getPosts().filter((p) =>
       (p.cmts || []).some((cm) => cm.uid === uid),
     );
+  posts = filterVisiblePosts(posts);
   if (!posts.length) {
     c.innerHTML = `<div class="empty"><div class="empty-ico">🕉</div><div class="empty-ttl">No ${tab} yet</div></div>`;
     return;
@@ -5558,6 +7324,10 @@ function toggleFollow(uid, btn) {
     return;
   }
   if (uid === CU.id) return;
+  if (isUserBlocked(uid)) {
+    MC.warn("Unblock this user from Settings & Privacy before following.");
+    return;
+  }
   const fol = [...(CU.following || [])];
   const i = fol.indexOf(uid);
   if (i > -1) fol.splice(i, 1);
@@ -5592,7 +7362,7 @@ function openFolModal(uid, type) {
   const fc = document.getElementById("folContent");
   if (!fc) return;
   if (type === "followers") {
-    const ids = u.followers || [];
+    const ids = (u.followers || []).filter((id) => !isUserBlocked(id));
     fc.innerHTML = !ids.length
       ? `<div class="empty"><div class="empty-sub">No followers yet</div></div>`
       : ids
@@ -5690,6 +7460,7 @@ function syncAvatars() {
 /* ── NOTIFICATIONS ── */
 function addNotif(type, from, pid, to) {
   if (!to || from === to) return;
+  if (!isNotificationEnabledForType(type) || isUserBlocked(from)) return;
   const notifs = Store.g("notifs", SEED_NOTIFS);
   const msgs = {
     like: "gave a Pranam to your post",
@@ -5707,21 +7478,19 @@ function addNotif(type, from, pid, to) {
     unread: true,
   });
   Store.s("notifs", notifs);
-  const d = document.getElementById("ndot");
-  if (d) d.style.display = "block";
-  const bd = document.getElementById("bnNotifBadge");
-  if (bd) bd.style.display = "block";
+  refreshNotificationBadges();
 }
 function renderNotifs(filter = "all") {
   const c = document.getElementById("notifsWrap");
   if (!c) return;
-  let notifs = Store.g("notifs", SEED_NOTIFS);
+  let notifs = filterVisibleNotifications(Store.g("notifs", SEED_NOTIFS));
   if (filter === "mentions")
     notifs = notifs.filter((n) => n.type === "comment");
   if (filter === "pranams") notifs = notifs.filter((n) => n.type === "like");
   const icons = { like: "❤️", comment: "💬", repost: "🔁", follow: "👤" };
   if (!notifs.length) {
     c.innerHTML = `<div class="empty"><div class="empty-ico">🔔</div><div class="empty-ttl">No notifications yet</div></div>`;
+    refreshNotificationBadges();
     return;
   }
   c.innerHTML = notifs
@@ -5732,19 +7501,28 @@ function renderNotifs(filter = "all") {
       return `<div class="notif${n.unread ? " unread" : ""}" onclick="handleNC('${n.pid || ""}','${n.from || ""}')"><div class="notif-ico" style="background:var(--a)">${icons[n.type] || "🔔"}</div><div style="display:flex;align-items:center;gap:8px;flex:1"><div class="av av36">${avH}</div><div><div class="notif-txt"><strong>${u?.name || "Someone"}</strong> ${n.txt}</div><div class="notif-tm">${n.t}</div></div></div></div>`;
     })
     .join("");
-  const updated = Store.g("notifs", SEED_NOTIFS).map((n) => ({
-    ...n,
-    unread: false,
-  }));
+  const visibleIds = new Set(notifs.map((n) => n.id));
+  const updated = Store.g("notifs", SEED_NOTIFS).map((n) =>
+    visibleIds.has(n.id) ? { ...n, unread: false } : n,
+  );
   Store.s("notifs", updated);
-  const d = document.getElementById("ndot");
-  if (d) d.style.display = "none";
-  const bd = document.getElementById("bnNotifBadge");
-  if (bd) bd.style.display = "none";
+  refreshNotificationBadges();
 }
 function handleNC(pid, from) {
-  if (pid) openPD(pid);
-  else if (from) vpro(from);
+  if (from && isUserBlocked(from)) {
+    MC.info("This account is hidden by your blocked-users list.");
+    return;
+  }
+  if (pid) {
+    const post = getPost(pid);
+    if (!post || isUserBlocked(post.uid) || !canCurrentUserViewUser(post.uid)) {
+      MC.info("This content is hidden by your privacy settings.");
+      return;
+    }
+    openPD(pid);
+    return;
+  }
+  if (from) vpro(from);
 }
 function markRead() {
   const n = Store.g("notifs", SEED_NOTIFS).map((x) => ({
@@ -5752,6 +7530,7 @@ function markRead() {
     unread: false,
   }));
   Store.s("notifs", n);
+  refreshNotificationBadges();
   renderNotifs();
   MC.info("All marked as read ✓");
 }
@@ -5774,7 +7553,9 @@ function renderConvs() {
     cl.innerHTML = `<div class="empty"><div class="empty-ico">💬</div><div class="empty-ttl">Sign in to view messages</div><button class="btn btn-p" style="margin-top:12px" onclick="openOvl('authOvl')">Sign In</button></div>`;
     return;
   }
-  const convs = Store.g("convs", SEED_CONVS);
+  const convs = Store.g("convs", SEED_CONVS).filter(
+    (conv) => !isUserBlocked(conv.uid),
+  );
   cl.innerHTML = convs
     .map((conv) => {
       const u = getUser(conv.uid);
@@ -5787,7 +7568,9 @@ function renderConvs() {
     .join("");
 }
 function filterConvs(q) {
-  const convs = Store.g("convs", SEED_CONVS);
+  const convs = Store.g("convs", SEED_CONVS).filter(
+    (conv) => !isUserBlocked(conv.uid),
+  );
   const filtered = q
     ? convs.filter((c) => {
       const u = getUser(c.uid);
@@ -5812,6 +7595,10 @@ function openChat(id) {
   const convs = Store.g("convs", SEED_CONVS);
   const conv = convs.find((c) => c.id === id);
   if (!conv) return;
+  if (isUserBlocked(conv.uid)) {
+    MC.info("This conversation is hidden because the user is blocked.");
+    return;
+  }
   curChat = id;
   const u = getUser(conv.uid);
   if (!u) return;
@@ -5884,6 +7671,15 @@ function backToConvs() {
 }
 function openDM(uid) {
   if (!auth(() => openDM(uid))) return;
+  if (!canStartDirectMessageWith(uid)) {
+    const user = getUser(uid);
+    MC.info(
+      isUserBlocked(uid)
+        ? `Unblock ${user?.name || "this user"} in Settings & Privacy before messaging.`
+        : `Follow @${user?.handle || "user"} first to message this private account.`,
+    );
+    return;
+  }
   const convs = Store.g("convs", SEED_CONVS);
   let c = convs.find((x) => x.uid === uid);
   if (!c) {
@@ -5905,7 +7701,9 @@ function renderBM() {
     if (bmCnt) bmCnt.textContent = "";
     return;
   }
-  const bm = getPosts().filter((p) => (p.bm || []).includes(CU.id));
+  const bm = filterVisiblePosts(
+    getPosts().filter((p) => (p.bm || []).includes(CU.id)),
+  );
   if (bmCnt) bmCnt.textContent = bm.length + " saved posts";
   if (!bm.length) {
     c.innerHTML = `<div class="empty"><div class="empty-ico">🔖</div><div class="empty-ttl">No saved posts yet</div></div>`;
@@ -5946,7 +7744,7 @@ function renderSearchSection(title, rows) {
 }
 
 function renderSearchPeopleResults(query) {
-  const users = getUsers()
+  const users = filterDiscoverableUsers(getUsers())
     .map((u) => ({
       data: u,
       score: getSearchScore(query, [u.name, u.handle, u.bio, u.location]),
@@ -6055,7 +7853,9 @@ function doSearch(q) {
         .join("");
   }
   if (curSTabVal === "posts") {
-    const posts = getPosts().filter((p) => p.txt.toLowerCase().includes(ql));
+    const posts = filterVisiblePosts(getPosts()).filter((p) =>
+      p.txt.toLowerCase().includes(ql),
+    );
     c.innerHTML = !posts.length
       ? `<div class="empty"><div class="empty-sub">No posts found</div></div>`
       : posts.map((p) => mkPost(p)).join("");
@@ -6087,7 +7887,7 @@ function renderWidgets() {
   const wf = document.getElementById("wtfW");
   if (wf) {
     const fl = CU ? CU.following || [] : [];
-    const sug = getUsers()
+    const sug = filterDiscoverableUsers(getUsers())
       .filter((u) => u.id !== CU?.id && !fl.includes(u.id))
       .slice(0, 3);
     wf.innerHTML = !sug.length
@@ -6114,6 +7914,8 @@ function toggleDark() {
     const ico = document.getElementById(id);
     if (ico) ico.innerHTML = np;
   });
+  updateMoreMenuSummaries();
+  refreshMorePreferencePages();
 }
 
 /* ── INIT UI ── */
@@ -6142,6 +7944,7 @@ function initUI() {
   }
   updateDrawer();
   updateNavAuthButtons();
+  updateMoreMenuSummaries();
 }
 
 /* ── BOOTSTRAP ── */
@@ -6191,6 +7994,7 @@ async function init() {
         if (ico) ico.innerHTML = sunPath;
       });
     }
+    applyLanguagePreference();
 
     // Step 4 — wire auth buttons
     const lb = document.getElementById("loginBtn");
@@ -6212,6 +8016,11 @@ async function init() {
     renderFeed();
     renderStories();
     renderWidgets();
+    scheduleGoogleTranslate({
+      languageCode: getCurrentLanguageCode(),
+      force: getCurrentLanguageCode() !== "en",
+      delay: 180,
+    });
     if (typeof window.hideBrandSplash === "function") {
       window.hideBrandSplash();
     }
@@ -6973,6 +8782,7 @@ function renderChatsList() {
 
   let items = [];
   CHAT_CONTACTS.forEach((cc) => {
+    if (isUserBlocked(cc.uid)) return;
     const u = getChatUser(cc.uid);
     items.push({
       id: cc.id,
@@ -7006,6 +8816,10 @@ function renderChatsList() {
   if (chatFilter === "groups") items = items.filter((i) => i.type === "group");
   if (chatFilter === "unread") items = items.filter((i) => i.unread > 0);
   if (q) items = items.filter((i) => i.name.toLowerCase().includes(q));
+
+  if (activeChatId && !items.some((item) => item.id === activeChatId)) {
+    closeChatWindow();
+  }
 
   if (!items.length) {
     c.innerHTML = `<div class="empty" style="padding:40px 20px"><div class="empty-ico">💬</div><div class="empty-sub">No chats found</div></div>`;
@@ -7327,7 +9141,9 @@ function filterChats() {
 function filterDMSearch(q) {
   const c = document.getElementById("dmUserList");
   if (!c) return;
-  const all = getUsers();
+  const all = filterDiscoverableUsers(getUsers()).filter(
+    (u) => u.id !== CU?.id && canStartDirectMessageWith(u.id),
+  );
   const filtered = q
     ? all.filter(
       (u) =>
@@ -7346,6 +9162,15 @@ function filterDMSearch(q) {
 }
 
 function startDMWith(uid) {
+  if (!canStartDirectMessageWith(uid)) {
+    const user = getUser(uid);
+    MC.info(
+      isUserBlocked(uid)
+        ? `Unblock ${user?.name || "this user"} in Settings & Privacy before messaging.`
+        : `Follow @${user?.handle || "user"} first to message this private account.`,
+    );
+    return;
+  }
   closeOvl("newDMModal");
   let cc = CHAT_CONTACTS.find((c) => c.uid === uid);
   if (!cc) {
@@ -7368,7 +9193,7 @@ function openNewGroupModal() {
   if (el) el.value = "";
   const ml = document.getElementById("ngMemberList");
   if (!ml) return;
-  ml.innerHTML = getUsers()
+  ml.innerHTML = filterDiscoverableUsers(getUsers())
     .filter((u) => u.id !== CU.id)
     .map(
       (

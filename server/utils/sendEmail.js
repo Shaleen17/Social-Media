@@ -95,7 +95,7 @@ function createTransporter() {
   return transporter;
 }
 
-async function sendEmail({ email, subject, html, text }) {
+async function sendEmail({ email, subject, html, text, replyTo }) {
   const { fromAddress } = getEmailTransportSettings();
 
   assertEmailDeliveryConfigured();
@@ -108,6 +108,7 @@ async function sendEmail({ email, subject, html, text }) {
     const info = await transport.sendMail({
       from: `Tirth Sutra <${fromAddress}>`,
       to: email,
+      ...(replyTo ? { replyTo } : {}),
       subject,
       html,
       text,

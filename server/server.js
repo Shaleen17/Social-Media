@@ -46,6 +46,8 @@ const pushSubscriptionRoutes = require("./routes/pushSubscriptions");
 const uploadRoutes = require("./routes/upload");
 const mandirRoutes = require("./routes/mandir");
 const paymentRoutes = require("./routes/payments");
+const translationRoutes = require("./routes/translation");
+const supportRoutes = require("./routes/support");
 
 const app = express();
 const server = http.createServer(app);
@@ -133,6 +135,8 @@ app.use("/api/push-subscriptions", pushSubscriptionRoutes);
 app.use("/api/upload", uploadRoutes);
 app.use("/api/mandir", mandirRoutes);
 app.use("/api/payments", paymentRoutes);
+app.use("/api/translate", translationRoutes);
+app.use("/api/support", supportRoutes);
 
 // Health check
 app.get("/api/health", (req, res) => {
