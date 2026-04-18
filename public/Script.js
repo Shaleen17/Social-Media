@@ -2266,33 +2266,42 @@ async function translateBatchMyMemory(texts, targetLang) {
 }
 
 async function requestTranslationBatch(texts, targetLanguage) {
-  // PRIMARY: Direct MyMemory API call — works on any host, no backend needed
-  try {
-    return await translateBatchMyMemory(texts, targetLanguage);
-  } catch (directErr) {
-    // FALLBACK: Try server-side translation API
-  }
-
-  // FALLBACK: backend translate endpoint
+  // PRIMARY: Use the backend translation endpoint.
+  // The backend proxies to MyMemory with proper error handling and rate-limit management.
+  // This is more reliable than calling MyMemory directly from the browser on production.
   const apiBase = getTranslationApiBase();
-  if (!apiBase) return { translatedTexts: texts };
-
-  const response = await fetch(apiBase + "/translate/batch", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      texts,
-      target: targetLanguage,
-      source: "auto",
-      format: "text",
-    }),
-  });
-
-  const data = await response.json().catch(() => ({}));
-  if (!response.ok) {
-    throw new Error(data?.error || "translation_request_failed");
+  if (apiBase) {
+    try {
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), 18000);
+      let backendResult = null;
+      try {
+        const response = await fetch(apiBase + "/translate/batch", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            texts,
+            target: targetLanguage,
+            source: "auto",
+            format: "text",
+          }),
+          signal: controller.signal,
+        });
+        const data = await response.json().catch(() => null);
+        if (response.ok && data && Array.isArray(data.translatedTexts)) {
+          backendResult = data;
+        }
+      } finally {
+        clearTimeout(timer);
+      }
+      if (backendResult) return backendResult;
+    } catch (backendErr) {
+      console.warn("[Translation] Backend unreachable, falling back to direct MyMemory:", backendErr.message);
+    }
   }
-  return data;
+
+  // FALLBACK: Direct MyMemory API call (browser → MyMemory directly)
+  return await translateBatchMyMemory(texts, targetLanguage);
 }
 
 async function fetchTranslatedBatch(texts, targetLanguage) {
