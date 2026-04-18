@@ -2204,26 +2204,75 @@ function showTranslationNoticeOnce(kind, languageCode) {
 
   if (kind === "unsupported") {
     MC.info(
-      `${label} is not installed on your LibreTranslate server yet, so the website is staying in its original text.`,
+      `${label} translation is not available right now. The page will stay in its original text.`,
     );
     return;
   }
 
   MC.warn(
-    "Language translation server is not connected. Start LibreTranslate and set LIBRETRANSLATE_URL on the backend.",
+    "Translation service is temporarily unavailable. Please try again in a moment.",
   );
 }
 
+// ─── Direct MyMemory translation (works without backend) ──────────────────────
+async function translateOneMyMemory(text, targetLang) {
+  const langPair = `auto|${targetLang}`;
+  const url = new URL("https://api.mymemory.translated.net/get");
+  url.searchParams.set("q", text);
+  url.searchParams.set("langpair", langPair);
+
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 15000);
+  try {
+    const res = await fetch(url.toString(), {
+      signal: controller.signal,
+      headers: { Accept: "application/json" },
+    });
+    const data = await res.json().catch(() => null);
+    if (!data || data.responseStatus !== 200) return text;
+    return data.responseData?.translatedText || text;
+  } catch {
+    return text;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+async function translateBatchMyMemory(texts, targetLang) {
+  const CONCURRENCY = 3;
+  const results = new Array(texts.length).fill("");
+  for (let i = 0; i < texts.length; i += CONCURRENCY) {
+    const chunk = texts.slice(i, i + CONCURRENCY);
+    const translated = await Promise.all(
+      chunk.map((t) =>
+        t.trim() ? translateOneMyMemory(t, targetLang).catch(() => t) : Promise.resolve(t)
+      )
+    );
+    translated.forEach((t, j) => { results[i + j] = t; });
+  }
+  return {
+    provider: "mymemory",
+    source: "auto",
+    target: targetLang,
+    translatedTexts: results,
+  };
+}
+
 async function requestTranslationBatch(texts, targetLanguage) {
-  if (typeof API !== "undefined" && API && typeof API.translateTexts === "function") {
-    return API.translateTexts(texts, targetLanguage, "auto", "text");
+  // PRIMARY: Direct MyMemory API call — works on any host, no backend needed
+  try {
+    return await translateBatchMyMemory(texts, targetLanguage);
+  } catch (directErr) {
+    // FALLBACK: Try server-side translation API
   }
 
-  const response = await fetch(getTranslationApiBase() + "/translate/batch", {
+  // FALLBACK: backend translate endpoint
+  const apiBase = getTranslationApiBase();
+  if (!apiBase) return { translatedTexts: texts };
+
+  const response = await fetch(apiBase + "/translate/batch", {
     method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-    },
+    headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
       texts,
       target: targetLanguage,
