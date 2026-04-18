@@ -335,7 +335,113 @@ async function translateBatch({ texts, source = "auto", target, format = "text" 
   return translateWithMyMemory(normalizedTexts, normalizedSource, normalizedTarget);
 }
 
+async function translateBatchCached(options) {
+  const normalizedTexts = normalizeTexts(options?.texts);
+  const normalizedSource = String(options?.source || "auto");
+  const normalizedTarget = String(options?.target || "").trim();
+
+  if (!normalizedTarget) {
+    throw new AppError("target language is required", 400);
+  }
+
+  if (normalizedTarget === normalizedSource) {
+    return {
+      provider: "none",
+      source: normalizedSource,
+      target: normalizedTarget,
+      translatedTexts: normalizedTexts,
+      skipped: true,
+    };
+  }
+
+  if (!isLanguageSupported(normalizedTarget)) {
+    return {
+      provider: "none",
+      source: normalizedSource,
+      target: normalizedTarget,
+      translatedTexts: normalizedTexts,
+      unsupportedTarget: true,
+    };
+  }
+
+  const translatedTexts = new Array(normalizedTexts.length);
+  const missingIndexesByText = new Map();
+
+  normalizedTexts.forEach((text, index) => {
+    const cached = getCachedTranslation(normalizedSource, normalizedTarget, text);
+    if (typeof cached === "string") {
+      translatedTexts[index] = cached;
+      return;
+    }
+
+    if (!missingIndexesByText.has(text)) {
+      missingIndexesByText.set(text, []);
+    }
+    missingIndexesByText.get(text).push(index);
+  });
+
+  const missingTexts = Array.from(missingIndexesByText.keys());
+  if (!missingTexts.length) {
+    return {
+      provider: "cache",
+      source: normalizedSource,
+      target: normalizedTarget,
+      translatedTexts,
+      cacheHits: normalizedTexts.length,
+    };
+  }
+
+  const mergeTranslatedResults = (providerName, result) => {
+    const providerTexts = Array.isArray(result?.translatedTexts)
+      ? result.translatedTexts
+      : [];
+
+    missingTexts.forEach((text, index) => {
+      const translated =
+        typeof providerTexts[index] === "string" && providerTexts[index].trim()
+          ? providerTexts[index]
+          : text;
+      setCachedTranslation(normalizedSource, normalizedTarget, text, translated);
+      const indexes = missingIndexesByText.get(text) || [];
+      indexes.forEach((targetIndex) => {
+        translatedTexts[targetIndex] = translated;
+      });
+    });
+
+    return {
+      provider: providerName,
+      source: normalizedSource,
+      target: normalizedTarget,
+      translatedTexts,
+      cacheHits: normalizedTexts.length - missingTexts.length,
+    };
+  };
+
+  if (isLibreTranslateConfigured()) {
+    try {
+      const result = await translateWithLibreTranslate(
+        missingTexts,
+        normalizedSource,
+        normalizedTarget
+      );
+      return mergeTranslatedResults("libretranslate", result);
+    } catch (err) {
+      console.warn(
+        "[Translation] LibreTranslate failed - falling back to MyMemory.",
+        err.message
+      );
+    }
+  }
+
+  const fallbackResult = await translateWithMyMemory(
+    missingTexts,
+    normalizedSource,
+    normalizedTarget
+  );
+  return mergeTranslatedResults("mymemory", fallbackResult);
+}
+
 module.exports = {
   getSupportedLanguages,
-  translateBatch,
+  translateBatch: translateBatchCached,
 };

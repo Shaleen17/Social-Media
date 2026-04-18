@@ -1949,12 +1949,105 @@ const APP_TRANSLATION_STATE = {
   persistTimer: 0,
   sourceTitle: document.title,
   cache: Store.g("translationCache", {}) || {},
+  staticPacks: Store.g("translationStaticPacks", {}) || {},
+  staticPackPromises: {},
+  staticTextCatalog: null,
   textNodes: new WeakMap(),
   attrNodes: new WeakMap(),
   lastNoticeKey: "",
 };
 const APP_TRANSLATION_ATTRS = ["placeholder", "title", "aria-label", "alt", "value"];
 const APP_TRANSLATION_BATCH_SEPARATOR = "\n<ts-sep-918273645/>\n";
+const APP_TRANSLATION_STATIC_KEYS = new Set([
+  "title",
+  "subtitle",
+  "heading",
+  "name",
+  "label",
+  "hint",
+  "sample",
+  "desc",
+  "description",
+  "bio",
+  "category",
+  "location",
+  "tag",
+  "cat",
+  "text",
+  "txt",
+  "message",
+  "q",
+  "a",
+  "status",
+]);
+const APP_TRANSLATION_STATIC_UI_PHRASES = [
+  "Tirth Sutra",
+  "Mandir Community",
+  "Home",
+  "Tirth Tube",
+  "Reels",
+  "Notifications",
+  "Chats",
+  "Profile",
+  "More",
+  "New post",
+  "Theme",
+  "Sign in now",
+  "Search...",
+  "Search",
+  "Bookmarks",
+  "About Tirth Sutra",
+  "Install App",
+  "Language",
+  "Help & Support",
+  "Settings & Privacy",
+  "Public account",
+  "Private account",
+  "Dark theme",
+  "Light theme",
+  "Choose the language you feel most comfortable with",
+  "Keep Tirth Sutra closer to your language.",
+  "We remember your preferred language on this device so the app feels more natural each time you return.",
+  "Current",
+  "Personalization",
+  "Popular choices",
+  "Regional languages",
+  "Welcome to Mandir Community",
+  "Connect with devotees, discover sacred temples, join spiritual events and share your dharmic journey.",
+  "Join Community",
+  "Donate to Mandir 🙏",
+  "Devotees",
+  "Temples",
+  "Sacred Tirths",
+  "Pujas Live",
+  "Sacred Mandirs",
+  "Trending",
+  "Trending Today",
+  "Spiritual",
+  "Temple",
+  "Culture",
+  "People",
+  "Verified Sants",
+  "Follow",
+  "Following",
+  "Comment",
+  "Comments",
+  "Share",
+  "Channel",
+  "Community",
+  "Up next",
+  "Uploads",
+  "No comments yet. Start the conversation.",
+  "Add a comment...",
+  "No notifications yet",
+  "No chats found",
+  "No tags found",
+  "Profile unavailable",
+  "This account is private",
+  "This account is blocked",
+  "Sign in to view your profile",
+  "Create an account to manage your posts, followers, bookmarks, and spiritual journey.",
+];
 
 function getMorePrefs() {
   const saved = Store.g("morePrefs", {}) || {};
@@ -2035,6 +2128,83 @@ function persistTranslationCache() {
   APP_TRANSLATION_STATE.persistTimer = window.setTimeout(() => {
     Store.s("translationCache", APP_TRANSLATION_STATE.cache);
   }, 180);
+}
+
+function persistStaticTranslationPacks() {
+  window.clearTimeout(APP_TRANSLATION_STATE.persistTimer);
+  APP_TRANSLATION_STATE.persistTimer = window.setTimeout(() => {
+    Store.s("translationCache", APP_TRANSLATION_STATE.cache);
+    Store.s("translationStaticPacks", APP_TRANSLATION_STATE.staticPacks);
+  }, 180);
+}
+
+function getStaticTranslationPackBucket(languageCode) {
+  if (!APP_TRANSLATION_STATE.staticPacks[languageCode]) {
+    APP_TRANSLATION_STATE.staticPacks[languageCode] = {};
+  }
+  return APP_TRANSLATION_STATE.staticPacks[languageCode];
+}
+
+function rememberStaticTranslationPhrase(phrases, value) {
+  const text = String(value || "").trim();
+  if (!looksTranslatable(text)) return;
+  if (text.length > 220) return;
+  phrases.add(text);
+}
+
+function collectStaticTranslationValue(value, key, phrases) {
+  if (!value) return;
+  if (typeof value === "string") {
+    if (!key || APP_TRANSLATION_STATIC_KEYS.has(key)) {
+      rememberStaticTranslationPhrase(phrases, value);
+    }
+    return;
+  }
+
+  if (Array.isArray(value)) {
+    value.forEach((item) => collectStaticTranslationValue(item, key, phrases));
+    return;
+  }
+
+  if (typeof value !== "object") return;
+
+  Object.entries(value).forEach(([childKey, childValue]) => {
+    if (
+      typeof childValue === "string" &&
+      !APP_TRANSLATION_STATIC_KEYS.has(childKey)
+    ) {
+      return;
+    }
+    collectStaticTranslationValue(childValue, childKey, phrases);
+  });
+}
+
+function getStaticTranslationSources() {
+  const sources = [
+    APP_TRANSLATION_STATIC_UI_PHRASES,
+    MORE_LANGUAGE_OPTIONS,
+    MORE_NOTIFICATION_OPTIONS,
+    MORE_FAQS,
+  ];
+
+  if (typeof TRENDING !== "undefined") sources.push(TRENDING);
+  if (typeof TEMPLES !== "undefined") sources.push(TEMPLES);
+  if (typeof MANDIR_CONFIG !== "undefined") sources.push(Object.values(MANDIR_CONFIG));
+
+  return sources;
+}
+
+function getStaticTranslationCatalog() {
+  if (Array.isArray(APP_TRANSLATION_STATE.staticTextCatalog)) {
+    return APP_TRANSLATION_STATE.staticTextCatalog;
+  }
+
+  const phrases = new Set();
+  getStaticTranslationSources().forEach((source) => {
+    collectStaticTranslationValue(source, "", phrases);
+  });
+  APP_TRANSLATION_STATE.staticTextCatalog = Array.from(phrases);
+  return APP_TRANSLATION_STATE.staticTextCatalog;
 }
 
 function splitTextForTranslation(text) {
@@ -2149,7 +2319,7 @@ function collectAttributeTargetsForTranslation(root = document.body) {
   return targets;
 }
 
-function chunkTextsForTranslation(texts, maxItems = 10, maxChars = 1800) {
+function chunkTextsForTranslation(texts, maxItems = 24, maxChars = 4500) {
   const chunks = [];
   let current = [];
   let currentChars = 0;
@@ -2172,6 +2342,66 @@ function chunkTextsForTranslation(texts, maxItems = 10, maxChars = 1800) {
 
   if (current.length) chunks.push(current);
   return chunks;
+}
+
+async function warmStaticTranslationPack(languageCode) {
+  const nextCode = languageCode || getCurrentLanguageCode() || "en";
+  if (nextCode === "en") return {};
+
+  if (APP_TRANSLATION_STATE.staticPackPromises[nextCode]) {
+    return APP_TRANSLATION_STATE.staticPackPromises[nextCode];
+  }
+
+  const bucket = getStaticTranslationPackBucket(nextCode);
+  const missingTexts = getStaticTranslationCatalog().filter((text) => !bucket[text]);
+  if (!missingTexts.length) {
+    return bucket;
+  }
+
+  APP_TRANSLATION_STATE.staticPackPromises[nextCode] = (async () => {
+    const chunks = chunkTextsForTranslation(missingTexts, 28, 5200);
+    for (let i = 0; i < chunks.length; i += 2) {
+      const group = chunks.slice(i, i + 2);
+      await Promise.all(
+        group.map(async (chunk) => {
+          try {
+            const translatedChunk = await fetchTranslatedBatch(chunk, nextCode);
+            chunk.forEach((text, index) => {
+              bucket[text] = translatedChunk[index] || text;
+            });
+          } catch {
+            chunk.forEach((text) => {
+              bucket[text] = text;
+            });
+          }
+        }),
+      );
+    }
+    persistStaticTranslationPacks();
+    return bucket;
+  })().finally(() => {
+    delete APP_TRANSLATION_STATE.staticPackPromises[nextCode];
+  });
+
+  return APP_TRANSLATION_STATE.staticPackPromises[nextCode];
+}
+
+function primeLanguageTranslation(languageCode) {
+  const nextCode = languageCode || getCurrentLanguageCode() || "en";
+  if (nextCode === "en") return Promise.resolve();
+
+  return warmStaticTranslationPack(nextCode)
+    .then(() => {
+      const activeCode =
+        APP_TRANSLATION_STATE.lastRequestedCode || getCurrentLanguageCode() || "en";
+      if (activeCode !== nextCode) return;
+      scheduleGoogleTranslate({
+        languageCode: nextCode,
+        force: true,
+        delay: 50,
+      });
+    })
+    .catch(() => {});
 }
 
 function getTranslationApiBase() {
@@ -2336,25 +2566,38 @@ async function fetchTranslatedBatch(texts, targetLanguage) {
 
 async function getTranslatedTexts(texts, targetLanguage) {
   const bucket = getTranslationCacheBucket(targetLanguage);
+  const staticPack = getStaticTranslationPackBucket(targetLanguage);
   const uniqueTexts = Array.from(
     new Set(texts.filter((text) => looksTranslatable(text))),
   );
-  const missingTexts = uniqueTexts.filter((text) => !bucket[text]);
-
-  for (const chunk of chunkTextsForTranslation(missingTexts)) {
-    try {
-      const translatedChunk = await fetchTranslatedBatch(chunk, targetLanguage);
-      chunk.forEach((text, index) => {
-        bucket[text] = translatedChunk[index] || text;
-      });
-    } catch {
-      chunk.forEach((text) => {
-        bucket[text] = text;
-      });
+  uniqueTexts.forEach((text) => {
+    if (!bucket[text] && staticPack[text]) {
+      bucket[text] = staticPack[text];
     }
+  });
+
+  const missingTexts = uniqueTexts.filter((text) => !bucket[text]);
+  const chunks = chunkTextsForTranslation(missingTexts);
+
+  for (let i = 0; i < chunks.length; i += 2) {
+    const group = chunks.slice(i, i + 2);
+    await Promise.all(
+      group.map(async (chunk) => {
+        try {
+          const translatedChunk = await fetchTranslatedBatch(chunk, targetLanguage);
+          chunk.forEach((text, index) => {
+            bucket[text] = translatedChunk[index] || text;
+          });
+        } catch {
+          chunk.forEach((text) => {
+            bucket[text] = text;
+          });
+        }
+      }),
+    );
   }
 
-  if (missingTexts.length) persistTranslationCache();
+  if (missingTexts.length) persistStaticTranslationPacks();
   return uniqueTexts.reduce((acc, text) => {
     acc[text] = bucket[text] || text;
     return acc;
@@ -2555,7 +2798,7 @@ function scheduleGoogleTranslate(options = {}) {
   const nextCode = options.languageCode || getCurrentLanguageCode();
   const force = options.force === true;
   const immediate = options.immediate === true;
-  const delay = typeof options.delay === "number" ? options.delay : 220;
+  const delay = typeof options.delay === "number" ? options.delay : 140;
 
   window.clearTimeout(APP_TRANSLATION_STATE.applyTimer);
   const run = () => {
@@ -2653,6 +2896,7 @@ function applyLanguagePreference() {
   document.documentElement.lang = selectedLanguage.htmlLang || "en";
   document.documentElement.setAttribute("data-app-language", selectedLanguage.id);
   updateMoreMenuSummaries();
+  primeLanguageTranslation(selectedLanguage.htmlLang || "en");
   scheduleGoogleTranslate({
     languageCode: selectedLanguage.htmlLang || "en",
     force:

@@ -1,4 +1,4 @@
-self.__TS_SW_VERSION__ = "20260418-translate-fix-2";
+self.__TS_SW_VERSION__ = "20260419-language-deploy-fix-4";
 const TS_STATIC_CACHE = `ts-static-${self.__TS_SW_VERSION__}`;
 
 self.addEventListener("install", (event) => {
@@ -78,8 +78,18 @@ self.addEventListener("fetch", (event) => {
     /\.(js|css|png|jpg|jpeg|gif|webp|avif|svg|ico|woff2?|ttf|mp4|webmanifest)$/i.test(
       url.pathname
     );
+  const isCodeAsset =
+    request.destination === "script" ||
+    request.destination === "style" ||
+    /\.(js|css|webmanifest)$/i.test(url.pathname) ||
+    /[?&]v=/.test(url.search);
 
   if (request.mode === "navigate") {
+    event.respondWith(networkFirst(request));
+    return;
+  }
+
+  if (isCodeAsset) {
     event.respondWith(networkFirst(request));
     return;
   }
