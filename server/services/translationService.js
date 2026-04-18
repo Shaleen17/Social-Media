@@ -26,6 +26,28 @@ const AppError = require("../utils/appError");
 // ─── Configuration helpers ────────────────────────────────────────────────────
 
 const TIMEOUT_MS = 20000;
+const TRANSLATION_CACHE_LIMIT = 12000;
+const translationMemory = new Map();
+
+function buildCacheKey(source, target, text) {
+  return `${source || "auto"}::${target || "en"}::${text}`;
+}
+
+function getCachedTranslation(source, target, text) {
+  return translationMemory.get(buildCacheKey(source, target, text));
+}
+
+function setCachedTranslation(source, target, text, translatedText) {
+  const key = buildCacheKey(source, target, text);
+  if (translationMemory.has(key)) {
+    translationMemory.delete(key);
+  }
+  translationMemory.set(key, translatedText);
+  if (translationMemory.size > TRANSLATION_CACHE_LIMIT) {
+    const oldestKey = translationMemory.keys().next().value;
+    if (oldestKey) translationMemory.delete(oldestKey);
+  }
+}
 
 function getLibreTranslateUrl() {
   return (process.env.LIBRETRANSLATE_URL || "").trim().replace(/\/+$/, "");

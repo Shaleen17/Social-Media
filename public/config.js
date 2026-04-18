@@ -148,4 +148,24 @@
       storedOverride: readStoredOverride(),
     };
   };
+
+  try {
+    if (
+      typeof global.scheduleGoogleTranslate === "function" &&
+      typeof global.getCurrentLanguageCode === "function"
+    ) {
+      global.setTimeout(function () {
+        const currentLanguage = global.getCurrentLanguageCode();
+        if (currentLanguage && currentLanguage !== "en") {
+          global.scheduleGoogleTranslate({
+            languageCode: currentLanguage,
+            force: true,
+            delay: 60,
+          });
+        }
+      }, 0);
+    }
+  } catch {
+    // Ignore translation bootstrap issues until the main app finishes loading.
+  }
 })(window);

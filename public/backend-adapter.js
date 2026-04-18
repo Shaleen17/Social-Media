@@ -186,6 +186,19 @@
 
     const render = refreshMap[curPage] || refreshMap.home;
     render();
+    if (
+      typeof window.scheduleGoogleTranslate === "function" &&
+      typeof window.getCurrentLanguageCode === "function"
+    ) {
+      const languageCode = window.getCurrentLanguageCode() || "en";
+      if (languageCode !== "en") {
+        window.scheduleGoogleTranslate({
+          languageCode,
+          force: true,
+          delay: 180,
+        });
+      }
+    }
   }
 
   function getAppBaseUrl() {
@@ -240,7 +253,7 @@
 
   let _chatPushSetupPromise = null;
   let _pendingOpenChatId = consumeOpenChatParam();
-  const APP_ASSET_VERSION = "20260418-more-menu-1";
+  const APP_ASSET_VERSION = "20260419-language-deploy-fix-2";
   let _appSwPromise = null;
   let _deferredInstallPrompt = null;
   let _installPromptBound = false;

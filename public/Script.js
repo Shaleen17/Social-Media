@@ -1939,10 +1939,12 @@ const APP_TRANSLATION_CODES = Array.from(
 const APP_TRANSLATION_STATE = {
   ready: false,
   applyTimer: 0,
+  pauseTimer: 0,
   observer: null,
   lastAppliedCode: "en",
   lastRequestedCode: "en",
   pauseUntil: 0,
+  pendingRefresh: false,
   requestId: 0,
   persistTimer: 0,
   sourceTitle: document.title,
@@ -2173,10 +2175,6 @@ function chunkTextsForTranslation(texts, maxItems = 10, maxChars = 1800) {
 }
 
 function getTranslationApiBase() {
-  if (typeof API !== "undefined" && API && typeof API.translateTexts === "function") {
-    return null;
-  }
-
   if (typeof window.getBackendBaseUrl === "function") {
     return window.getBackendBaseUrl() + "/api";
   }
@@ -2266,6 +2264,20 @@ async function translateBatchMyMemory(texts, targetLang) {
 }
 
 async function requestTranslationBatch(texts, targetLanguage) {
+  if (typeof API !== "undefined" && API && typeof API.translateTexts === "function") {
+    try {
+      const apiResult = await API.translateTexts(texts, targetLanguage, "auto", "text");
+      if (apiResult && Array.isArray(apiResult.translatedTexts)) {
+        return apiResult;
+      }
+    } catch (apiErr) {
+      console.warn(
+        "[Translation] API.translateTexts failed, falling back to raw backend fetch:",
+        apiErr.message,
+      );
+    }
+  }
+
   // PRIMARY: Use the backend translation endpoint.
   // The backend proxies to MyMemory with proper error handling and rate-limit management.
   // This is more reliable than calling MyMemory directly from the browser on production.
@@ -2366,6 +2378,98 @@ function restoreTranslatedDom() {
   APP_TRANSLATION_STATE.lastAppliedCode = "en";
 }
 
+function scheduleQueuedTranslationRefresh(languageCode = getCurrentLanguageCode()) {
+  const nextCode = languageCode || getCurrentLanguageCode() || "en";
+  window.clearTimeout(APP_TRANSLATION_STATE.pauseTimer);
+
+  if (nextCode === "en") {
+    APP_TRANSLATION_STATE.pendingRefresh = false;
+    APP_TRANSLATION_STATE.pauseTimer = 0;
+    return;
+  }
+
+  const wait = Math.max(APP_TRANSLATION_STATE.pauseUntil - Date.now(), 0) + 120;
+  APP_TRANSLATION_STATE.pauseTimer = window.setTimeout(() => {
+    APP_TRANSLATION_STATE.pauseTimer = 0;
+    const activeCode =
+      APP_TRANSLATION_STATE.lastRequestedCode || getCurrentLanguageCode() || "en";
+    if (!APP_TRANSLATION_STATE.pendingRefresh) return;
+    if (activeCode === "en") {
+      APP_TRANSLATION_STATE.pendingRefresh = false;
+      return;
+    }
+    APP_TRANSLATION_STATE.pendingRefresh = false;
+    scheduleGoogleTranslate({
+      languageCode: activeCode,
+      force: true,
+      immediate: true,
+    });
+  }, wait);
+}
+
+function scheduleActiveLanguageRefresh(delay = 180) {
+  const languageCode = getCurrentLanguageCode();
+  if (languageCode === "en") return;
+  scheduleGoogleTranslate({
+    languageCode,
+    force: true,
+    delay,
+  });
+}
+
+function rememberAddedNodeTranslation(node) {
+  if (!node || isGoogleTranslateNode(node)) return false;
+
+  if (node.nodeType === Node.TEXT_NODE) {
+    if (!looksTranslatable(node.textContent)) return false;
+    rememberNodeSourceText(node, node.textContent);
+    return true;
+  }
+
+  if (node.nodeType !== Node.ELEMENT_NODE) return false;
+  if (shouldSkipTranslationElement(node)) return false;
+
+  let found = false;
+  collectTextNodesForTranslation(node).forEach((textNode) => {
+    rememberNodeSourceText(textNode, textNode.textContent);
+    found = true;
+  });
+  collectAttributeTargetsForTranslation(node).forEach(
+    ({ element, attribute, source }) => {
+      rememberAttributeSource(element, attribute, source);
+      found = true;
+    },
+  );
+
+  return found || !!((node.innerText || node.textContent || "").trim());
+}
+
+function registerTranslationMutation(mutation, allowLiveUpdates = true) {
+  if (!mutation || isGoogleTranslateNode(mutation.target)) return false;
+
+  if (mutation.type === "characterData") {
+    if (!allowLiveUpdates) return false;
+    if (!looksTranslatable(mutation.target.textContent)) return false;
+    rememberNodeSourceText(mutation.target, mutation.target.textContent);
+    return true;
+  }
+
+  if (mutation.type === "attributes") {
+    if (!allowLiveUpdates) return false;
+    if (shouldSkipTranslationElement(mutation.target)) return false;
+    const attribute = mutation.attributeName;
+    if (!attribute || !mutation.target.hasAttribute(attribute)) return false;
+    const value = mutation.target.getAttribute(attribute) || "";
+    if (!looksTranslatable(value)) return false;
+    rememberAttributeSource(mutation.target, attribute, value);
+    return true;
+  }
+
+  return Array.from(mutation.addedNodes || []).some((node) =>
+    rememberAddedNodeTranslation(node),
+  );
+}
+
 async function syncGoogleTranslate(languageCode, force = false) {
   const nextCode = languageCode || "en";
   APP_TRANSLATION_STATE.lastRequestedCode = nextCode;
@@ -2378,11 +2482,15 @@ async function syncGoogleTranslate(languageCode, force = false) {
 
   APP_TRANSLATION_STATE.requestId += 1;
   const requestId = APP_TRANSLATION_STATE.requestId;
+  window.clearTimeout(APP_TRANSLATION_STATE.pauseTimer);
+  APP_TRANSLATION_STATE.pauseTimer = 0;
+  APP_TRANSLATION_STATE.pendingRefresh = false;
   APP_TRANSLATION_STATE.pauseUntil = Date.now() + 900;
 
   if (nextCode === "en") {
     restoreTranslatedDom();
     APP_TRANSLATION_STATE.pauseUntil = Date.now() + 400;
+    APP_TRANSLATION_STATE.pendingRefresh = false;
     return;
   }
 
@@ -2438,6 +2546,9 @@ async function syncGoogleTranslate(languageCode, force = false) {
 
   APP_TRANSLATION_STATE.lastAppliedCode = nextCode;
   APP_TRANSLATION_STATE.pauseUntil = Date.now() + 700;
+  if (APP_TRANSLATION_STATE.pendingRefresh) {
+    scheduleQueuedTranslationRefresh(nextCode);
+  }
 }
 
 function scheduleGoogleTranslate(options = {}) {
@@ -2474,51 +2585,22 @@ function ensureAppTranslationObserver() {
 
   APP_TRANSLATION_STATE.observer = new MutationObserver((mutations) => {
     if (!APP_TRANSLATION_STATE.ready) return;
-    if (Date.now() < APP_TRANSLATION_STATE.pauseUntil) return;
+    const paused = Date.now() < APP_TRANSLATION_STATE.pauseUntil;
+    const shouldRefresh = mutations.some((mutation) =>
+      registerTranslationMutation(mutation, !paused),
+    );
 
-    const shouldRefresh = mutations.some((mutation) => {
-      if (isGoogleTranslateNode(mutation.target)) return false;
-
-      if (mutation.type === "characterData") {
-        if (!looksTranslatable(mutation.target.textContent)) return false;
-        rememberNodeSourceText(mutation.target, mutation.target.textContent);
-        return true;
-      }
-
-      if (mutation.type === "attributes") {
-        if (shouldSkipTranslationElement(mutation.target)) return false;
-        const attribute = mutation.attributeName;
-        if (!attribute || !mutation.target.hasAttribute(attribute)) return false;
-        const value = mutation.target.getAttribute(attribute) || "";
-        if (!looksTranslatable(value)) return false;
-        rememberAttributeSource(mutation.target, attribute, value);
-        return true;
-      }
-
-      return Array.from(mutation.addedNodes || []).some((node) => {
-        if (isGoogleTranslateNode(node)) return false;
-        if (node.nodeType === Node.TEXT_NODE) {
-          if (!looksTranslatable(node.textContent)) return false;
-          rememberNodeSourceText(node, node.textContent);
-          return true;
-        }
-        if (node.nodeType !== Node.ELEMENT_NODE) return false;
-        if (shouldSkipTranslationElement(node)) return false;
-        collectTextNodesForTranslation(node).forEach((textNode) => {
-          rememberNodeSourceText(textNode, textNode.textContent);
-        });
-        collectAttributeTargetsForTranslation(node).forEach(
-          ({ element, attribute, source }) => {
-            rememberAttributeSource(element, attribute, source);
-          },
-        );
-        return !!((node.innerText || node.textContent || "").trim());
-      });
-    });
-
-    if (shouldRefresh) {
-      scheduleGoogleTranslate({ force: true, delay: 280 });
+    if (!shouldRefresh) return;
+    if (paused) {
+      APP_TRANSLATION_STATE.pendingRefresh = true;
+      scheduleQueuedTranslationRefresh(
+        APP_TRANSLATION_STATE.lastRequestedCode || getCurrentLanguageCode(),
+      );
+      return;
     }
+
+    APP_TRANSLATION_STATE.pendingRefresh = false;
+    scheduleGoogleTranslate({ force: true, delay: 280 });
   });
 
   APP_TRANSLATION_STATE.observer.observe(document.body, {
@@ -5136,6 +5218,7 @@ function openMandirCommunity(slug) {
   document.getElementById("mcTabAll").classList.add("on");
 
   // Load posts
+  scheduleActiveLanguageRefresh(120);
   loadMandirPosts(slug);
 }
 
@@ -5158,14 +5241,17 @@ async function loadMandirPosts(mandirId) {
     if (currentMandirPosts.length === 0) {
       grid.innerHTML = "";
       empty.classList.remove("hide");
+      scheduleActiveLanguageRefresh(160);
       return;
     }
 
     empty.classList.add("hide");
     renderMandirGrid(currentMandirPosts);
+    scheduleActiveLanguageRefresh(180);
   } catch (err) {
     console.error("Load mandir posts error:", err);
     grid.innerHTML = '<div style="padding:40px;text-align:center;color:var(--t3)">Failed to load posts. Please try again.</div>';
+    scheduleActiveLanguageRefresh(160);
   }
 }
 
