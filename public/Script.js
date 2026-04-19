@@ -125,9 +125,11 @@ let vidUploadFile = null,
 let morePrevPage = "home",
   blockedUserSearchQuery = "";
 let inviteFriendsRefreshToken = 0;
+let inviteShareFilePromise = null;
 
 const PENDING_REFERRAL_KEY = "pendingReferralCode";
 const REFERRAL_QUERY_KEYS = ["ref", "invite"];
+const INVITE_SHARE_IMAGE_PATH = "images/post/invite_image.jpg";
 
 const REELS_UPLOADER_NAME = "Tirth Sutra Community";
 const REELS_LIBRARY = [
@@ -2997,6 +2999,10 @@ function buildInviteLink(referralCode = "") {
   return inviteUrl.toString();
 }
 
+function getInviteShareImageUrl() {
+  return new URL(INVITE_SHARE_IMAGE_PATH, getInviteBaseUrl()).toString();
+}
+
 function buildInviteShareText() {
   const inviterName = String(CU?.name || "").trim();
   return inviterName
@@ -3004,17 +3010,83 @@ function buildInviteShareText() {
     : "Join Tirth Sutra to explore mandirs, reels, Tirth Tube, and the community in one place.";
 }
 
+function buildInviteShareMessage(options = {}) {
+  const includeImageUrl = options.includeImageUrl === true;
+  const imageFirst = options.imageFirst === true;
+  const parts = [buildInviteShareText()];
+  const imageUrl = getInviteShareImageUrl();
+  const inviteLink = buildInviteLink();
+
+  if (includeImageUrl && imageFirst) {
+    parts.push(imageUrl);
+  }
+
+  parts.push(inviteLink);
+
+  if (includeImageUrl && !imageFirst) {
+    parts.push(imageUrl);
+  }
+
+  return parts.join("\n\n");
+}
+
 function buildInviteEmailBody() {
-  return `${buildInviteShareText()}\n\n${buildInviteLink()}`;
+  return buildInviteShareMessage({ includeImageUrl: true });
+}
+
+async function getInviteShareFile() {
+  if (inviteShareFilePromise) return inviteShareFilePromise;
+
+  inviteShareFilePromise = fetch(getInviteShareImageUrl(), {
+    cache: "force-cache",
+  })
+    .then(async (response) => {
+      if (!response.ok) {
+        throw new Error("invite_image_unavailable");
+      }
+      const blob = await response.blob();
+      const type = blob.type || "image/jpeg";
+      return new File([blob], "tirth-sutra-invite.jpg", { type });
+    })
+    .catch((error) => {
+      inviteShareFilePromise = null;
+      throw error;
+    });
+
+  return inviteShareFilePromise;
+}
+
+async function shareInviteWithPhotoViaNativeShare() {
+  if (!navigator.share || !navigator.canShare) return false;
+
+  try {
+    const file = await getInviteShareFile();
+    if (!navigator.canShare({ files: [file] })) {
+      return false;
+    }
+
+    await navigator.share({
+      title: "Invite Friends",
+      text: buildInviteShareMessage(),
+      files: [file],
+    });
+    MC.success("Invite shared successfully.");
+    return true;
+  } catch (err) {
+    if (err?.name === "AbortError") return true;
+    return false;
+  }
 }
 
 async function shareInviteLink() {
+  if (await shareInviteWithPhotoViaNativeShare()) return;
+
   const inviteLink = buildInviteLink();
   if (navigator.share) {
     try {
       await navigator.share({
         title: "Invite Friends",
-        text: buildInviteShareText(),
+        text: buildInviteShareMessage({ includeImageUrl: true }),
         url: inviteLink,
       });
       MC.success("Invite shared successfully.");
@@ -3031,8 +3103,13 @@ function copyInviteLink() {
   copyTextToClipboard(buildInviteLink(), "Invite link copied.");
 }
 
-function shareInviteOnWhatsApp() {
-  const message = `${buildInviteShareText()} ${buildInviteLink()}`;
+async function shareInviteOnWhatsApp() {
+  if (await shareInviteWithPhotoViaNativeShare()) return;
+
+  const message = buildInviteShareMessage({
+    includeImageUrl: true,
+    imageFirst: true,
+  });
   window.open(
     `https://wa.me/?text=${encodeURIComponent(message)}`,
     "_blank",
@@ -3040,7 +3117,9 @@ function shareInviteOnWhatsApp() {
   );
 }
 
-function shareInviteByEmail() {
+async function shareInviteByEmail() {
+  if (await shareInviteWithPhotoViaNativeShare()) return;
+
   const subject = encodeURIComponent("Join me on Tirth Sutra");
   const body = encodeURIComponent(buildInviteEmailBody());
   window.location.href = `mailto:?subject=${subject}&body=${body}`;
@@ -3808,7 +3887,7 @@ function renderInviteFriendsPage(options = {}) {
           <div>
             <span class="about-card-label">Share Link</span>
             <h2>Send your invite anywhere</h2>
-            <p>Copy the live app link, open WhatsApp instantly, or use the native share sheet when it is available.</p>
+            <p>Share your live invite link through the native share sheet, WhatsApp, email, or direct copy.</p>
           </div>
         </div>
         <div class="invite-link-box">
@@ -3840,29 +3919,6 @@ function renderInviteFriendsPage(options = {}) {
           </section>
         `
         : ""}
-      <section class="more-surface-card more-surface-card-feature">
-        <div class="more-section-head">
-          <div>
-            <span class="about-card-label">How it works</span>
-            <h2>Keep invites simple and live</h2>
-            <p>Every link is generated from the current website URL, so it keeps working locally now and on the deployed domain later.</p>
-          </div>
-        </div>
-        <div class="more-step-list invite-step-list">
-          <div class="more-step-item">
-            <strong>1. Open Invite Friends</strong>
-            <span>Your live invite link is prepared inside More without leaving the app flow.</span>
-          </div>
-          <div class="more-step-item">
-            <strong>2. Share anywhere</strong>
-            <span>Use Share Invite, WhatsApp, Email, or Copy Link to send it in real time.</span>
-          </div>
-          <div class="more-step-item">
-            <strong>3. Grow the community</strong>
-            <span>When people join through your referral link, your invite count updates from the backend.</span>
-          </div>
-        </div>
-      </section>
       ${activeReferralCode && !isSignedIn
         ? `
           <div class="more-empty-note">
