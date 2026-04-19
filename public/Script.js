@@ -1951,6 +1951,7 @@ const APP_TRANSLATION_STATE = {
   cache: Store.g("translationCache", {}) || {},
   staticPacks: Store.g("translationStaticPacks", {}) || {},
   staticPackPromises: {},
+  bundledPackPromises: {},
   staticTextCatalog: null,
   textNodes: new WeakMap(),
   attrNodes: new WeakMap(),
@@ -1958,6 +1959,7 @@ const APP_TRANSLATION_STATE = {
 };
 const APP_TRANSLATION_ATTRS = ["placeholder", "title", "aria-label", "alt", "value"];
 const APP_TRANSLATION_BATCH_SEPARATOR = "\n<ts-sep-918273645/>\n";
+const APP_TRANSLATION_PACK_VERSION = "20260419-language-deploy-fix-5";
 const APP_TRANSLATION_STATIC_KEYS = new Set([
   "title",
   "subtitle",
@@ -2207,6 +2209,43 @@ function getStaticTranslationCatalog() {
   return APP_TRANSLATION_STATE.staticTextCatalog;
 }
 
+async function loadBundledTranslationPack(languageCode) {
+  const nextCode = languageCode || getCurrentLanguageCode() || "en";
+  if (nextCode === "en") return {};
+
+  if (APP_TRANSLATION_STATE.bundledPackPromises[nextCode]) {
+    return APP_TRANSLATION_STATE.bundledPackPromises[nextCode];
+  }
+
+  const bucket = getStaticTranslationPackBucket(nextCode);
+  APP_TRANSLATION_STATE.bundledPackPromises[nextCode] = fetch(
+    `i18n/${nextCode}.json?v=${APP_TRANSLATION_PACK_VERSION}`,
+    { cache: "force-cache" },
+  )
+    .then((response) => {
+      if (!response.ok) {
+        throw new Error(`bundled_pack_${response.status}`);
+      }
+      return response.json();
+    })
+    .then((pack) => {
+      if (!pack || typeof pack !== "object") return bucket;
+      Object.entries(pack).forEach(([source, translated]) => {
+        if (typeof translated === "string" && translated.trim()) {
+          bucket[source] = translated;
+        }
+      });
+      persistStaticTranslationPacks();
+      return bucket;
+    })
+    .catch(() => bucket)
+    .finally(() => {
+      delete APP_TRANSLATION_STATE.bundledPackPromises[nextCode];
+    });
+
+  return APP_TRANSLATION_STATE.bundledPackPromises[nextCode];
+}
+
 function splitTextForTranslation(text) {
   const source = String(text || "");
   const match = source.match(/^(\s*)([\s\S]*?)(\s*)$/) || ["", "", "", ""];
@@ -2353,12 +2392,12 @@ async function warmStaticTranslationPack(languageCode) {
   }
 
   const bucket = getStaticTranslationPackBucket(nextCode);
-  const missingTexts = getStaticTranslationCatalog().filter((text) => !bucket[text]);
-  if (!missingTexts.length) {
-    return bucket;
-  }
-
   APP_TRANSLATION_STATE.staticPackPromises[nextCode] = (async () => {
+    await loadBundledTranslationPack(nextCode);
+    const missingTexts = getStaticTranslationCatalog().filter((text) => !bucket[text]);
+    if (!missingTexts.length) {
+      return bucket;
+    }
     const chunks = chunkTextsForTranslation(missingTexts, 28, 5200);
     for (let i = 0; i < chunks.length; i += 2) {
       const group = chunks.slice(i, i + 2);
