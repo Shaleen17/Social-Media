@@ -7,6 +7,20 @@ const router = express.Router();
 const SUPPORT_EMAIL = String(
   process.env.SUPPORT_EMAIL || "tirthsutra@gmail.com"
 ).trim();
+const SUPPORT_KIND_META = {
+  issue: {
+    badge: "Issue Report",
+    detailLabel: "Issue Details",
+  },
+  support: {
+    badge: "Support Request",
+    detailLabel: "Support Details",
+  },
+  feedback: {
+    badge: "Feedback",
+    detailLabel: "Feedback Details",
+  },
+};
 
 function escapeHtml(value) {
   return String(value || "")
@@ -35,7 +49,8 @@ router.post("/report", optionalAuth, async (req, res, next) => {
 
     const safeSubject = String(subject || "").trim();
     const safeBody = String(body || "").trim();
-    const safeKind = kind === "support" ? "support" : "issue";
+    const safeKind = SUPPORT_KIND_META[kind] ? kind : "issue";
+    const kindMeta = SUPPORT_KIND_META[safeKind];
     const safeCategory = String(category || "General").trim();
     const safeDetail = String(detail || "").trim();
 
@@ -67,7 +82,7 @@ router.post("/report", optionalAuth, async (req, res, next) => {
       <div style="font-family:Arial,Helvetica,sans-serif;background:#f7f4f1;padding:24px;color:#1f1614;">
         <div style="max-width:720px;margin:0 auto;background:#ffffff;border:1px solid #eadfd3;border-radius:18px;overflow:hidden;">
           <div style="padding:20px 24px;background:#2f1c18;color:#fff8f1;">
-            <div style="font-size:12px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;opacity:.75;">Tirth Sutra ${safeKind === "issue" ? "Issue Report" : "Support Request"}</div>
+            <div style="font-size:12px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;opacity:.75;">Tirth Sutra ${kindMeta.badge}</div>
             <div style="margin-top:8px;font-size:24px;font-weight:700;line-height:1.25;">${escapeHtml(safeSubject)}</div>
           </div>
           <div style="padding:24px;">
@@ -90,7 +105,7 @@ router.post("/report", optionalAuth, async (req, res, next) => {
               </div>
             </div>
             <div style="margin-bottom:16px;padding:18px;border:1px solid #eadfd3;border-radius:16px;background:#ffffff;">
-              <div style="font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:#8c675b;">Issue Details</div>
+              <div style="font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:#8c675b;">${kindMeta.detailLabel}</div>
               <div style="margin-top:10px;font-size:14px;line-height:1.7;color:#241714;white-space:pre-wrap;">${escapeHtml(safeDetail || safeBody)}</div>
             </div>
             <div style="padding:18px;border:1px solid #eadfd3;border-radius:16px;background:#fbf7f3;">

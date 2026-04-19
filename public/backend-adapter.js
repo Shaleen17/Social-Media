@@ -211,6 +211,18 @@
     return url.toString();
   }
 
+  function getInviteAwareReturnToUrl() {
+    const returnTo = new URL(getAppBaseUrl());
+    const referralCode =
+      typeof window.getActiveReferralCode === "function"
+        ? window.getActiveReferralCode()
+        : "";
+    if (referralCode) {
+      returnTo.searchParams.set("ref", referralCode);
+    }
+    return returnTo.toString();
+  }
+
   function consumeAuthRedirectHash() {
     const rawHash = window.location.hash.startsWith("#")
       ? window.location.hash.slice(1)
@@ -655,7 +667,11 @@
 
     try {
       // Legacy fallback kept for reference. Live signup now finishes through OTP verification in-app.
-      const data = await API.signup(nm, hdl, em, pw);
+      const referralCode =
+        typeof window.getActiveReferralCode === "function"
+          ? window.getActiveReferralCode()
+          : "";
+      const data = await API.signup(nm, hdl, em, pw, referralCode);
       ["suNm", "suEml", "suHdl", "suPw"].forEach((id) => {
         const el = document.getElementById(id);
         if (el) el.value = "";
@@ -925,6 +941,9 @@
       setOtpAuthFieldError("liErr", false);
       if (resendBtn) resendBtn.style.display = "none";
       clearOtpPendingState();
+      if (typeof window.clearPendingReferralCode === "function") {
+        window.clearPendingReferralCode();
+      }
       ["liEml", "liPw"].forEach((id) => {
         const el = document.getElementById(id);
         if (el) el.value = "";
@@ -982,7 +1001,11 @@
 
     try {
       setButtonBusy(signupBtn, true, "Sending OTP...");
-      const data = await API.signup(name, handle, email, password);
+      const referralCode =
+        typeof window.getActiveReferralCode === "function"
+          ? window.getActiveReferralCode()
+          : "";
+      const data = await API.signup(name, handle, email, password, referralCode);
       const passwordInput = document.getElementById("suPw");
       const firstOtpDigit = document.getElementById("suOtpDigit0");
 
@@ -1043,6 +1066,9 @@
       setButtonBusy(verifyBtn, true, "Verifying OTP...");
       const data = await API.verifySignupOtp(email, otp);
       clearOtpPendingState();
+      if (typeof window.clearPendingReferralCode === "function") {
+        window.clearPendingReferralCode();
+      }
       ["suNm", "suEml", "suHdl", "suPw", "suOtp", "liEml", "liPw"].forEach((id) => {
         const el = document.getElementById(id);
         if (el) el.value = "";
@@ -1159,11 +1185,10 @@
         : typeof CONFIG !== "undefined" && CONFIG && CONFIG.BACKEND_URL
           ? String(CONFIG.BACKEND_URL).replace(/\/+$/, "")
           : "";
-    const returnTo = getAppBaseUrl();
     window.location.href =
       backendBase +
       "/api/auth/google/start?returnTo=" +
-      encodeURIComponent(returnTo);
+      encodeURIComponent(getInviteAwareReturnToUrl());
   };
 
   // =============================================
@@ -3281,6 +3306,9 @@
         authRedirect?.authToken &&
         authRedirect.authSource === "google"
       ) {
+        if (typeof window.clearPendingReferralCode === "function") {
+          window.clearPendingReferralCode();
+        }
         MC.success("Google Sign-In completed successfully.");
       }
 

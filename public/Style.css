@@ -6698,6 +6698,10 @@ video {
   gap: 16px;
 }
 
+.more-page-shell-invite {
+  gap: 16px;
+}
+
 .more-page-hero,
 .more-surface-card,
 .more-option-card,
@@ -6777,8 +6781,15 @@ video {
   grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 
+.invite-metrics {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
 .more-inline-action,
-.more-overview-chip {
+.more-overview-chip,
+.invite-metric {
   display: grid;
   gap: 4px;
   padding: 14px;
@@ -6802,7 +6813,9 @@ video {
 }
 
 .more-inline-action span,
-.more-overview-chip span {
+.more-overview-chip span,
+.invite-metric span,
+.invite-link-copy span {
   color: var(--t3);
   font-size: 11px;
   font-weight: 700;
@@ -6811,7 +6824,9 @@ video {
 }
 
 .more-inline-action strong,
-.more-overview-chip strong {
+.more-overview-chip strong,
+.invite-metric strong,
+.invite-link-copy strong {
   color: var(--t);
   font-size: 14px;
   font-weight: 600;
@@ -6829,6 +6844,10 @@ video {
 }
 
 .more-surface-card-feature {
+  gap: 14px;
+}
+
+.invite-link-card {
   gap: 14px;
 }
 
@@ -7063,6 +7082,27 @@ video {
   display: grid;
   gap: 12px;
   grid-template-columns: minmax(220px, 0.84fr) minmax(0, 1.16fr);
+}
+
+.invite-link-box {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 14px;
+  border-radius: calc(var(--r) - 2px);
+  border: 1px dashed var(--bd2);
+  background: var(--bg);
+}
+
+.invite-link-copy {
+  min-width: 0;
+  display: grid;
+  gap: 4px;
+}
+
+.invite-link-copy strong {
+  word-break: break-all;
 }
 
 .more-report-form {
@@ -7344,6 +7384,7 @@ video {
 
 [data-dark] .more-inline-action,
 [data-dark] .more-overview-chip,
+[data-dark] .invite-metric,
 [data-dark] .more-feature-icon,
 [data-dark] .more-help-point,
 [data-dark] .more-step-item,
@@ -7357,6 +7398,11 @@ video {
 [data-dark] .more-inline-action:hover,
 [data-dark] .more-contact-item:hover {
   background: var(--a);
+}
+
+[data-dark] .invite-link-box {
+  background: var(--bg3);
+  border-color: var(--bd2);
 }
 
 [data-dark] .more-status-pill {
@@ -7378,6 +7424,10 @@ video {
   }
 
   .more-settings-overview {
+    grid-template-columns: 1fr;
+  }
+
+  .invite-metrics {
     grid-template-columns: 1fr;
   }
 }
@@ -7408,6 +7458,11 @@ video {
 
   .more-hero-actions {
     grid-template-columns: 1fr;
+  }
+
+  .invite-link-box {
+    flex-direction: column;
+    align-items: stretch;
   }
 
   .more-settings-row,

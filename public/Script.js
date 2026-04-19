@@ -124,6 +124,10 @@ let vidUploadFile = null,
   thumbFile = null;
 let morePrevPage = "home",
   blockedUserSearchQuery = "";
+let inviteFriendsRefreshToken = 0;
+
+const PENDING_REFERRAL_KEY = "pendingReferralCode";
+const REFERRAL_QUERY_KEYS = ["ref", "invite"];
 
 const REELS_UPLOADER_NAME = "Tirth Sutra Community";
 const REELS_LIBRARY = [
@@ -1599,6 +1603,7 @@ async function verifySignupOtp() {
     Store.s("currentUser", user);
     Store.s("token", token);
     clearPendingSignupOtp();
+    clearPendingReferralCode();
     ["suNm", "suEml", "suHdl", "suPw", "suOtp"].forEach((id) => {
       const el = document.getElementById(id);
       if (el) el.value = "";
@@ -1690,6 +1695,7 @@ async function doLogin() {
     CU = user;
     Store.s("currentUser", user);
     Store.s("token", token);
+    clearPendingReferralCode();
     ["liEml", "liPw"].forEach((id) => {
       const el = document.getElementById(id);
       if (el) el.value = "";
@@ -1729,7 +1735,7 @@ async function doSignup() {
   if (!ok) return;
 
   try {
-    const data = await API.signup(nm, hdl, em, pw);
+    const data = await API.signup(nm, hdl, em, pw, getActiveReferralCode());
     toggleFieldError("suErr", false);
     toggleFieldError("suOtpErr", false);
     setPendingSignupOtp(data.email || em, {
@@ -1763,16 +1769,15 @@ function doGoogleLogin() {
       : typeof CONFIG !== "undefined" && CONFIG && CONFIG.BACKEND_URL
         ? String(CONFIG.BACKEND_URL).replace(/\/+$/, "")
         : "";
-  const url = new URL(window.location.href);
-  url.hash = "";
-  url.search = "";
-  if (!url.pathname.endsWith("/")) {
-    url.pathname = url.pathname.substring(0, url.pathname.lastIndexOf("/") + 1);
+  const returnTo = new URL(getInviteBaseUrl());
+  const referralCode = getActiveReferralCode();
+  if (referralCode) {
+    returnTo.searchParams.set("ref", referralCode);
   }
   window.location.href =
     backendBase +
     "/api/auth/google/start?returnTo=" +
-    encodeURIComponent(url.toString());
+    encodeURIComponent(returnTo.toString());
 }
 
 /* ── NAVIGATION ── */
@@ -1787,6 +1792,7 @@ const PAGE_IDS = [
   "search",
   "notifs",
   "bookmarks",
+  "inviteFriends",
   "profile",
   "chats",
   "about",
@@ -1817,6 +1823,7 @@ function openProfilePageAndClose() {
 const MORE_NAV_PAGES = [
   "search",
   "bookmarks",
+  "inviteFriends",
   "about",
   "language",
   "helpSupport",
@@ -1998,6 +2005,8 @@ const APP_TRANSLATION_STATIC_UI_PHRASES = [
   "Search...",
   "Search",
   "Bookmarks",
+  "Invite Friends",
+  "Referral or invite button to grow the community.",
   "About Tirth Sutra",
   "Install App",
   "Language",
@@ -2922,6 +2931,147 @@ function getCurrentThemeLabel() {
     : "Light theme";
 }
 
+function sanitizeReferralCodeValue(code = "") {
+  return String(code || "")
+    .trim()
+    .toUpperCase()
+    .replace(/[^A-Z0-9]/g, "")
+    .slice(0, 18);
+}
+
+function getStoredPendingReferralCode() {
+  return sanitizeReferralCodeValue(Store.g(PENDING_REFERRAL_KEY, ""));
+}
+
+function setPendingReferralCode(code) {
+  const normalizedCode = sanitizeReferralCodeValue(code);
+  if (normalizedCode) {
+    Store.s(PENDING_REFERRAL_KEY, normalizedCode);
+  } else {
+    Store.d(PENDING_REFERRAL_KEY);
+  }
+  return normalizedCode;
+}
+
+function clearPendingReferralCode() {
+  Store.d(PENDING_REFERRAL_KEY);
+}
+
+function getReferralCodeFromUrl() {
+  try {
+    const url = new URL(window.location.href);
+    for (const key of REFERRAL_QUERY_KEYS) {
+      const code = sanitizeReferralCodeValue(url.searchParams.get(key));
+      if (code) return code;
+    }
+  } catch { }
+  return "";
+}
+
+function capturePendingReferralCodeFromUrl() {
+  const code = getReferralCodeFromUrl();
+  if (code) setPendingReferralCode(code);
+  return code;
+}
+
+function getActiveReferralCode() {
+  return getReferralCodeFromUrl() || getStoredPendingReferralCode();
+}
+
+function getInviteBaseUrl() {
+  const url = new URL(window.location.href);
+  url.hash = "";
+  url.search = "";
+  if (!url.pathname.endsWith("/")) {
+    url.pathname = url.pathname.substring(0, url.pathname.lastIndexOf("/") + 1);
+  }
+  return url.toString();
+}
+
+function buildInviteLink(referralCode = "") {
+  const inviteUrl = new URL(getInviteBaseUrl());
+  const activeCode = sanitizeReferralCodeValue(referralCode || CU?.referralCode);
+  if (activeCode) {
+    inviteUrl.searchParams.set("ref", activeCode);
+  }
+  return inviteUrl.toString();
+}
+
+function buildInviteShareText() {
+  const inviterName = String(CU?.name || "").trim();
+  return inviterName
+    ? `${inviterName} invited you to join Tirth Sutra. Explore mandirs, reels, Tirth Tube, and the community in one place.`
+    : "Join Tirth Sutra to explore mandirs, reels, Tirth Tube, and the community in one place.";
+}
+
+function buildInviteEmailBody() {
+  return `${buildInviteShareText()}\n\n${buildInviteLink()}`;
+}
+
+async function shareInviteLink() {
+  const inviteLink = buildInviteLink();
+  if (navigator.share) {
+    try {
+      await navigator.share({
+        title: "Invite Friends",
+        text: buildInviteShareText(),
+        url: inviteLink,
+      });
+      MC.success("Invite shared successfully.");
+      return;
+    } catch (err) {
+      if (err?.name === "AbortError") return;
+    }
+  }
+
+  copyTextToClipboard(inviteLink, "Invite link copied.");
+}
+
+function copyInviteLink() {
+  copyTextToClipboard(buildInviteLink(), "Invite link copied.");
+}
+
+function shareInviteOnWhatsApp() {
+  const message = `${buildInviteShareText()} ${buildInviteLink()}`;
+  window.open(
+    `https://wa.me/?text=${encodeURIComponent(message)}`,
+    "_blank",
+    "noopener,noreferrer",
+  );
+}
+
+function shareInviteByEmail() {
+  const subject = encodeURIComponent("Join me on Tirth Sutra");
+  const body = encodeURIComponent(buildInviteEmailBody());
+  window.location.href = `mailto:?subject=${subject}&body=${body}`;
+}
+
+function syncCurrentUserSession(user) {
+  if (!user) return;
+  CU = CU ? { ...CU, ...user } : user;
+  Store.s("currentUser", CU);
+  if (window.API && API && typeof API.setUser === "function") {
+    API.setUser(CU);
+  }
+}
+
+async function refreshInviteFriendsPage() {
+  if (curPage !== "inviteFriends" || !CU) return;
+  if (!window.API || typeof API.getMe !== "function") return;
+
+  const requestId = ++inviteFriendsRefreshToken;
+  try {
+    const freshUser = await API.getMe();
+    if (!freshUser || requestId !== inviteFriendsRefreshToken) return;
+    syncCurrentUserSession(freshUser);
+    if (curPage === "inviteFriends") {
+      renderInviteFriendsPage({ skipRefresh: true });
+    }
+  } catch { }
+}
+
+capturePendingReferralCodeFromUrl();
+
 function rememberMoreOrigin() {
   if (!MORE_NAV_PAGES.includes(curPage)) {
     morePrevPage = curPage || "home";
@@ -2961,6 +3111,7 @@ function applyLanguagePreference() {
 }
 
 function refreshMorePreferencePages() {
+  if (curPage === "inviteFriends") renderInviteFriendsPage({ skipRefresh: true });
   if (curPage === "language") renderLanguagePage();
   if (curPage === "helpSupport") renderHelpSupportPage();
   if (curPage === "settingsPrivacy") renderSettingsPrivacyPage();
@@ -3055,18 +3206,63 @@ function copyTextToClipboard(text, successMessage = "Copied.") {
     .catch(() => MC.error("Could not copy right now."));
 }
 
+const SUPPORT_DRAFT_CONFIG = {
+  issue: {
+    categoryInputId: "supportCategorySelect",
+    messageInputId: "supportMessageInput",
+    defaultCategory: "General",
+    defaultDetail:
+      "Please describe the issue, what you expected, and what happened.",
+    title: "Issue report for Tirth Sutra",
+    emptyWarning: "Please describe the issue before sending the report.",
+    copyMessage: "Report details copied.",
+    successMessage: "Report sent successfully to Tirth Sutra support.",
+    fallbackButtonLabel: "Send Report",
+  },
+  feedback: {
+    categoryInputId: "feedbackCategorySelect",
+    messageInputId: "feedbackMessageInput",
+    defaultCategory: "Feature suggestion",
+    defaultDetail:
+      "Please share your idea, feature request, or UX feedback.",
+    title: "Feedback for Tirth Sutra",
+    emptyWarning: "Please share your feedback before sending.",
+    copyMessage: "Feedback details copied.",
+    successMessage: "Feedback sent successfully to Tirth Sutra support.",
+    fallbackButtonLabel: "Send Feedback",
+  },
+  support: {
+    categoryInputId: "",
+    messageInputId: "",
+    defaultCategory: "General Support",
+    defaultDetail: "Please share how we can help you.",
+    title: "Support request for Tirth Sutra",
+    emptyWarning: "Please share how we can help before sending.",
+    copyMessage: "Support details copied.",
+    successMessage: "Support details prepared successfully.",
+    fallbackButtonLabel: "Send Support Request",
+  },
+};
+
+function getSupportDraftConfig(kind = "support") {
+  return SUPPORT_DRAFT_CONFIG[kind] || SUPPORT_DRAFT_CONFIG.issue;
+}
+
 function buildSupportDraft(kind = "support") {
+  const config = getSupportDraftConfig(kind);
   const prefs = getMorePrefs();
   const selectedLanguage = getMoreLanguageOption(prefs.language);
-  const issueCategory =
-    document.getElementById("supportCategorySelect")?.value || "General";
+  const categoryInput = config.categoryInputId
+    ? document.getElementById(config.categoryInputId)
+    : null;
+  const draftCategory =
+    (categoryInput?.value || "").trim() || config.defaultCategory;
+  const messageInput = config.messageInputId
+    ? document.getElementById(config.messageInputId)
+    : null;
   const detail =
-    (document.getElementById("supportMessageInput")?.value || "").trim() ||
-    (kind === "issue"
-      ? "Please describe the issue, what you expected, and what happened."
-      : "Please share how we can help you.");
-  const title =
-    kind === "issue" ? "Issue report for Tirth Sutra" : "Support request for Tirth Sutra";
+    (messageInput?.value || "").trim() || config.defaultDetail;
+  const title = config.title;
   const userLabel = CU
     ? `${CU.name || "User"} (@${CU.handle || "user"})`
     : "Guest user";
@@ -3080,8 +3276,8 @@ function buildSupportDraft(kind = "support") {
   const accountPrivacyLabel = prefs.privateAccount ? "Private" : "Public";
 
   return {
-    subject: `${title} - ${issueCategory}`,
-    category: issueCategory,
+    subject: `${title} - ${draftCategory}`,
+    category: draftCategory,
     detail,
     kind,
     currentPage: currentPageTitle,
@@ -3093,7 +3289,7 @@ function buildSupportDraft(kind = "support") {
     body: [
       title,
       "",
-      `Category: ${issueCategory}`,
+      `Category: ${draftCategory}`,
       `User: ${userLabel}`,
       `Current page: ${currentPageTitle}`,
       `Preferred language: ${selectedLanguage.label}`,
@@ -3119,15 +3315,19 @@ function callSupport() {
 }
 
 function copySupportDetails(kind = "support") {
+  const config = getSupportDraftConfig(kind);
   const draft = buildSupportDraft(kind);
-  copyTextToClipboard(draft.body, "Support details copied.");
+  copyTextToClipboard(draft.body, config.copyMessage);
 }
 
 async function submitSupportReport(kind = "issue", btn = null) {
-  const messageInput = document.getElementById("supportMessageInput");
+  const config = getSupportDraftConfig(kind);
+  const messageInput = config.messageInputId
+    ? document.getElementById(config.messageInputId)
+    : null;
   const detail = (messageInput?.value || "").trim();
   if (!detail) {
-    MC.warn("Please describe the issue before sending the report.");
+    MC.warn(config.emptyWarning);
     messageInput?.focus();
     return;
   }
@@ -3160,15 +3360,17 @@ async function submitSupportReport(kind = "issue", btn = null) {
     });
 
     if (messageInput) messageInput.value = "";
-    const categoryInput = document.getElementById("supportCategorySelect");
-    if (categoryInput) categoryInput.value = "General";
-    MC.success("Report sent successfully to Tirth Sutra support.");
+    const categoryInput = config.categoryInputId
+      ? document.getElementById(config.categoryInputId)
+      : null;
+    if (categoryInput) categoryInput.value = config.defaultCategory;
+    MC.success(config.successMessage);
   } catch (err) {
     MC.error(err?.message || "Could not send the report right now.");
   } finally {
     if (btn) {
       btn.disabled = false;
-      btn.textContent = originalText || "Send Report";
+      btn.textContent = originalText || config.fallbackButtonLabel;
     }
   }
 }
@@ -3342,7 +3544,7 @@ function renderHelpSupportPage() {
           </button>
           <div>
             <span class="fhdr-title">Help &amp; Support</span>
-            <div class="about-page-subtitle">FAQs, support contact, issue reporting, and account help</div>
+            <div class="about-page-subtitle">FAQs, support contact, issue reporting, feedback, and account help</div>
           </div>
         </div>
       </div>
@@ -3351,11 +3553,11 @@ function renderHelpSupportPage() {
       <section class="more-page-hero more-page-hero-support">
         <div>
           <span class="about-card-label">Support Hub</span>
-          <h1>Get help quickly, report issues clearly, and keep moving.</h1>
+          <h1>Get help quickly, share feedback clearly, and keep moving.</h1>
           <p>
             Everything important is here in one clean place: fast contact
-            options, a simple account-help path, and issue reports with app
-            context already included.
+            options, a simple account-help path, feature feedback, and issue
+            reports with app context already included.
           </p>
         </div>
         <div class="more-hero-actions">
@@ -3367,6 +3569,51 @@ function renderHelpSupportPage() {
             <span>Call support</span>
             <strong>${esc(MORE_SUPPORT_PHONE)}</strong>
           </a>
+        </div>
+      </section>
+      <section class="more-surface-card more-surface-card-feature">
+        <div class="more-section-head">
+          <div>
+            <span class="about-card-label">Feedback</span>
+            <h2>Suggest features and improve the experience</h2>
+            <p>Share product ideas, small UX friction points, or anything that would make Tirth Sutra feel better to use.</p>
+          </div>
+        </div>
+        <div class="more-report-layout">
+          <div class="more-step-list">
+            <div class="more-step-item">
+              <strong>1. Pick the feedback type</strong>
+              <span>Choose whether you are sharing a feature request, UX issue, accessibility note, or general product feedback.</span>
+            </div>
+            <div class="more-step-item">
+              <strong>2. Explain the idea or friction</strong>
+              <span>Tell us what feels missing, confusing, slow, or worth improving, and include any helpful context.</span>
+            </div>
+            <div class="more-step-item">
+              <strong>3. Send it instantly</strong>
+              <span>Your feedback goes directly to the Tirth Sutra support inbox so it can be reviewed without extra steps.</span>
+            </div>
+          </div>
+          <div class="more-report-form">
+            <div class="more-field">
+              <label class="fl" for="feedbackCategorySelect">Feedback type</label>
+              <select class="fi" id="feedbackCategorySelect">
+                <option>Feature suggestion</option>
+                <option>UX / Navigation</option>
+                <option>Accessibility</option>
+                <option>Performance</option>
+                <option>General feedback</option>
+              </select>
+            </div>
+            <div class="more-field">
+              <label class="fl" for="feedbackMessageInput">Your feedback</label>
+              <textarea class="fi more-support-textarea" id="feedbackMessageInput" placeholder="Tell us what you would like to improve, which feature you want next, or where the experience feels difficult."></textarea>
+            </div>
+            <div class="more-action-row more-action-row-equal">
+              <button class="btn btn-p" type="button" onclick="submitSupportReport('feedback', this)">Send Feedback</button>
+              <button class="btn about-secondary-btn" type="button" onclick="copySupportDetails('feedback')">Copy Feedback</button>
+            </div>
+          </div>
         </div>
       </section>
       <div class="more-support-grid more-support-grid-refined">
@@ -3496,6 +3743,141 @@ function renderHelpSupportPage() {
       </section>
     </div>
   `;
+}
+
+function renderInviteFriendsPage(options = {}) {
+  const page = document.getElementById("pgInviteFriends");
+  if (!page) return;
+
+  const isSignedIn = !!CU;
+  const personalReferralCode = sanitizeReferralCodeValue(CU?.referralCode);
+  const activeReferralCode = personalReferralCode || getActiveReferralCode();
+  const inviteLink = buildInviteLink(personalReferralCode);
+  const referralsCount = Number(CU?.referralsCount) || 0;
+  const inviteStatus = isSignedIn ? "Signed in" : "Guest";
+  const inviteSummary = isSignedIn
+    ? "Your personal invite link is ready to share across WhatsApp, email, or copy link in one tap."
+    : "Share the app instantly. Sign in if you want your own referral code attached to the invite link.";
+  const badgeLabel = personalReferralCode
+    ? `Your code: ${personalReferralCode}`
+    : activeReferralCode
+      ? `Invite detected: ${activeReferralCode}`
+      : "Community growth";
+
+  page.innerHTML = `
+    <div class="fhdr about-page-header">
+      <div class="fhdr-row">
+        <div class="about-page-heading">
+          <button class="sb about-back-btn" type="button" onclick="goBackFromMorePage()" aria-label="Back">
+            <svg viewBox="0 0 24 24">
+              <polyline points="15 18 9 12 15 6" />
+            </svg>
+          </button>
+          <div>
+            <span class="fhdr-title">Invite Friends</span>
+            <div class="about-page-subtitle">Referral or invite button to grow the community.</div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="more-page-shell more-page-shell-invite">
+      <section class="more-page-hero more-page-hero-invite">
+        <div>
+          <span class="about-card-label">Community Growth</span>
+          <h1>Invite more devotees into Tirth Sutra with one shareable link.</h1>
+          <p>${inviteSummary}</p>
+        </div>
+        <div class="invite-metrics">
+          <div class="invite-metric">
+            <span>Referral code</span>
+            <strong>${esc(personalReferralCode || activeReferralCode || "Share-ready")}</strong>
+          </div>
+          <div class="invite-metric">
+            <span>Joined by invite</span>
+            <strong>${referralsCount}</strong>
+          </div>
+          <div class="invite-metric">
+            <span>Status</span>
+            <strong>${esc(inviteStatus)}</strong>
+          </div>
+        </div>
+        <div class="more-page-badge">${esc(badgeLabel)}</div>
+      </section>
+      <section class="more-surface-card more-surface-card-feature invite-link-card">
+        <div class="more-section-head">
+          <div>
+            <span class="about-card-label">Share Link</span>
+            <h2>Send your invite anywhere</h2>
+            <p>Copy the live app link, open WhatsApp instantly, or use the native share sheet when it is available.</p>
+          </div>
+        </div>
+        <div class="invite-link-box">
+          <div class="invite-link-copy">
+            <span>Invite link</span>
+            <strong>${esc(inviteLink)}</strong>
+          </div>
+          <button class="btn about-secondary-btn" type="button" onclick="copyInviteLink()">Copy Link</button>
+        </div>
+        <div class="more-action-row more-action-row-equal">
+          <button class="btn btn-p" type="button" onclick="shareInviteLink()">Share Invite</button>
+          <button class="btn about-secondary-btn" type="button" onclick="shareInviteOnWhatsApp()">WhatsApp</button>
+          <button class="btn about-secondary-btn" type="button" onclick="shareInviteByEmail()">Email</button>
+        </div>
+      </section>
+      ${!isSignedIn
+        ? `
+          <section class="more-surface-card more-surface-card-feature">
+            <div class="more-section-head">
+              <div>
+                <span class="about-card-label">Personal Invite</span>
+                <h2>Unlock your own referral link</h2>
+                <p>Sign in or create an account to attach your personal referral code to every invite you share.</p>
+              </div>
+            </div>
+            <div class="more-action-row">
+              <button class="btn btn-p" type="button" onclick="openOvl('authOvl')">Sign In</button>
+            </div>
+          </section>
+        `
+        : ""}
+      <section class="more-surface-card more-surface-card-feature">
+        <div class="more-section-head">
+          <div>
+            <span class="about-card-label">How it works</span>
+            <h2>Keep invites simple and live</h2>
+            <p>Every link is generated from the current website URL, so it keeps working locally now and on the deployed domain later.</p>
+          </div>
+        </div>
+        <div class="more-step-list invite-step-list">
+          <div class="more-step-item">
+            <strong>1. Open Invite Friends</strong>
+            <span>Your live invite link is prepared inside More without leaving the app flow.</span>
+          </div>
+          <div class="more-step-item">
+            <strong>2. Share anywhere</strong>
+            <span>Use Share Invite, WhatsApp, Email, or Copy Link to send it in real time.</span>
+          </div>
+          <div class="more-step-item">
+            <strong>3. Grow the community</strong>
+            <span>When people join through your referral link, your invite count updates from the backend.</span>
+          </div>
+        </div>
+      </section>
+      ${activeReferralCode && !isSignedIn
+        ? `
+          <div class="more-empty-note">
+            An invite code is already attached on this device. If you sign up now, it will be carried into your account automatically.
+          </div>
+        `
+        : ""}
+    </div>
+  `;
+
+  if (!options.skipRefresh && isSignedIn) {
+    window.setTimeout(() => {
+      if (curPage === "inviteFriends") refreshInviteFriendsPage();
+    }, 0);
+  }
 }
 
 function renderBlockedUsersPanel() {
@@ -3869,6 +4251,7 @@ const ANALYTICS_PAGE_TITLES = {
   search: "Search",
   notifs: "Notifications",
   bookmarks: "Bookmarks",
+  inviteFriends: "Invite Friends",
   profile: "Profile",
   chats: "Chats",
   messages: "Messages",
@@ -3960,6 +4343,7 @@ function gp(page) {
     },
     notifs: () => renderNotifs(),
     bookmarks: () => renderBM(),
+    inviteFriends: () => renderInviteFriendsPage(),
     profile: () => renderProfile(CU ? CU.id : curProfId),
     chats: () => renderChatsPage(),
     about: () => {},
@@ -3970,7 +4354,7 @@ function gp(page) {
   const isWidePage =
     page === "chats" ||
     isReelsPage ||
-    ["about", "language", "helpSupport", "settingsPrivacy"].includes(page);
+    ["about", "inviteFriends", "language", "helpSupport", "settingsPrivacy"].includes(page);
   document.body.classList.toggle("reels-mode", isReelsPage);
   //* pgChats needs flex not block */
   const cp = document.getElementById("pgChats");

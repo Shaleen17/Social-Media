@@ -28,6 +28,17 @@ const pendingSignupSchema = new mongoose.Schema(
     createdFromIp: { type: String, default: null },
     lastRequestIp: { type: String, default: null },
     userAgent: { type: String, default: null },
+    referralCodeUsed: {
+      type: String,
+      default: null,
+      trim: true,
+      uppercase: true,
+    },
+    referredBy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+      default: null,
+    },
     pendingExpiresAt: {
       type: Date,
       required: true,

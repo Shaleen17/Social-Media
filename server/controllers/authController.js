@@ -11,6 +11,7 @@ const {
   buildGoogleErrorRedirect,
   getReturnToFromState,
 } = require("../services/authService");
+const { ensureUserReferralCode } = require("../utils/referrals");
 
 const signup = asyncHandler(async (req, res) => {
   const result = await signupLocalUser(req.body, {
@@ -29,6 +30,7 @@ const login = asyncHandler(async (req, res) => {
 });
 
 const me = asyncHandler(async (req, res) => {
+  await ensureUserReferralCode(req.user);
   res.json({ user: req.user.toJSON() });
 });
 

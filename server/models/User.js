@@ -43,6 +43,20 @@ const userSchema = new mongoose.Schema(
     lastSeen: { type: Date, default: Date.now },
     mandirId: { type: String, default: null },
     joined: { type: String, default: "" },
+    referralCode: {
+      type: String,
+      unique: true,
+      sparse: true,
+      trim: true,
+      uppercase: true,
+      index: true,
+    },
+    referredBy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+      default: null,
+    },
+    referredUsers: [{ type: mongoose.Schema.Types.ObjectId, ref: "User" }],
   },
   { timestamps: true }
 );
@@ -76,6 +90,10 @@ userSchema.pre("save", function (next) {
 userSchema.set("toJSON", {
   transform: (doc, ret) => {
     delete ret.password;
+    ret.referralsCount = Array.isArray(ret.referredUsers)
+      ? ret.referredUsers.length
+      : 0;
+    delete ret.referredUsers;
     ret.id = ret._id;
     return ret;
   },

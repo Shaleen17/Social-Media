@@ -34,6 +34,13 @@ const {
   getFallbackClientUrl,
   normalizeUrl,
 } = require("../utils/publicUrl");
+const {
+  sanitizeReferralCode,
+  generateUniqueReferralCode,
+  resolveReferrer,
+  attachReferralRelationship,
+  ensureUserReferralCode,
+} = require("../utils/referrals");
 
 const googleClient = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
 
@@ -288,7 +295,7 @@ async function ensureSignupInputIsAvailable({ email, handle, legacyUserId }) {
 }
 
 async function createOrUpdatePendingSignup(
-  { name, handle, email, password },
+  { name, handle, email, password, referralCode },
   context = {}
 ) {
   const existingUser = await User.findOne({ email }).select("+password");
@@ -330,6 +337,13 @@ async function createOrUpdatePendingSignup(
     pendingSignup.userAgent = context.userAgent || pendingSignup.userAgent;
     pendingSignup.pendingExpiresAt = createPendingSignupExpiryDate();
   }
+
+  const normalizedReferralCode = sanitizeReferralCode(referralCode);
+  const referrer = normalizedReferralCode
+    ? await resolveReferrer(normalizedReferralCode)
+    : null;
+  pendingSignup.referralCodeUsed = referrer ? referrer.referralCode : null;
+  pendingSignup.referredBy = referrer ? referrer._id : null;
 
   const otpStillFresh =
     pendingSignup.otpHash &&
@@ -381,8 +395,19 @@ async function upsertVerifiedUserFromPendingSignup(pendingSignup) {
   user.password = pendingSignup.passwordHash;
   user.authProvider = "local";
   user.emailVerified = true;
+  user.referralCode =
+    user.referralCode ||
+    (await generateUniqueReferralCode(
+      pendingSignup.handle || pendingSignup.name || pendingSignup.email,
+    ));
+  if (!user.referredBy && pendingSignup.referredBy) {
+    user.referredBy = pendingSignup.referredBy;
+  }
 
   await user.save();
+  if (pendingSignup.referralCodeUsed) {
+    await attachReferralRelationship(user, pendingSignup.referralCodeUsed);
+  }
   return user;
 }
 
@@ -431,6 +456,7 @@ async function signupLocalUser(payload = {}, context = {}) {
       handle,
       email,
       password,
+      referralCode: payload.referralCode,
     },
     context
   );
@@ -479,6 +505,7 @@ async function loginLocalUser(payload = {}, context = {}) {
   }
 
   const safeUser = await User.findById(user._id);
+  await ensureUserReferralCode(safeUser);
   return {
     user: safeUser.toJSON(),
     token: signAuthToken(user._id),
@@ -577,6 +604,7 @@ async function verifySignupOtp(payload = {}, context = {}) {
   await PendingSignup.deleteOne({ _id: pendingSignup._id });
 
   const safeUser = await User.findById(user._id);
+  await ensureUserReferralCode(safeUser);
   return {
     user: safeUser.toJSON(),
     token: signAuthToken(user._id),
@@ -674,7 +702,7 @@ async function getGoogleProfile({ token, tokenType }) {
   return ticket.getPayload();
 }
 
-async function loginWithGoogle({ token, tokenType }) {
+async function loginWithGoogle({ token, tokenType, referralCode }) {
   const profile = await getGoogleProfile({ token, tokenType });
   const {
     email,
@@ -689,6 +717,10 @@ async function loginWithGoogle({ token, tokenType }) {
   }
 
   const normalizedEmail = normalizeEmail(email);
+  const normalizedReferralCode = sanitizeReferralCode(referralCode);
+  const referrer = normalizedReferralCode
+    ? await resolveReferrer(normalizedReferralCode)
+    : null;
   let user = await User.findOne({
     $or: [{ email: normalizedEmail }, { googleId: sub }],
   }).select("+password");
@@ -704,11 +736,23 @@ async function loginWithGoogle({ token, tokenType }) {
       googleId: sub,
       avatar: picture || null,
       emailVerified: true,
+      referralCode: await generateUniqueReferralCode(handle || normalizedEmail),
+      referredBy: referrer ? referrer._id : null,
     });
   } else {
     user.authProvider = user.authProvider || "google";
     user.googleId = user.googleId || sub;
     user.emailVerified = true;
+    user.referralCode =
+      user.referralCode ||
+      (await generateUniqueReferralCode(user.handle || user.name || normalizedEmail));
+    if (
+      referrer &&
+      !user.referredBy &&
+      String(referrer._id) !== String(user._id)
+    ) {
+      user.referredBy = referrer._id;
+    }
     if (picture && !user.avatar) {
       user.avatar = picture;
     }
@@ -716,8 +760,12 @@ async function loginWithGoogle({ token, tokenType }) {
   }
 
   await PendingSignup.deleteOne({ email: normalizedEmail }).catch(() => {});
+  if (referrer) {
+    await attachReferralRelationship(user, referrer.referralCode);
+  }
 
   const safeUser = await User.findById(user._id);
+  await ensureUserReferralCode(safeUser);
   return {
     user: safeUser.toJSON(),
     token: signAuthToken(user._id),
@@ -771,6 +819,7 @@ async function exchangeGoogleCode(req, { code, state }) {
   const authResult = await loginWithGoogle({
     token: tokens.id_token,
     tokenType: "id_token",
+    referralCode: parsedReturnTo?.searchParams?.get("ref"),
   });
 
   return {

@@ -20,7 +20,7 @@
     <link rel="preconnect" href="https://videos-o57d.vercel.app" crossorigin>
     <link rel="dns-prefetch" href="//videos-o57d.vercel.app">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-    <link href="Style.css?v=20260419-language-deploy-fix-6" rel="stylesheet" type="text/css" />
+    <link href="Style.css?v=20260419-invite-friends-referral-1" rel="stylesheet" type="text/css" />
     <script src="https://checkout.razorpay.com/v1/checkout.js"></script>
     <!-- Google tag (gtag.js) -->
     <script
@@ -514,6 +514,22 @@
               <div class="more-menu-copy">
                 <span>Language</span>
                 <small id="moreLanguageSummary">English interface</small>
+              </div>
+              <svg class="more-menu-chevron" viewBox="0 0 24 24">
+                <polyline points="9 18 15 12 9 6"></polyline>
+              </svg>
+            </button>
+            <button class="more-menu-item more-menu-item-rich" type="button" onclick="moreGo('inviteFriends')">
+              <svg viewBox="0 0 24 24">
+                <circle cx="18" cy="5" r="3"></circle>
+                <circle cx="6" cy="12" r="3"></circle>
+                <circle cx="18" cy="19" r="3"></circle>
+                <line x1="8.59" y1="13.51" x2="15.42" y2="17.49"></line>
+                <line x1="15.41" y1="6.51" x2="8.59" y2="10.49"></line>
+              </svg>
+              <div class="more-menu-copy">
+                <span>Invite Friends</span>
+                <small>Referral or invite button to grow the community.</small>
               </div>
               <svg class="more-menu-chevron" viewBox="0 0 24 24">
                 <polyline points="9 18 15 12 9 6"></polyline>
@@ -3264,6 +3280,9 @@
             </div>
           </div>
 
+          <!-- INVITE FRIENDS PAGE -->
+          <div class="page hide" id="pgInviteFriends"></div>
+
           <!-- LANGUAGE PAGE -->
           <div class="page hide" id="pgLanguage"></div>
 
@@ -3911,7 +3930,7 @@
     </script>
     <script>
       (function () {
-      const runtimeVersion = "20260419-language-deploy-fix-6";
+      const runtimeVersion = "20260419-invite-friends-referral-1";
         const refreshKey = "ts_frontendRuntimeRefresh_" + runtimeVersion;
         try {
           const storedVersion = localStorage.getItem("ts_frontendRuntimeVersion");
@@ -3966,14 +3985,14 @@
         } catch {}
       })();
     </script>
-  <script src="Script.js?v=20260419-language-deploy-fix-6"></script>
+  <script src="Script.js?v=20260419-invite-friends-referral-1"></script>
     <script src="https://cdn.socket.io/4.7.4/socket.io.min.js"></script>
     <!-- Vercel Config & API Backend Scripts -->
-  <script src="config.js?v=20260419-language-deploy-fix-6"></script>
-  <script src="api.js?v=20260419-language-deploy-fix-6"></script>
-  <script src="socket-client.js?v=20260419-language-deploy-fix-6"></script>
-  <script src="webrtc-client.js?v=20260419-language-deploy-fix-6"></script>
-  <script src="backend-adapter.js?v=20260419-language-deploy-fix-6"></script>
-  <script src="donation-module.js?v=20260419-language-deploy-fix-6"></script>
+  <script src="config.js?v=20260419-invite-friends-referral-1"></script>
+  <script src="api.js?v=20260419-invite-friends-referral-1"></script>
+  <script src="socket-client.js?v=20260419-invite-friends-referral-1"></script>
+  <script src="webrtc-client.js?v=20260419-invite-friends-referral-1"></script>
+  <script src="backend-adapter.js?v=20260419-invite-friends-referral-1"></script>
+  <script src="donation-module.js?v=20260419-invite-friends-referral-1"></script>
   </body>
 </html>

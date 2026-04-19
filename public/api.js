@@ -122,10 +122,10 @@ const API = (() => {
     removeUser,
 
     // Auth
-    async signup(name, handle, email, password) {
+    async signup(name, handle, email, password, referralCode = "") {
       const data = await request("/auth/signup", {
         method: "POST",
-        body: JSON.stringify({ name, handle, email, password }),
+        body: JSON.stringify({ name, handle, email, password, referralCode }),
       });
       return data;
     },
@@ -157,10 +157,10 @@ const API = (() => {
       });
     },
 
-    async googleAuth(token, tokenType = "access_token") {
+    async googleAuth(token, tokenType = "access_token", referralCode = "") {
       const data = await request("/auth/google", {
         method: "POST",
-        body: JSON.stringify({ token, tokenType }),
+        body: JSON.stringify({ token, tokenType, referralCode }),
       });
       setToken(data.token);
       setUser(data.user);
