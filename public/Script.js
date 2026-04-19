@@ -3896,7 +3896,19 @@ function trackVirtualPageView(page) {
   });
 }
 
+function disableNavThemeTransitionsForSwitch() {
+  document.body.classList.add("nav-theme-switching");
+  requestAnimationFrame(() => {
+    requestAnimationFrame(() => {
+      document.body.classList.remove("nav-theme-switching");
+    });
+  });
+}
+
 function gp(page) {
+  const wasReelsPage = document.body.classList.contains("reels-mode");
+  const isReelsPage = page === "reels";
+  if (wasReelsPage !== isReelsPage) disableNavThemeTransitionsForSwitch();
   PAGE_IDS.forEach((p) => {
     const el = document.getElementById(
       "pg" + p.charAt(0).toUpperCase() + p.slice(1),
@@ -3955,7 +3967,6 @@ function gp(page) {
     helpSupport: () => renderHelpSupportPage(),
     settingsPrivacy: () => renderSettingsPrivacyPage(),
   };
-  const isReelsPage = page === "reels";
   const isWidePage =
     page === "chats" ||
     isReelsPage ||
@@ -5930,6 +5941,50 @@ function getReelsFeed() {
   return document.getElementById("reelsFeed");
 }
 
+function getReelsSessionSignature(items = reelsSession) {
+  return Array.isArray(items) ? items.map((item) => item.id).join("|") : "";
+}
+
+function renderReelsMarkup() {
+  return reelsSession.map((reel, index) => renderReelCard(reel, index)).join("");
+}
+
+function ensureReelsDom(forceRender = false) {
+  const feed = getReelsFeed();
+  if (!feed) return false;
+  const signature = getReelsSessionSignature();
+  const alreadyRendered =
+    !forceRender &&
+    !!signature &&
+    feed.dataset.reelsSignature === signature &&
+    feed.childElementCount === reelsSession.length;
+  if (alreadyRendered) return false;
+  feed.innerHTML = renderReelsMarkup();
+  feed.dataset.reelsSignature = signature;
+  return true;
+}
+
+function warmReelsPageInBackground() {
+  const feed = getReelsFeed();
+  if (!feed) return;
+  if (!reelsSession.length) buildReelsSession();
+  ensureReelsDom(false);
+  updateReelsMuteButtons();
+  feed.dataset.reelsWarm = "true";
+}
+
+function scheduleReelsWarmup() {
+  const run = () => {
+    if (curPage === "reels") return;
+    warmReelsPageInBackground();
+  };
+  if (typeof window.requestIdleCallback === "function") {
+    window.requestIdleCallback(run, { timeout: 1200 });
+  } else {
+    window.setTimeout(run, 240);
+  }
+}
+
 function getReelSlide(index) {
   return getReelsFeed()?.querySelector(`.reel-slide[data-index="${index}"]`) || null;
 }
@@ -6223,18 +6278,22 @@ function bindReelsGlobalListeners() {
   });
 }
 
-function renderReelsPage(forceShuffle = true) {
+function renderReelsPage(forceShuffle = false, resetIndex = true) {
   const feed = getReelsFeed();
   if (!feed) return;
   bindReelsGlobalListeners();
   pauseAllReels();
   if (forceShuffle || !reelsSession.length) buildReelsSession();
-  feed.innerHTML = reelsSession.map((reel, index) => renderReelCard(reel, index)).join("");
-  feed.scrollTop = 0;
+  const didRender = ensureReelsDom(forceShuffle);
+  const targetIndex = resetIndex
+    ? 0
+    : Math.max(0, Math.min(reelsActiveIndex, reelsSession.length - 1));
+  reelsActiveIndex = targetIndex;
+  if (didRender) feed.dataset.reelsWarm = "true";
   updateReelsMuteButtons();
   bindReelsObserver();
   requestAnimationFrame(() => {
-    scrollToReel(0, true);
+    scrollToReel(targetIndex, true);
   });
 }
 
@@ -8466,6 +8525,7 @@ async function init() {
     renderFeed();
     renderStories();
     renderWidgets();
+    scheduleReelsWarmup();
     scheduleGoogleTranslate({
       languageCode: getCurrentLanguageCode(),
       force: getCurrentLanguageCode() !== "en",
