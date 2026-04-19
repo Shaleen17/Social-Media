@@ -3005,9 +3005,17 @@ function getInviteShareImageUrl() {
 
 function buildInviteShareText() {
   const inviterName = String(CU?.name || "").trim();
+  const inviteLead = inviterName
+    ? `${inviterName} invited you to Tirth Sutra`
+    : "You're invited to Tirth Sutra";
+  return `${inviteLead} - discover mandirs, spiritual reels, Tirth Tube, satsang, and a calm devotee community in one place. Zero distractions, 100% devotion. Tap to explore.`;
+}
+
+function buildInviteEmailSubject() {
+  const inviterName = String(CU?.name || "").trim();
   return inviterName
-    ? `${inviterName} invited you to join Tirth Sutra. Explore mandirs, reels, Tirth Tube, and the community in one place.`
-    : "Join Tirth Sutra to explore mandirs, reels, Tirth Tube, and the community in one place.";
+    ? `${inviterName} invited you to Tirth Sutra`
+    : "You're invited to Tirth Sutra";
 }
 
 function buildInviteShareMessage(options = {}) {
@@ -3031,7 +3039,19 @@ function buildInviteShareMessage(options = {}) {
 }
 
 function buildInviteEmailBody() {
-  return buildInviteShareMessage({ includeImageUrl: true });
+  return [
+    buildInviteShareText(),
+    "What you'll find inside:",
+    "- Mandir discovery and pilgrimage inspiration",
+    "- Spiritual reels, Tirth Tube, and devotional content",
+    "- Satsang, learning, and a like-minded devotee community",
+    "",
+    "Open your invite:",
+    buildInviteLink(),
+    "",
+    "Preview image:",
+    getInviteShareImageUrl(),
+  ].join("\n");
 }
 
 async function getInviteShareFile() {
@@ -3118,7 +3138,7 @@ async function shareInviteOnWhatsApp() {
 }
 
 function shareInviteByEmail() {
-  const subject = encodeURIComponent("Join me on Tirth Sutra");
+  const subject = encodeURIComponent(buildInviteEmailSubject());
   const body = encodeURIComponent(buildInviteEmailBody());
   window.location.href = `mailto:?subject=${subject}&body=${body}`;
 }
