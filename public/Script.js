@@ -3117,9 +3117,7 @@ async function shareInviteOnWhatsApp() {
   );
 }
 
-async function shareInviteByEmail() {
-  if (await shareInviteWithPhotoViaNativeShare()) return;
-
+function shareInviteByEmail() {
   const subject = encodeURIComponent("Join me on Tirth Sutra");
   const body = encodeURIComponent(buildInviteEmailBody());
   window.location.href = `mailto:?subject=${subject}&body=${body}`;
