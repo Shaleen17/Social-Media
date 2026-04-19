@@ -2101,7 +2101,14 @@ const APP_TRANSLATION_STATE = {
 };
 const APP_TRANSLATION_ATTRS = ["placeholder", "title", "aria-label", "alt", "value"];
 const APP_TRANSLATION_BATCH_SEPARATOR = "\n<ts-sep-918273645/>\n";
-const APP_TRANSLATION_PACK_VERSION = "20260419-language-deploy-fix-6";
+const APP_TRANSLATION_PACK_VERSION = "20260419-translation-quality-fix-1";
+const APP_TRANSLATION_ASCII_ONLY_FALLBACK_LANGUAGES = new Set([
+  "hi",
+  "bn",
+  "ta",
+  "te",
+  "mr",
+]);
 const APP_TRANSLATION_STATIC_KEYS = new Set([
   "title",
   "subtitle",
@@ -2332,7 +2339,90 @@ function isLikelyUntranslatedResult(source, translated, targetLanguage) {
   if (!original || !next) return true;
   if (!targetLanguage || targetLanguage === "en") return false;
   if (original !== next) return false;
-  return /[A-Za-z]/.test(original);
+  return /\p{L}/u.test(original);
+}
+
+function hasUnexpectedTranslationMarkup(source, translated) {
+  const original = String(source || "");
+  const next = String(translated || "");
+  if (!next) return false;
+  if (/[<>]/.test(original)) return false;
+  return /<(?:bx|ex|g|ph|x)\b[^>]*>/i.test(next);
+}
+
+function isUsableTranslationCandidate(source, translated, targetLanguage) {
+  const original = String(source || "").trim();
+  const next = String(translated || "").trim();
+  if (!original || !next) return false;
+  if (isLikelyUntranslatedResult(original, next, targetLanguage)) return false;
+  if (hasUnexpectedTranslationMarkup(original, next)) return false;
+  if (
+    APP_TRANSLATION_ASCII_ONLY_FALLBACK_LANGUAGES.has(targetLanguage) &&
+    /[A-Za-z]/.test(original) &&
+    /^[A-Za-z0-9\s.,!?:;'"`~@#$%^&*()_+\-=[\]{}|\\/<>]+$/.test(next)
+  ) {
+    return false;
+  }
+  return true;
+}
+
+function getStaticTranslationFallback(source, targetLanguage) {
+  const staticPack = getStaticTranslationPackBucket(targetLanguage);
+  const candidate = staticPack[source];
+  return isUsableTranslationCandidate(source, candidate, targetLanguage)
+    ? candidate
+    : "";
+}
+
+const APP_TRANSLATION_SOURCE_DETECTORS = [
+  { code: "bn", pattern: /[\u0980-\u09FF]/u },
+  { code: "ta", pattern: /[\u0B80-\u0BFF]/u },
+  { code: "te", pattern: /[\u0C00-\u0C7F]/u },
+  { code: "gu", pattern: /[\u0A80-\u0AFF]/u },
+  { code: "kn", pattern: /[\u0C80-\u0CFF]/u },
+  { code: "ml", pattern: /[\u0D00-\u0D7F]/u },
+  { code: "pa", pattern: /[\u0A00-\u0A7F]/u },
+  { code: "or", pattern: /[\u0B00-\u0B7F]/u },
+  { code: "hi", pattern: /[\u0900-\u097F]/u },
+  { code: "ur", pattern: /[\u0600-\u06FF]/u },
+];
+
+function detectLikelyTranslationSourceLanguage(text) {
+  const value = String(text || "").trim();
+  if (!value) return "en";
+
+  for (const detector of APP_TRANSLATION_SOURCE_DETECTORS) {
+    if (detector.pattern.test(value)) {
+      return detector.code;
+    }
+  }
+
+  if (/[A-Za-z]/.test(value)) {
+    return "en";
+  }
+
+  return "en";
+}
+
+function groupTextsByDetectedSource(texts, sourceLanguage = "auto") {
+  const normalizedSource = String(sourceLanguage || "auto").trim();
+  const groups = new Map();
+
+  texts.forEach((text, index) => {
+    const resolvedSource =
+      normalizedSource && normalizedSource !== "auto"
+        ? normalizedSource
+        : detectLikelyTranslationSourceLanguage(text);
+    if (!groups.has(resolvedSource)) {
+      groups.set(resolvedSource, []);
+    }
+    groups.get(resolvedSource).push({ index, text });
+  });
+
+  return Array.from(groups.entries()).map(([source, items]) => ({
+    source,
+    items,
+  }));
 }
 
 function getStaticTranslationSources() {
@@ -2393,7 +2483,7 @@ async function loadBundledTranslationPack(languageCode) {
     .then((pack) => {
       if (!pack || typeof pack !== "object") return bucket;
       Object.entries(pack).forEach(([source, translated]) => {
-        if (typeof translated === "string" && translated.trim()) {
+        if (isUsableTranslationCandidate(source, translated, nextCode)) {
           bucket[source] = translated;
         }
       });
@@ -2553,7 +2643,7 @@ async function warmStaticTranslationPack(languageCode) {
     return APP_TRANSLATION_STATE.staticPackPromises[nextCode];
   }
 
-  const bucket = getStaticTranslationPackBucket(nextCode);
+  const bucket = getTranslationCacheBucket(nextCode);
   APP_TRANSLATION_STATE.staticPackPromises[nextCode] = (async () => {
     await loadBundledTranslationPack(nextCode);
     const missingTexts = getStaticTranslationCatalog().filter((text) => !bucket[text]);
@@ -2569,11 +2659,19 @@ async function warmStaticTranslationPack(languageCode) {
             const translatedChunk = await fetchTranslatedBatch(chunk, nextCode);
             chunk.forEach((text, index) => {
               const translated = translatedChunk[index] || text;
-              if (!isLikelyUntranslatedResult(text, translated, nextCode)) {
+              if (isUsableTranslationCandidate(text, translated, nextCode)) {
                 bucket[text] = translated;
+                return;
               }
+              const fallback = getStaticTranslationFallback(text, nextCode);
+              if (fallback) bucket[text] = fallback;
             });
-          } catch {}
+          } catch {
+            chunk.forEach((text) => {
+              const fallback = getStaticTranslationFallback(text, nextCode);
+              if (fallback) bucket[text] = fallback;
+            });
+          }
         }),
       );
     }
@@ -2643,10 +2741,14 @@ function showTranslationNoticeOnce(kind, languageCode) {
 }
 
 // ─── Direct MyMemory translation (works without backend) ──────────────────────
-async function translateOneMyMemory(text, targetLang) {
+async function translateOneMyMemory(text, targetLang, sourceLang = "en") {
   // MyMemory requires explicit source language — "auto" is NOT supported and
   // causes it to silently return the original text unchanged.
-  const langPair = `en|${targetLang}`;
+  const resolvedSource =
+    sourceLang && sourceLang !== "auto"
+      ? sourceLang
+      : detectLikelyTranslationSourceLanguage(text);
+  const langPair = `${resolvedSource}|${targetLang}`;
   const url = new URL("https://api.mymemory.translated.net/get");
   url.searchParams.set("q", text);
   url.searchParams.set("langpair", langPair);
@@ -2673,30 +2775,44 @@ async function translateOneMyMemory(text, targetLang) {
   }
 }
 
-async function translateBatchMyMemory(texts, targetLang) {
+async function translateBatchMyMemory(texts, targetLang, sourceLanguage = "auto") {
   const CONCURRENCY = 3;
   const results = new Array(texts.length).fill("");
-  for (let i = 0; i < texts.length; i += CONCURRENCY) {
-    const chunk = texts.slice(i, i + CONCURRENCY);
-    const translated = await Promise.all(
-      chunk.map((t) =>
-        t.trim() ? translateOneMyMemory(t, targetLang).catch(() => t) : Promise.resolve(t)
-      )
-    );
-    translated.forEach((t, j) => { results[i + j] = t; });
+
+  for (const group of groupTextsByDetectedSource(texts, sourceLanguage)) {
+    if (group.source === targetLang) {
+      group.items.forEach(({ index, text }) => {
+        results[index] = text;
+      });
+      continue;
+    }
+
+    for (let i = 0; i < group.items.length; i += CONCURRENCY) {
+      const chunk = group.items.slice(i, i + CONCURRENCY);
+      const translated = await Promise.all(
+        chunk.map(({ text }) =>
+          text.trim()
+            ? translateOneMyMemory(text, targetLang, group.source).catch(() => text)
+            : Promise.resolve(text)
+        )
+      );
+      translated.forEach((translatedText, j) => {
+        results[chunk[j].index] = translatedText;
+      });
+    }
   }
   return {
     provider: "mymemory",
-    source: "auto",
+    source: sourceLanguage,
     target: targetLang,
     translatedTexts: results,
   };
 }
 
-async function requestTranslationBatch(texts, targetLanguage) {
+async function requestTranslationBatch(texts, targetLanguage, sourceLanguage = "auto") {
   if (typeof API !== "undefined" && API && typeof API.translateTexts === "function") {
     try {
-      const apiResult = await API.translateTexts(texts, targetLanguage, "auto", "text");
+      const apiResult = await API.translateTexts(texts, targetLanguage, sourceLanguage, "text");
       if (apiResult && Array.isArray(apiResult.translatedTexts)) {
         return apiResult;
       }
@@ -2724,7 +2840,7 @@ async function requestTranslationBatch(texts, targetLanguage) {
           body: JSON.stringify({
             texts,
             target: targetLanguage,
-            source: "auto",
+            source: sourceLanguage,
             format: "text",
           }),
           signal: controller.signal,
@@ -2743,11 +2859,11 @@ async function requestTranslationBatch(texts, targetLanguage) {
   }
 
   // FALLBACK: Direct MyMemory API call (browser → MyMemory directly)
-  return await translateBatchMyMemory(texts, targetLanguage);
+  return await translateBatchMyMemory(texts, targetLanguage, sourceLanguage);
 }
 
-async function fetchTranslatedBatch(texts, targetLanguage) {
-  const data = await requestTranslationBatch(texts, targetLanguage);
+async function fetchTranslatedBatch(texts, targetLanguage, sourceLanguage = "auto") {
+  const data = await requestTranslationBatch(texts, targetLanguage, sourceLanguage);
   if (data?.unsupportedTarget || data?.unsupportedSource) {
     showTranslationNoticeOnce("unsupported", targetLanguage);
   }
@@ -2766,16 +2882,9 @@ async function fetchTranslatedBatch(texts, targetLanguage) {
 
 async function getTranslatedTexts(texts, targetLanguage) {
   const bucket = getTranslationCacheBucket(targetLanguage);
-  const staticPack = getStaticTranslationPackBucket(targetLanguage);
   const uniqueTexts = Array.from(
     new Set(texts.filter((text) => looksTranslatable(text))),
   );
-  uniqueTexts.forEach((text) => {
-    if (!bucket[text] && staticPack[text]) {
-      bucket[text] = staticPack[text];
-    }
-  });
-
   const missingTexts = uniqueTexts.filter((text) => !bucket[text]);
   const chunks = chunkTextsForTranslation(missingTexts);
 
@@ -2787,7 +2896,7 @@ async function getTranslatedTexts(texts, targetLanguage) {
           const translatedChunk = await fetchTranslatedBatch(chunk, targetLanguage);
           chunk.forEach((text, index) => {
             const translated = translatedChunk[index] || text;
-            if (!isLikelyUntranslatedResult(text, translated, targetLanguage)) {
+            if (isUsableTranslationCandidate(text, translated, targetLanguage)) {
               bucket[text] = translated;
             }
           });
@@ -2795,6 +2904,12 @@ async function getTranslatedTexts(texts, targetLanguage) {
       }),
     );
   }
+
+  uniqueTexts.forEach((text) => {
+    if (bucket[text]) return;
+    const fallback = getStaticTranslationFallback(text, targetLanguage);
+    if (fallback) bucket[text] = fallback;
+  });
 
   if (missingTexts.length) persistStaticTranslationPacks();
   return uniqueTexts.reduce((acc, text) => {

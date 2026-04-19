@@ -317,7 +317,7 @@
 
   let _chatPushSetupPromise = null;
   let _pendingOpenChatId = consumeOpenChatParam();
-  const APP_ASSET_VERSION = "20260419-language-deploy-fix-6";
+  const APP_ASSET_VERSION = "20260419-translation-quality-fix-1";
   let _appSwPromise = null;
   let _deferredInstallPrompt = null;
   let _installPromptBound = false;
