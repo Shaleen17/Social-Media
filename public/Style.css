@@ -168,6 +168,54 @@ body {
 body {
   top: 0 !important;
 }
+
+/* ============================================================
+   APP TOP LOADER
+   ============================================================ */
+#appTopLoader {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 10020;
+  opacity: 0;
+  transform: translateY(-8px);
+  pointer-events: none;
+  transition:
+    opacity 0.16s ease,
+    transform 0.16s ease;
+}
+#appTopLoader.show {
+  opacity: 1;
+  transform: translateY(0);
+}
+.app-top-loader-track {
+  width: 100%;
+  height: 4px;
+  background: linear-gradient(90deg, rgba(20, 12, 7, 0.46), rgba(20, 12, 7, 0.22));
+  overflow: hidden;
+}
+.app-top-loader-fill {
+  width: 100%;
+  height: 100%;
+  transform: scaleX(0);
+  transform-origin: left center;
+  background: linear-gradient(90deg, #c78b49 0%, #efc07c 48%, #fff1cf 100%);
+  box-shadow: 0 0 16px rgba(239, 192, 124, 0.34);
+  will-change: transform, opacity;
+  transition:
+    transform 0.16s cubic-bezier(0.22, 1, 0.36, 1),
+    opacity 0.16s ease;
+}
+#appTopLoader.is-complete .app-top-loader-fill {
+  transition:
+    transform 0.18s ease-out,
+    opacity 0.18s ease-out;
+}
+[data-dark] .app-top-loader-track,
+body.reels-mode .app-top-loader-track {
+  background: linear-gradient(90deg, rgba(8, 5, 3, 0.68), rgba(8, 5, 3, 0.3));
+}
 .goog-te-banner-frame.skiptranslate,
 .goog-te-menu-frame,
 .goog-tooltip,
@@ -305,7 +353,9 @@ body {
   #brandSplash,
   .brand-splash-logo-wrap,
   .brand-splash-logo,
-  .brand-splash-copy {
+  .brand-splash-copy,
+  #appTopLoader,
+  .app-top-loader-fill {
     animation: none;
     transition: none;
   }

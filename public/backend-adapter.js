@@ -93,8 +93,11 @@
   let _cachedLiveStreams = [];
   let _cachedVidStories = [];
   let _dataLoaded = false;
+  let _liveRefreshTimer = null;
+  let _liveRefreshInFlight = false;
   const BOOT_CACHE_KEY = "backendBootCache";
   const BOOT_CACHE_TTL = 1000 * 60 * 60 * 24 * 30;
+  const LIVE_REFRESH_INTERVAL_MS = 15000;
 
   function scheduleNonCriticalWork(task, timeout = 800) {
     if (typeof task !== "function") return;
@@ -138,6 +141,55 @@
       videos: _cachedVideos,
       liveStreams: _cachedLiveStreams,
       vidStories: _cachedVidStories,
+    });
+  }
+
+  function mapLiveStreamsFromVideos(videos) {
+    return (videos || [])
+      .filter((v) => v && v.live)
+      .map((v) => ({
+        id: v.id,
+        uid: v.uid,
+        title: v.title,
+        src: v.src,
+        viewers: v.viewers || 0,
+        started: v.started || "recently",
+        poster: v.thumb || v.poster || "",
+      }));
+  }
+
+  function shouldRefreshLiveStreams() {
+    return document.visibilityState === "visible" && curPage === "video";
+  }
+
+  async function refreshLiveStreamsIfNeeded() {
+    if (
+      _liveRefreshInFlight ||
+      !shouldRefreshLiveStreams() ||
+      typeof window.refreshLiveStreamsFromBackend !== "function"
+    ) {
+      return false;
+    }
+
+    _liveRefreshInFlight = true;
+    try {
+      return await window.refreshLiveStreamsFromBackend({ render: true });
+    } finally {
+      _liveRefreshInFlight = false;
+    }
+  }
+
+  function ensureLiveRefreshLoop() {
+    if (_liveRefreshTimer) return;
+
+    _liveRefreshTimer = window.setInterval(() => {
+      refreshLiveStreamsIfNeeded().catch(() => {});
+    }, LIVE_REFRESH_INTERVAL_MS);
+
+    document.addEventListener("visibilitychange", () => {
+      if (shouldRefreshLiveStreams()) {
+        refreshLiveStreamsIfNeeded().catch(() => {});
+      }
     });
   }
 
@@ -526,6 +578,50 @@
     }) || null;
   };
 
+  window.prependLiveStreamCache = function (stream, options = {}) {
+    if (!stream || !stream.id) return false;
+    const normalized = {
+      id: (stream.id || "").toString(),
+      uid: (stream.uid || "").toString(),
+      title: stream.title || "Live Stream",
+      src: stream.src || "",
+      viewers: Number(stream.viewers) || 0,
+      started: stream.started || "Just now",
+      poster: stream.poster || "",
+    };
+
+    _cachedLiveStreams = [
+      normalized,
+      ..._cachedLiveStreams.filter(
+        (item) => (item?.id || "").toString() !== normalized.id
+      ),
+    ];
+    writeBootCache();
+
+    if (options.render && typeof renderLiveSection === "function") {
+      renderLiveSection();
+    }
+    return true;
+  };
+
+  window.refreshLiveStreamsFromBackend = async function (options = {}) {
+    try {
+      const liveVideos = await API.getVideos(undefined, "live");
+      _cachedLiveStreams = mapLiveStreamsFromVideos(liveVideos || []);
+      writeBootCache();
+
+      if (options.render && typeof renderLiveSection === "function") {
+        renderLiveSection();
+      }
+      return true;
+    } catch (err) {
+      console.warn("Failed to refresh live streams:", err);
+      return false;
+    }
+  };
+
+  ensureLiveRefreshLoop();
+
   // =============================================
   // Override seedData — load from API instead
   // =============================================
@@ -697,6 +793,10 @@
   };
 
   window.logout = function () {
+    const loaderToken =
+      typeof window.startAppTopLoader === "function"
+        ? window.startAppTopLoader({ initialProgress: 0.18 })
+        : "";
     disableChatPushNotifications().catch(() => {});
     CU = null;
     API.logout();
@@ -706,7 +806,13 @@
     initUI();
     gp("home");
     // Reload data as guest
-    loadAllData();
+    Promise.resolve(loadAllData())
+      .catch(() => {})
+      .finally(() => {
+        if (loaderToken && typeof window.stopAppTopLoader === "function") {
+          window.stopAppTopLoader(loaderToken, { delay: 0, minVisible: 150 });
+        }
+      });
     MC.info("Signed out. Jai Shri Ram 🙏");
   };
 
@@ -935,6 +1041,11 @@
     if (!password) ok = false;
     if (!ok) return;
 
+    const authLoaderToken =
+      typeof window.startAppTopLoader === "function"
+        ? window.startAppTopLoader({ initialProgress: 0.18 })
+        : "";
+
     try {
       const data = await API.login(email, password);
       const resendBtn = document.getElementById("resendSignupOtpBtn");
@@ -974,6 +1085,13 @@
       }
 
       MC.error(err.message || "Invalid email or password. Please try again.");
+    } finally {
+      if (authLoaderToken && typeof window.stopAppTopLoader === "function") {
+        window.stopAppTopLoader(authLoaderToken, {
+          delay: 0,
+          minVisible: 150,
+        });
+      }
     }
   };
 
@@ -1062,6 +1180,11 @@
       return;
     }
 
+    const authLoaderToken =
+      typeof window.startAppTopLoader === "function"
+        ? window.startAppTopLoader({ initialProgress: 0.18 })
+        : "";
+
     try {
       setButtonBusy(verifyBtn, true, "Verifying OTP...");
       const data = await API.verifySignupOtp(email, otp);
@@ -1095,6 +1218,12 @@
       }
     } finally {
       setButtonBusy(verifyBtn, false, "Verifying OTP...");
+      if (authLoaderToken && typeof window.stopAppTopLoader === "function") {
+        window.stopAppTopLoader(authLoaderToken, {
+          delay: 0,
+          minVisible: 150,
+        });
+      }
     }
   };
 
@@ -1179,12 +1308,21 @@
   };
 
   window.doGoogleLogin = function () {
+    const loaderToken =
+      typeof window.startAppTopLoader === "function"
+        ? window.startAppTopLoader({ initialProgress: 0.22 })
+        : "";
     const backendBase =
       typeof window.getBackendBaseUrl === "function"
         ? window.getBackendBaseUrl()
         : typeof CONFIG !== "undefined" && CONFIG && CONFIG.BACKEND_URL
           ? String(CONFIG.BACKEND_URL).replace(/\/+$/, "")
           : "";
+    if (loaderToken && typeof window.stopAppTopLoader === "function") {
+      window.setTimeout(() => {
+        window.stopAppTopLoader(loaderToken, { delay: 0, minVisible: 120 });
+      }, 1400);
+    }
     window.location.href =
       backendBase +
       "/api/auth/google/start?returnTo=" +
@@ -1635,16 +1773,7 @@
       _cachedPosts = posts || [];
 
       _cachedVideos = (videos || []).filter((v) => !v.live);
-      _cachedLiveStreams = (videos || [])
-        .filter((v) => v.live)
-        .map((v) => ({
-          id: v.id,
-          uid: v.uid,
-          title: v.title,
-          src: v.src,
-          viewers: v.viewers || 0,
-          started: v.started || "recently",
-        }));
+      _cachedLiveStreams = mapLiveStreamsFromVideos(videos || []);
 
       _cachedVidStories = vidStories || [];
 

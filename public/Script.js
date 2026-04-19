@@ -121,6 +121,7 @@ let trackedVideoViews = new Set();
 let vidUploadFile = null,
   storyUploadFile = null,
   liveFile = null,
+  livePreviewObjectUrl = null,
   thumbFile = null;
 let morePrevPage = "home",
   blockedUserSearchQuery = "";
@@ -130,6 +131,134 @@ let inviteShareFilePromise = null;
 const PENDING_REFERRAL_KEY = "pendingReferralCode";
 const REFERRAL_QUERY_KEYS = ["ref", "invite"];
 const INVITE_SHARE_IMAGE_PATH = "images/post/invite_image.jpg";
+const FALLBACK_LIVE_STREAM_SRC = "https://www.w3schools.com/html/mov_bbb.mp4";
+const APP_TOP_LOADER_MIN_VISIBLE_MS = 140;
+const APP_TOP_LOADER_COMPLETE_MS = 170;
+let appTopLoaderTokenSeq = 0;
+const appTopLoaderState = {
+  root: null,
+  fill: null,
+  activeTokens: new Set(),
+  progress: 0,
+  shownAt: 0,
+  rafId: 0,
+  finishTimer: 0,
+  hideTimer: 0,
+};
+
+function ensureAppTopLoader() {
+  if (appTopLoaderState.root && appTopLoaderState.fill) {
+    return appTopLoaderState;
+  }
+  let root = document.getElementById("appTopLoader");
+  if (!root && document.body) {
+    root = document.createElement("div");
+    root.id = "appTopLoader";
+    root.setAttribute("aria-hidden", "true");
+    root.innerHTML =
+      '<div class="app-top-loader-track"><div class="app-top-loader-fill"></div></div>';
+    document.body.appendChild(root);
+  }
+  if (!root) return appTopLoaderState;
+  appTopLoaderState.root = root;
+  appTopLoaderState.fill = root.querySelector(".app-top-loader-fill");
+  return appTopLoaderState;
+}
+function clearAppTopLoaderTimers() {
+  if (appTopLoaderState.finishTimer) {
+    clearTimeout(appTopLoaderState.finishTimer);
+    appTopLoaderState.finishTimer = 0;
+  }
+  if (appTopLoaderState.hideTimer) {
+    clearTimeout(appTopLoaderState.hideTimer);
+    appTopLoaderState.hideTimer = 0;
+  }
+}
+function cancelAppTopLoaderAnimation() {
+  if (appTopLoaderState.rafId) {
+    cancelAnimationFrame(appTopLoaderState.rafId);
+    appTopLoaderState.rafId = 0;
+  }
+}
+function paintAppTopLoader() {
+  const state = ensureAppTopLoader();
+  if (!state.fill) return;
+  const safeProgress = Math.max(0, Math.min(state.progress, 1));
+  state.fill.style.transform = `scaleX(${safeProgress})`;
+}
+function stepAppTopLoader() {
+  cancelAppTopLoaderAnimation();
+  if (!appTopLoaderState.activeTokens.size) return;
+  appTopLoaderState.progress += (0.82 - appTopLoaderState.progress) * 0.12;
+  paintAppTopLoader();
+  appTopLoaderState.rafId = requestAnimationFrame(stepAppTopLoader);
+}
+function startAppTopLoader(options = {}) {
+  const state = ensureAppTopLoader();
+  if (!state.root || !state.fill) return "";
+
+  clearAppTopLoaderTimers();
+  state.root.classList.remove("is-complete");
+  state.root.classList.add("show");
+  state.shownAt = Date.now();
+
+  const token = `atl_${++appTopLoaderTokenSeq}`;
+  state.activeTokens.add(token);
+  state.progress = Math.max(
+    state.progress || 0,
+    Math.min(Number(options.initialProgress) || 0.16, 0.9)
+  );
+  paintAppTopLoader();
+  stepAppTopLoader();
+  return token;
+}
+function resetAppTopLoader() {
+  const state = ensureAppTopLoader();
+  cancelAppTopLoaderAnimation();
+  clearAppTopLoaderTimers();
+  state.progress = 0;
+  if (state.root) {
+    state.root.classList.remove("show", "is-complete");
+  }
+  paintAppTopLoader();
+}
+function stopAppTopLoader(token, options = {}) {
+  const state = ensureAppTopLoader();
+  if (!state.root || !state.fill) return;
+
+  if (token) state.activeTokens.delete(token);
+  else state.activeTokens.clear();
+  if (state.activeTokens.size) return;
+
+  clearAppTopLoaderTimers();
+  const minVisible = Math.max(
+    0,
+    Number.isFinite(options.minVisible)
+      ? Number(options.minVisible)
+      : APP_TOP_LOADER_MIN_VISIBLE_MS
+  );
+  const extraDelay = Math.max(0, Number(options.delay) || 0);
+  const remainingVisible = Math.max(0, minVisible - (Date.now() - state.shownAt));
+
+  state.finishTimer = window.setTimeout(() => {
+    cancelAppTopLoaderAnimation();
+    state.progress = 1;
+    paintAppTopLoader();
+    state.root.classList.add("show", "is-complete");
+    state.hideTimer = window.setTimeout(
+      resetAppTopLoader,
+      Number(options.completeDuration) || APP_TOP_LOADER_COMPLETE_MS
+    );
+  }, Math.max(extraDelay, remainingVisible));
+}
+function flashAppTopLoader(duration = 220, options = {}) {
+  const token = startAppTopLoader(options);
+  if (!token) return "";
+  window.setTimeout(() => {
+    stopAppTopLoader(token, options);
+  }, Math.max(80, Number(duration) || 220));
+  return token;
+}
 
 const REELS_UPLOADER_NAME = "Tirth Sutra Community";
 const REELS_LIBRARY = [
@@ -1765,6 +1894,7 @@ function logout() {
 }
 
 function doGoogleLogin() {
+  const loaderToken = startAppTopLoader({ initialProgress: 0.22 });
   const backendBase =
     typeof window.getBackendBaseUrl === "function"
       ? window.getBackendBaseUrl()
@@ -1776,6 +1906,9 @@ function doGoogleLogin() {
   if (referralCode) {
     returnTo.searchParams.set("ref", referralCode);
   }
+  window.setTimeout(() => {
+    stopAppTopLoader(loaderToken, { delay: 0, minVisible: 120 });
+  }, 1400);
   window.location.href =
     backendBase +
     "/api/auth/google/start?returnTo=" +
@@ -4363,95 +4496,111 @@ function disableNavThemeTransitionsForSwitch() {
 }
 
 function gp(page) {
+  const previousPage = curPage;
+  const isSamePage = previousPage === page;
+  const pageLoaderToken = startAppTopLoader({
+    initialProgress: isSamePage ? 0.11 : 0.14,
+  });
   const wasReelsPage = document.body.classList.contains("reels-mode");
   const isReelsPage = page === "reels";
-  if (wasReelsPage !== isReelsPage) disableNavThemeTransitionsForSwitch();
-  PAGE_IDS.forEach((p) => {
-    const el = document.getElementById(
-      "pg" + p.charAt(0).toUpperCase() + p.slice(1),
+  try {
+    if (wasReelsPage !== isReelsPage) disableNavThemeTransitionsForSwitch();
+    PAGE_IDS.forEach((p) => {
+      const el = document.getElementById(
+        "pg" + p.charAt(0).toUpperCase() + p.slice(1),
+      );
+      if (el) {
+        el.classList.toggle("on", p === page);
+        el.classList.toggle("hide", p !== page);
+      }
+    });
+    // Desktop sidebar
+    document.querySelectorAll(".sb").forEach((b) => b.classList.remove("on"));
+    const sb = document.getElementById(
+      "sn" + page.charAt(0).toUpperCase() + page.slice(1),
     );
-    if (el) {
-      el.classList.toggle("on", p === page);
-      el.classList.toggle("hide", p !== page);
+    if (sb) sb.classList.add("on");
+    else if (MORE_NAV_PAGES.includes(page)) syncMoreNavState(true);
+    // Bottom nav
+    document.querySelectorAll(".bnb").forEach((b) => b.classList.remove("on"));
+    const bn = document.getElementById(
+      "bn" + page.charAt(0).toUpperCase() + page.slice(1),
+    );
+    if (bn) bn.classList.add("on");
+    // Drawer
+    document
+      .querySelectorAll(".drawer-item")
+      .forEach((b) => b.classList.remove("on"));
+    const di = document.getElementById(
+      "d" + page.charAt(0).toUpperCase() + page.slice(1),
+    );
+    if (di) di.classList.add("on");
+    else if (MORE_NAV_PAGES.includes(page)) syncMoreNavState(true);
+    curPage = page;
+    trackVirtualPageView(page);
+    const renderers = {
+      home: () => {
+        renderFeed();
+        renderStories();
+        renderWidgets();
+      },
+      mandir: () => renderMandir(),
+      mandirCommunity: () => { }, // rendered by openMandirCommunity
+      santAll: () => renderSantAll(),
+      santProfile: () => { }, // rendered by openSantProfile
+      video: () => renderVideoPage(),
+      reels: () => renderReelsPage(),
+      search: () => {
+        doSearch("");
+        renderWidgets();
+      },
+      notifs: () => renderNotifs(),
+      bookmarks: () => renderBM(),
+      inviteFriends: () => renderInviteFriendsPage(),
+      profile: () => renderProfile(CU ? CU.id : curProfId),
+      chats: () => renderChatsPage(),
+      about: () => {},
+      language: () => renderLanguagePage(),
+      helpSupport: () => renderHelpSupportPage(),
+      settingsPrivacy: () => renderSettingsPrivacyPage(),
+    };
+    const isWidePage =
+      page === "chats" ||
+      isReelsPage ||
+      ["about", "inviteFriends", "language", "helpSupport", "settingsPrivacy"].includes(page);
+    document.body.classList.toggle("reels-mode", isReelsPage);
+    //* pgChats needs flex not block */
+    const cp = document.getElementById("pgChats");
+    if (cp) cp.style.display = page === "chats" ? "flex" : "";
+    const rw = document.getElementById("rightWrap");
+    if (rw) rw.style.display = isWidePage ? "none" : "";
+    const fw = document.getElementById("feedWrap");
+    if (fw) {
+      fw.style.maxWidth = isWidePage ? "100%" : "";
+      fw.style.borderRight = isWidePage ? "none" : "";
     }
-  });
-  // Desktop sidebar
-  document.querySelectorAll(".sb").forEach((b) => b.classList.remove("on"));
-  const sb = document.getElementById(
-    "sn" + page.charAt(0).toUpperCase() + page.slice(1),
-  );
-  if (sb) sb.classList.add("on");
-  else if (MORE_NAV_PAGES.includes(page)) syncMoreNavState(true);
-  // Bottom nav
-  document.querySelectorAll(".bnb").forEach((b) => b.classList.remove("on"));
-  const bn = document.getElementById(
-    "bn" + page.charAt(0).toUpperCase() + page.slice(1),
-  );
-  if (bn) bn.classList.add("on");
-  // Drawer
-  document
-    .querySelectorAll(".drawer-item")
-    .forEach((b) => b.classList.remove("on"));
-  const di = document.getElementById(
-    "d" + page.charAt(0).toUpperCase() + page.slice(1),
-  );
-  if (di) di.classList.add("on");
-  else if (MORE_NAV_PAGES.includes(page)) syncMoreNavState(true);
-  curPage = page;
-  trackVirtualPageView(page);
-  const renderers = {
-    home: () => {
-      renderFeed();
-      renderStories();
-      renderWidgets();
-    },
-    mandir: () => renderMandir(),
-    mandirCommunity: () => { }, // rendered by openMandirCommunity
-    santAll: () => renderSantAll(),
-    santProfile: () => { }, // rendered by openSantProfile
-    video: () => renderVideoPage(),
-    reels: () => renderReelsPage(),
-    search: () => {
-      doSearch("");
-      renderWidgets();
-    },
-    notifs: () => renderNotifs(),
-    bookmarks: () => renderBM(),
-    inviteFriends: () => renderInviteFriendsPage(),
-    profile: () => renderProfile(CU ? CU.id : curProfId),
-    chats: () => renderChatsPage(),
-    about: () => {},
-    language: () => renderLanguagePage(),
-    helpSupport: () => renderHelpSupportPage(),
-    settingsPrivacy: () => renderSettingsPrivacyPage(),
-  };
-  const isWidePage =
-    page === "chats" ||
-    isReelsPage ||
-    ["about", "inviteFriends", "language", "helpSupport", "settingsPrivacy"].includes(page);
-  document.body.classList.toggle("reels-mode", isReelsPage);
-  //* pgChats needs flex not block */
-  const cp = document.getElementById("pgChats");
-  if (cp) cp.style.display = page === "chats" ? "flex" : "";
-  const rw = document.getElementById("rightWrap");
-  if (rw) rw.style.display = isWidePage ? "none" : "";
-  const fw = document.getElementById("feedWrap");
-  if (fw) {
-    fw.style.maxWidth = isWidePage ? "100%" : "";
-    fw.style.borderRight = isWidePage ? "none" : "";
+    if (!isReelsPage) pauseAllReels();
+    if (renderers[page]) renderers[page]();
+    applyLanguagePreference();
+    scheduleGoogleTranslate({
+      languageCode: getCurrentLanguageCode(),
+      force: getCurrentLanguageCode() !== "en",
+      delay: 140,
+    });
+    window.scrollTo({
+      top: 0,
+      behavior: isReelsPage || REELS_PREFERS_REDUCED_MOTION ? "auto" : "smooth",
+    });
+  } finally {
+    if (pageLoaderToken) {
+      requestAnimationFrame(() => {
+        stopAppTopLoader(pageLoaderToken, {
+          delay: 24,
+          minVisible: isSamePage ? 90 : 120,
+        });
+      });
+    }
   }
-  if (!isReelsPage) pauseAllReels();
-  if (renderers[page]) renderers[page]();
-  applyLanguagePreference();
-  scheduleGoogleTranslate({
-    languageCode: getCurrentLanguageCode(),
-    force: getCurrentLanguageCode() !== "en",
-    delay: 140,
-  });
-  window.scrollTo({
-    top: 0,
-    behavior: isReelsPage || REELS_PREFERS_REDUCED_MOTION ? "auto" : "smooth",
-  });
 }
 
 /* ── MOBILE DRAWER ── */
@@ -4550,6 +4699,7 @@ function handleSidebarAuth() {
   if (CU) {
     logout();
   } else {
+    flashAppTopLoader(220, { initialProgress: 0.18, minVisible: 120 });
     openOvl('authOvl');
   }
 }
@@ -4564,6 +4714,7 @@ function handleDrawerAuth() {
   if (CU) {
     logout();
   } else {
+    flashAppTopLoader(220, { initialProgress: 0.18, minVisible: 120 });
     openOvl('authOvl');
   }
 }
@@ -8004,11 +8155,43 @@ function submitStory() {
 }
 
 /* ── GO LIVE ── */
+function clearLivePreviewObjectUrl() {
+  if (!livePreviewObjectUrl) return;
+  try {
+    URL.revokeObjectURL(livePreviewObjectUrl);
+  } catch {}
+  livePreviewObjectUrl = null;
+}
+function resetGoLiveComposer() {
+  liveFile = null;
+  clearLivePreviewObjectUrl();
+  const title = document.getElementById("liveTitle");
+  if (title) title.value = "";
+  const viewers = document.getElementById("liveViewers");
+  if (viewers) viewers.value = "127";
+  const fileInput = document.querySelector('#goLiveModal input[type="file"]');
+  if (fileInput) fileInput.value = "";
+  const vid = document.getElementById("livePreviewVid");
+  if (vid) {
+    try {
+      vid.pause();
+    } catch {}
+    vid.removeAttribute("src");
+    try {
+      vid.load();
+    } catch {}
+    vid.style.display = "none";
+  }
+  const ph = document.getElementById("livePreviewPlaceholder");
+  if (ph) ph.style.display = "";
+}
 function handleLiveFile(e) {
   const f = e.target?.files?.[0];
   if (!f) return;
   liveFile = f;
+  clearLivePreviewObjectUrl();
   const url = URL.createObjectURL(f);
+  livePreviewObjectUrl = url;
   const vid = document.getElementById("livePreviewVid");
   if (vid) {
     vid.src = url;
@@ -8018,7 +8201,7 @@ function handleLiveFile(e) {
   const ph = document.getElementById("livePreviewPlaceholder");
   if (ph) ph.style.display = "none";
 }
-function startLive() {
+async function startLive() {
   if (!CU) {
     openOvl("authOvl");
     return;
@@ -8030,34 +8213,64 @@ function startLive() {
   }
   const viewers =
     parseInt(document.getElementById("liveViewers")?.value || "127") || 127;
-  const src = liveFile
-    ? URL.createObjectURL(liveFile)
-    : "https://www.w3schools.com/html/mov_bbb.mp4";
-  const lives = getLiveStreams();
-  lives.unshift({
-    id: "l" + Date.now(),
-    uid: CU.id,
-    title,
-    src,
-    viewers,
-    started: "Just now",
-  });
-  Store.s("liveStreams", lives);
-  liveFile = null;
-  const lt = document.getElementById("liveTitle");
-  if (lt) lt.value = "";
-  const lv = document.getElementById("liveViewers");
-  if (lv) lv.value = "127";
-  const lvid = document.getElementById("livePreviewVid");
-  if (lvid) {
-    lvid.style.display = "none";
-    lvid.src = "";
+  const startBtn = document.querySelector("#goLiveModal .btn-red");
+  const originalBtnLabel = startBtn?.textContent || "Start Live";
+  if (startBtn) {
+    startBtn.disabled = true;
+    startBtn.textContent = liveFile ? "Uploading..." : "Starting...";
   }
-  const ph = document.getElementById("livePreviewPlaceholder");
-  if (ph) ph.style.display = "";
-  closeOvl("goLiveModal");
-  renderLiveSection();
-  MC.success("You are now LIVE! 🔴 Jai Shri Ram");
+
+  try {
+    let src = FALLBACK_LIVE_STREAM_SRC;
+    if (liveFile) {
+      const uploaded = await API.uploadFile(liveFile);
+      src = uploaded?.url || FALLBACK_LIVE_STREAM_SRC;
+      if (startBtn) startBtn.textContent = "Going Live...";
+    }
+
+    const payload = await API.startLiveStream({
+      title,
+      src,
+      viewers,
+    });
+
+    const liveEntry = {
+      id: payload?.id || "l" + Date.now(),
+      uid: (CU?.id || CU?._id || "").toString(),
+      title,
+      src,
+      viewers,
+      started: "Just now",
+      poster: CU?.avatar || "",
+    };
+
+    if (typeof window.prependLiveStreamCache === "function") {
+      window.prependLiveStreamCache(liveEntry, { render: curPage === "video" });
+    } else {
+      const lives = Array.isArray(getLiveStreams()) ? getLiveStreams().slice() : [];
+      Store.s(
+        "liveStreams",
+        [liveEntry, ...lives.filter((item) => (item?.id || "") !== liveEntry.id)]
+      );
+      renderLiveSection();
+    }
+
+    resetGoLiveComposer();
+    closeOvl("goLiveModal");
+
+    if (typeof window.refreshLiveStreamsFromBackend === "function") {
+      window.refreshLiveStreamsFromBackend({ render: curPage === "video" }).catch(() => {});
+    }
+
+    MC.success("You are now LIVE! 🔴 Jai Shri Ram");
+  } catch (err) {
+    MC.error(err?.message || "Could not start live stream right now.");
+  } finally {
+    if (startBtn) {
+      startBtn.disabled = false;
+      startBtn.textContent = originalBtnLabel;
+    }
+  }
 }
 
 /* ── PROFILE ── */
