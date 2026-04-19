@@ -1959,7 +1959,7 @@ const APP_TRANSLATION_STATE = {
 };
 const APP_TRANSLATION_ATTRS = ["placeholder", "title", "aria-label", "alt", "value"];
 const APP_TRANSLATION_BATCH_SEPARATOR = "\n<ts-sep-918273645/>\n";
-const APP_TRANSLATION_PACK_VERSION = "20260419-language-deploy-fix-5";
+const APP_TRANSLATION_PACK_VERSION = "20260419-language-deploy-fix-6";
 const APP_TRANSLATION_STATIC_KEYS = new Set([
   "title",
   "subtitle",
@@ -2173,12 +2173,22 @@ function collectStaticTranslationValue(value, key, phrases) {
   Object.entries(value).forEach(([childKey, childValue]) => {
     if (
       typeof childValue === "string" &&
-      !APP_TRANSLATION_STATIC_KEYS.has(childKey)
+      !APP_TRANSLATION_STATIC_KEYS.has(childKey) &&
+      !/^(name|last|title|desc|bio|cat|txt|text|message)$/i.test(childKey)
     ) {
       return;
     }
     collectStaticTranslationValue(childValue, childKey, phrases);
   });
+}
+
+function isLikelyUntranslatedResult(source, translated, targetLanguage) {
+  const original = String(source || "").trim();
+  const next = String(translated || "").trim();
+  if (!original || !next) return true;
+  if (!targetLanguage || targetLanguage === "en") return false;
+  if (original !== next) return false;
+  return /[A-Za-z]/.test(original);
 }
 
 function getStaticTranslationSources() {
@@ -2192,6 +2202,14 @@ function getStaticTranslationSources() {
   if (typeof TRENDING !== "undefined") sources.push(TRENDING);
   if (typeof TEMPLES !== "undefined") sources.push(TEMPLES);
   if (typeof MANDIR_CONFIG !== "undefined") sources.push(Object.values(MANDIR_CONFIG));
+  if (typeof SEED_USERS !== "undefined") sources.push(SEED_USERS);
+  if (typeof SEED_POSTS !== "undefined") sources.push(SEED_POSTS);
+  if (typeof SEED_STORIES !== "undefined") sources.push(SEED_STORIES);
+  if (typeof SEED_NOTIFS !== "undefined") sources.push(SEED_NOTIFS);
+  if (typeof SEED_CONVS !== "undefined") sources.push(SEED_CONVS);
+  if (typeof SEED_VIDEOS !== "undefined") sources.push(SEED_VIDEOS);
+  if (typeof SEED_LIVE !== "undefined") sources.push(SEED_LIVE);
+  if (typeof SEED_VID_STORIES !== "undefined") sources.push(SEED_VID_STORIES);
 
   return sources;
 }
@@ -2406,13 +2424,12 @@ async function warmStaticTranslationPack(languageCode) {
           try {
             const translatedChunk = await fetchTranslatedBatch(chunk, nextCode);
             chunk.forEach((text, index) => {
-              bucket[text] = translatedChunk[index] || text;
+              const translated = translatedChunk[index] || text;
+              if (!isLikelyUntranslatedResult(text, translated, nextCode)) {
+                bucket[text] = translated;
+              }
             });
-          } catch {
-            chunk.forEach((text) => {
-              bucket[text] = text;
-            });
-          }
+          } catch {}
         }),
       );
     }
@@ -2625,13 +2642,12 @@ async function getTranslatedTexts(texts, targetLanguage) {
         try {
           const translatedChunk = await fetchTranslatedBatch(chunk, targetLanguage);
           chunk.forEach((text, index) => {
-            bucket[text] = translatedChunk[index] || text;
+            const translated = translatedChunk[index] || text;
+            if (!isLikelyUntranslatedResult(text, translated, targetLanguage)) {
+              bucket[text] = translated;
+            }
           });
-        } catch {
-          chunk.forEach((text) => {
-            bucket[text] = text;
-          });
-        }
+        } catch {}
       }),
     );
   }

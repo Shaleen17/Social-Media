@@ -49,6 +49,15 @@ function setCachedTranslation(source, target, text, translatedText) {
   }
 }
 
+function isLikelyUntranslatedResult(source, translated, target) {
+  const original = String(source || "").trim();
+  const next = String(translated || "").trim();
+  if (!original || !next) return true;
+  if (!target || target === "en") return false;
+  if (original !== next) return false;
+  return /[A-Za-z]/.test(original);
+}
+
 function getLibreTranslateUrl() {
   return (process.env.LIBRETRANSLATE_URL || "").trim().replace(/\/+$/, "");
 }
@@ -401,7 +410,9 @@ async function translateBatchCached(options) {
         typeof providerTexts[index] === "string" && providerTexts[index].trim()
           ? providerTexts[index]
           : text;
-      setCachedTranslation(normalizedSource, normalizedTarget, text, translated);
+      if (!isLikelyUntranslatedResult(text, translated, normalizedTarget)) {
+        setCachedTranslation(normalizedSource, normalizedTarget, text, translated);
+      }
       const indexes = missingIndexesByText.get(text) || [];
       indexes.forEach((targetIndex) => {
         translatedTexts[targetIndex] = translated;
