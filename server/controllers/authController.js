@@ -4,6 +4,8 @@ const {
   loginLocalUser,
   verifySignupOtp,
   resendSignupOtp,
+  requestPasswordReset,
+  resetPasswordWithOtp,
   loginWithGoogle,
   createGoogleAuthUrl,
   exchangeGoogleCode,
@@ -44,6 +46,22 @@ const verifySignupOtpCode = asyncHandler(async (req, res) => {
 
 const resendSignupOtpCode = asyncHandler(async (req, res) => {
   const result = await resendSignupOtp(req.body, {
+    ip: req.ip,
+    userAgent: req.get("user-agent"),
+  });
+  res.json(result);
+});
+
+const forgotPassword = asyncHandler(async (req, res) => {
+  const result = await requestPasswordReset(req.body, {
+    ip: req.ip,
+    userAgent: req.get("user-agent"),
+  });
+  res.json(result);
+});
+
+const resetPassword = asyncHandler(async (req, res) => {
+  const result = await resetPasswordWithOtp(req.body, {
     ip: req.ip,
     userAgent: req.get("user-agent"),
   });
@@ -102,6 +120,8 @@ module.exports = {
   me,
   verifySignupOtpCode,
   resendSignupOtpCode,
+  forgotPassword,
+  resetPassword,
   googleAuth,
   googleStart,
   googleCallback,

@@ -1751,6 +1751,120 @@ async function verifySignupOtp() {
   }
 }
 
+function setAuthResetButtonBusy(button, isBusy, busyText) {
+  if (!button) return;
+  if (!button.dataset.defaultText) {
+    button.dataset.defaultText = button.textContent;
+  }
+  button.disabled = !!isBusy;
+  button.textContent = isBusy ? busyText : button.dataset.defaultText;
+}
+function clearForgotPasswordErrors() {
+  ["fpEE", "fpOtpE", "fpPwE", "fpErr"].forEach((id) =>
+    toggleFieldError(id, false)
+  );
+}
+function openForgotPasswordPanel() {
+  const panel = document.getElementById("forgotPasswordPanel");
+  if (!panel) return;
+  clearForgotPasswordErrors();
+  const email = (document.getElementById("liEml")?.value || "").trim();
+  const fpEmail = document.getElementById("fpEml");
+  if (fpEmail && email && !fpEmail.value) fpEmail.value = email;
+  panel.classList.remove("hide");
+  panel.style.display = "block";
+  window.setTimeout(() => (fpEmail || document.getElementById("fpOtp"))?.focus(), 30);
+}
+function closeForgotPasswordPanel(options = {}) {
+  const panel = document.getElementById("forgotPasswordPanel");
+  if (panel) {
+    panel.classList.add("hide");
+    panel.style.display = "none";
+  }
+  document.getElementById("resetPasswordFields")?.classList.add("hide");
+  clearForgotPasswordErrors();
+  if (options.clear === false) return;
+  ["fpEml", "fpOtp", "fpPw", "fpPw2"].forEach((id) => {
+    const el = document.getElementById(id);
+    if (el) el.value = "";
+  });
+}
+async function requestPasswordResetOtp() {
+  const email = (document.getElementById("fpEml")?.value || "").trim().toLowerCase();
+  const sendBtn = document.getElementById("fpSendBtn");
+  clearForgotPasswordErrors();
+
+  if (!email || !email.includes("@")) {
+    toggleFieldError("fpEE", true, "Valid email required");
+    return;
+  }
+
+  try {
+    setAuthResetButtonBusy(sendBtn, true, "Sending OTP...");
+    const data = await API.requestPasswordReset(email);
+    const resetFields = document.getElementById("resetPasswordFields");
+    if (resetFields) {
+      resetFields.classList.remove("hide");
+      resetFields.style.display = "block";
+    }
+    if (sendBtn) {
+      sendBtn.dataset.defaultText = "Resend Reset OTP";
+      sendBtn.textContent = "Resend Reset OTP";
+    }
+    MC.success(data.message || "If this email is registered, we sent a password reset OTP.");
+    window.setTimeout(() => document.getElementById("fpOtp")?.focus(), 30);
+  } catch (err) {
+    toggleFieldError("fpErr", true, "❌ " + (err.message || "Could not send reset OTP"));
+    MC.error(err.message || "Could not send reset OTP");
+  } finally {
+    setAuthResetButtonBusy(sendBtn, false, "Sending OTP...");
+  }
+}
+async function submitPasswordReset() {
+  const email = (document.getElementById("fpEml")?.value || "").trim().toLowerCase();
+  const otp = (document.getElementById("fpOtp")?.value || "").trim();
+  const password = document.getElementById("fpPw")?.value || "";
+  const confirmPassword = document.getElementById("fpPw2")?.value || "";
+  const resetBtn = document.getElementById("fpResetBtn");
+  clearForgotPasswordErrors();
+  let ok = true;
+
+  if (!email || !email.includes("@")) {
+    toggleFieldError("fpEE", true, "Valid email required");
+    ok = false;
+  }
+  if (!new RegExp(`^\\d{${OTP_LENGTH}}$`).test(otp)) {
+    toggleFieldError("fpOtpE", true, `Enter the ${OTP_LENGTH}-digit OTP`);
+    ok = false;
+  }
+  if (password.length < 6) {
+    toggleFieldError("fpPwE", true, "Password must be at least 6 characters");
+    ok = false;
+  } else if (password !== confirmPassword) {
+    toggleFieldError("fpPwE", true, "Passwords do not match");
+    ok = false;
+  }
+  if (!ok) return;
+
+  try {
+    setAuthResetButtonBusy(resetBtn, true, "Changing...");
+    const data = await API.resetPassword(email, otp, password);
+    const loginEmail = document.getElementById("liEml");
+    const loginPassword = document.getElementById("liPw");
+    if (loginEmail) loginEmail.value = email;
+    if (loginPassword) loginPassword.value = "";
+    closeForgotPasswordPanel();
+    authToggle("login");
+    MC.success(data.message || "Password updated successfully. Sign in with your new password.");
+    window.setTimeout(() => loginPassword?.focus(), 30);
+  } catch (err) {
+    toggleFieldError("fpErr", true, "❌ " + (err.message || "Could not change password"));
+    MC.error(err.message || "Could not change password");
+  } finally {
+    setAuthResetButtonBusy(resetBtn, false, "Changing...");
+  }
+}
+
 function authToggle(mode) {
   document
     .getElementById("loginForm")
@@ -1762,7 +1876,8 @@ function authToggle(mode) {
     mode === "login" ? "Sign In" : "Sign Up with OTP";
   const resendBtn = document.getElementById("resendSignupOtpBtn");
   if (resendBtn && mode !== "login") resendBtn.style.display = "none";
-  ["liEE", "liPE", "liErr", "suNE", "suEE", "suHE", "suPE", "suErr", "suOtpErr"].forEach(
+  if (mode !== "login") closeForgotPasswordPanel();
+  ["liEE", "liPE", "liErr", "suNE", "suEE", "suHE", "suPE", "suErr", "suOtpErr", "fpEE", "fpOtpE", "fpPwE", "fpErr"].forEach(
     (id) => {
       const el = document.getElementById(id);
       if (el) {

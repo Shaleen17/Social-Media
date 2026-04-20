@@ -12,6 +12,7 @@ const {
 const {
   signupOtpEmailTemplate,
   resendSignupOtpEmailTemplate,
+  passwordResetOtpEmailTemplate,
 } = require("../utils/emailTemplates");
 const {
   createEmailOtpCode,
@@ -49,6 +50,9 @@ const SIGNUP_RATE_WINDOW_MS = 15 * 60 * 1000;
 const LOGIN_RATE_WINDOW_MS = 15 * 60 * 1000;
 const VERIFY_RATE_WINDOW_MS = 15 * 60 * 1000;
 const RESEND_RATE_WINDOW_MS = 15 * 60 * 1000;
+const PASSWORD_RESET_RATE_WINDOW_MS = 15 * 60 * 1000;
+const PASSWORD_RESET_SELECT_FIELDS =
+  "+passwordResetOtpHash +passwordResetOtpExpiresAt +passwordResetOtpLastSentAt +passwordResetOtpAttemptCount +passwordResetLastAttemptAt";
 
 function normalizeEmail(email = "") {
   return String(email).trim().toLowerCase();
@@ -141,6 +145,28 @@ function buildOtpResponse(email, message) {
   };
 }
 
+function buildPasswordResetResponse(email, message) {
+  return {
+    success: true,
+    otpRequired: true,
+    email,
+    message,
+    verification: {
+      method: "otp",
+      otpLength: EMAIL_OTP_LENGTH,
+      resendAfterSeconds: Math.ceil(OTP_RESEND_COOLDOWN_MS / 1000),
+    },
+  };
+}
+
+function clearPasswordResetState(user) {
+  user.passwordResetOtpHash = null;
+  user.passwordResetOtpExpiresAt = null;
+  user.passwordResetOtpLastSentAt = null;
+  user.passwordResetOtpAttemptCount = 0;
+  user.passwordResetLastAttemptAt = null;
+}
+
 function assertOtpResendAllowed(pendingSignup) {
   if (!pendingSignup?.otpLastSentAt) {
     return;
@@ -155,6 +181,25 @@ function assertOtpResendAllowed(pendingSignup) {
   const waitSeconds = Math.ceil((OTP_RESEND_COOLDOWN_MS - elapsedMs) / 1000);
   throw new AppError(
     `Please wait ${waitSeconds} seconds before requesting a new OTP.`,
+    429,
+    { retryAfterSeconds: waitSeconds }
+  );
+}
+
+function assertPasswordResetResendAllowed(user) {
+  if (!user?.passwordResetOtpLastSentAt) {
+    return;
+  }
+
+  const elapsedMs =
+    Date.now() - new Date(user.passwordResetOtpLastSentAt).getTime();
+  if (elapsedMs >= OTP_RESEND_COOLDOWN_MS) {
+    return;
+  }
+
+  const waitSeconds = Math.ceil((OTP_RESEND_COOLDOWN_MS - elapsedMs) / 1000);
+  throw new AppError(
+    `Please wait ${waitSeconds} seconds before requesting a new reset OTP.`,
     429,
     { retryAfterSeconds: waitSeconds }
   );
@@ -223,6 +268,38 @@ async function deliverSignupOtpEmail(pendingSignup, templateBuilder) {
     clearPendingOtpState(pendingSignup);
     pendingSignup.otpSendCount = Math.max(0, (pendingSignup.otpSendCount || 1) - 1);
     await pendingSignup.save({ validateBeforeSave: false }).catch(() => {});
+    throw error;
+  }
+}
+
+async function deliverPasswordResetOtpEmail(user) {
+  const otpBundle = createEmailOtpCode();
+  user.passwordResetOtpHash = otpBundle.hashedOtp;
+  user.passwordResetOtpExpiresAt = otpBundle.expiresAt;
+  user.passwordResetOtpLastSentAt = new Date();
+  user.passwordResetOtpAttemptCount = 0;
+  user.passwordResetLastAttemptAt = null;
+
+  await user.save({ validateBeforeSave: false });
+
+  try {
+    const template = passwordResetOtpEmailTemplate({
+      name: user.name,
+      otpCode: otpBundle.rawOtp,
+      otpExpiryMinutes: Math.round(EMAIL_OTP_TTL_MS / 60000),
+    });
+
+    await sendEmail({
+      email: user.email,
+      subject: template.subject,
+      html: template.html,
+      text: `Your Tirth Sutra password reset OTP is ${otpBundle.rawOtp}. It expires in ${Math.round(
+        EMAIL_OTP_TTL_MS / 60000
+      )} minutes.`,
+    });
+  } catch (error) {
+    clearPasswordResetState(user);
+    await user.save({ validateBeforeSave: false }).catch(() => {});
     throw error;
   }
 }
@@ -670,6 +747,158 @@ async function resendSignupOtp(payload = {}, context = {}) {
   );
 }
 
+async function requestPasswordReset(payload = {}, context = {}) {
+  const email = normalizeEmail(payload.email);
+  const ip = normalizeIp(context.ip);
+
+  assertRateLimit({
+    key: `auth:password-reset-request:ip:${ip}`,
+    limit: 10,
+    windowMs: PASSWORD_RESET_RATE_WINDOW_MS,
+    message:
+      "Too many password reset requests. Please wait a few minutes and try again.",
+  });
+
+  if (!email) {
+    throw new AppError("Email is required.", 400);
+  }
+
+  if (!isValidEmail(email)) {
+    throw new AppError("Please enter a valid email address.", 400);
+  }
+
+  assertRateLimit({
+    key: `auth:password-reset-request:email:${email}`,
+    limit: 5,
+    windowMs: PASSWORD_RESET_RATE_WINDOW_MS,
+    message:
+      "Too many password reset requests for this email. Please wait a few minutes and try again.",
+  });
+
+  assertEmailDeliveryConfigured();
+
+  const genericResponse = buildPasswordResetResponse(
+    email,
+    "If this email is registered, we sent a password reset OTP."
+  );
+
+  const user = await User.findOne({ email }).select(PASSWORD_RESET_SELECT_FIELDS);
+  if (!user || !user.emailVerified) {
+    return genericResponse;
+  }
+
+  assertPasswordResetResendAllowed(user);
+  await deliverPasswordResetOtpEmail(user);
+  return genericResponse;
+}
+
+async function resetPasswordWithOtp(payload = {}, context = {}) {
+  const email = normalizeEmail(payload.email);
+  const otp = String(payload.otp || "").trim();
+  const password = String(payload.password || "");
+  const ip = normalizeIp(context.ip);
+
+  assertRateLimit({
+    key: `auth:password-reset-verify:ip:${ip}`,
+    limit: 25,
+    windowMs: PASSWORD_RESET_RATE_WINDOW_MS,
+    message:
+      "Too many password reset attempts. Please wait a few minutes and try again.",
+  });
+
+  if (!email || !otp || !password) {
+    throw new AppError("Email, OTP, and new password are required.", 400);
+  }
+
+  if (!isValidEmail(email)) {
+    throw new AppError("Please enter a valid email address.", 400);
+  }
+
+  assertRateLimit({
+    key: `auth:password-reset-verify:email:${email}`,
+    limit: 15,
+    windowMs: PASSWORD_RESET_RATE_WINDOW_MS,
+    message:
+      "Too many password reset attempts for this email. Please wait a few minutes and try again.",
+  });
+
+  if (!new RegExp(`^\\d{${EMAIL_OTP_LENGTH}}$`).test(otp)) {
+    throw new AppError(`OTP must be a ${EMAIL_OTP_LENGTH}-digit code.`, 400);
+  }
+
+  if (password.length < 6) {
+    throw new AppError("New password must be at least 6 characters.", 400);
+  }
+
+  const user = await User.findOne({ email }).select(PASSWORD_RESET_SELECT_FIELDS);
+  if (!user || !user.emailVerified) {
+    throw new AppError("Invalid or expired password reset OTP.", 400);
+  }
+
+  if (!user.passwordResetOtpHash || !user.passwordResetOtpExpiresAt) {
+    throw new AppError("Invalid or expired password reset OTP.", 400, {
+      requiresResend: true,
+    });
+  }
+
+  if ((user.passwordResetOtpAttemptCount || 0) >= OTP_MAX_VERIFY_ATTEMPTS) {
+    clearPasswordResetState(user);
+    await user.save({ validateBeforeSave: false });
+    throw new AppError("Maximum OTP attempts reached. Request a new OTP.", 429, {
+      requiresResend: true,
+    });
+  }
+
+  if (new Date(user.passwordResetOtpExpiresAt).getTime() <= Date.now()) {
+    clearPasswordResetState(user);
+    await user.save({ validateBeforeSave: false });
+    throw new AppError("This OTP has expired. Request a new OTP.", 400, {
+      requiresResend: true,
+    });
+  }
+
+  const otpHash = hashOtpCode(otp);
+  const matches = compareHashedValues(user.passwordResetOtpHash, otpHash);
+
+  if (!matches) {
+    user.passwordResetOtpAttemptCount =
+      (user.passwordResetOtpAttemptCount || 0) + 1;
+    user.passwordResetLastAttemptAt = new Date();
+
+    const attemptsRemaining = Math.max(
+      0,
+      OTP_MAX_VERIFY_ATTEMPTS - user.passwordResetOtpAttemptCount
+    );
+
+    if (attemptsRemaining === 0) {
+      clearPasswordResetState(user);
+    }
+
+    await user.save({ validateBeforeSave: false });
+
+    if (attemptsRemaining === 0) {
+      throw new AppError(
+        "Maximum OTP attempts reached. Request a new OTP.",
+        429,
+        { requiresResend: true }
+      );
+    }
+
+    throw new AppError("The OTP you entered is incorrect.", 400, {
+      attemptsRemaining,
+    });
+  }
+
+  clearPasswordResetState(user);
+  user.password = password;
+  await user.save();
+
+  return {
+    success: true,
+    message: "Password updated successfully. Sign in with your new password.",
+  };
+}
+
 async function getGoogleProfile({ token, tokenType }) {
   if (!token) {
     throw new AppError("Google token is required.", 400);
@@ -856,6 +1085,8 @@ module.exports = {
   loginLocalUser,
   verifySignupOtp,
   resendSignupOtp,
+  requestPasswordReset,
+  resetPasswordWithOtp,
   loginWithGoogle,
   createGoogleAuthUrl,
   exchangeGoogleCode,

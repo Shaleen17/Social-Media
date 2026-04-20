@@ -157,6 +157,20 @@ const API = (() => {
       });
     },
 
+    async requestPasswordReset(email) {
+      return request("/auth/forgot-password", {
+        method: "POST",
+        body: JSON.stringify({ email }),
+      });
+    },
+
+    async resetPassword(email, otp, password) {
+      return request("/auth/reset-password", {
+        method: "POST",
+        body: JSON.stringify({ email, otp, password }),
+      });
+    },
+
     async googleAuth(token, tokenType = "access_token", referralCode = "") {
       const data = await request("/auth/google", {
         method: "POST",

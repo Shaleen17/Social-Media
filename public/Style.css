@@ -2653,6 +2653,53 @@ video {
   cursor: not-allowed;
   text-decoration: none;
 }
+.auth-forgot-row {
+  display: flex;
+  justify-content: flex-start;
+  margin: 8px 0 4px;
+}
+.auth-forgot-link {
+  border: none;
+  background: transparent;
+  color: var(--t3);
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 650;
+  letter-spacing: 0.01em;
+  cursor: pointer;
+  padding: 2px 0;
+}
+.auth-forgot-link:hover {
+  color: var(--p);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+.auth-reset-panel {
+  margin: 10px 0 14px;
+  padding: 14px;
+  border: 1px solid var(--bd);
+  border-radius: 16px;
+  background:
+    radial-gradient(circle at top right, rgba(255, 255, 255, 0.72), transparent 42%),
+    linear-gradient(135deg, var(--bg2), var(--bg));
+  box-shadow: 0 10px 24px rgba(74, 46, 42, 0.08);
+}
+.auth-reset-copy {
+  margin: 0 0 12px;
+  color: var(--t2);
+  font-size: 12.5px;
+  line-height: 1.6;
+}
+.auth-reset-action {
+  width: 100%;
+  justify-content: center;
+  margin: 6px 0 10px;
+}
+.auth-reset-back {
+  display: inline-flex;
+  margin-top: 2px;
+  font-size: 12px;
+}
 .otp-card {
   border: 1px solid rgba(74, 46, 42, 0.12);
   background:
@@ -2823,6 +2870,18 @@ video {
 [data-dark] .auth-brand-name,
 [data-dark] .auth-inline-link {
   color: #f3d9c8;
+}
+[data-dark] .auth-forgot-link {
+  color: rgba(243, 217, 200, 0.74);
+}
+[data-dark] .auth-forgot-link:hover {
+  color: #f3d9c8;
+}
+[data-dark] .auth-reset-panel {
+  background:
+    radial-gradient(circle at top right, rgba(255, 255, 255, 0.05), transparent 42%),
+    linear-gradient(135deg, rgba(38, 24, 20, 0.96), rgba(28, 18, 15, 0.98));
+  box-shadow: 0 14px 32px rgba(0, 0, 0, 0.24);
 }
 [data-dark] .otp-card {
   border-color: rgba(251, 238, 219, 0.1);

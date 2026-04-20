@@ -14,12 +14,37 @@ function buildOtpTemplate({
   otpCode,
   otpExpiryMinutes,
   introCopy,
+  eyebrowCopy,
+  otpLabel,
+  bodyCopy,
+  nextStepsTitle,
+  nextSteps,
 }) {
   const safeName = escapeHtml(name || "there");
   const safeTitle = escapeHtml(title);
   const safePreview = escapeHtml(previewText);
   const safeIntro = escapeHtml(introCopy);
   const safeOtp = escapeHtml(otpCode);
+  const safeEyebrow = escapeHtml(
+    eyebrowCopy || "OTP signup for the Mandir Community"
+  );
+  const safeOtpLabel = escapeHtml(otpLabel || "Email OTP");
+  const safeBody = escapeHtml(
+    bodyCopy ||
+      "Enter this one-time password in the app to verify your email. Your account is created only after this code is verified."
+  );
+  const safeNextStepsTitle = escapeHtml(nextStepsTitle || "What happens next?");
+  const safeNextSteps = (
+    Array.isArray(nextSteps) && nextSteps.length
+      ? nextSteps
+      : [
+          "Enter the OTP in the signup screen.",
+          "We verify the code and expiry.",
+          "Your real user account is created only after successful verification.",
+        ]
+  )
+    .map((step, index) => `${index + 1}. ${escapeHtml(step)}`)
+    .join("<br />");
 
   return `
     <!doctype html>
@@ -39,14 +64,14 @@ function buildOtpTemplate({
                   <td style="padding:18px 36px;background:#20110f;color:#fff7ef;text-align:center;">
                     <div style="font-size:12px;letter-spacing:2px;text-transform:uppercase;font-weight:700;color:#f3c9a5;">Tirth Sutra</div>
                     <div style="margin-top:8px;font-size:13px;line-height:1.7;color:rgba(255,247,239,0.82);">
-                      OTP signup for the Mandir Community
+                      ${safeEyebrow}
                     </div>
                   </td>
                 </tr>
                 <tr>
                   <td style="padding:42px 36px 30px;background:linear-gradient(135deg,#4a2e2a 0%,#81554e 55%,#a78479 100%);color:#ffffff;">
                     <div style="display:inline-block;padding:8px 14px;border-radius:999px;background:rgba(255,255,255,0.14);font-size:12px;letter-spacing:1.2px;text-transform:uppercase;font-weight:700;">
-                      Email OTP
+                      ${safeOtpLabel}
                     </div>
                     <h1 style="margin:18px 0 12px;font-size:32px;line-height:1.18;font-weight:700;">
                       ${safeTitle}
@@ -60,7 +85,7 @@ function buildOtpTemplate({
                   <td style="padding:36px;">
                     <p style="margin:0 0 16px;font-size:16px;line-height:1.8;color:#4d4036;">Namaste ${safeName},</p>
                     <p style="margin:0 0 16px;font-size:16px;line-height:1.85;color:#4d4036;">
-                      Enter this one-time password in the app to verify your email. Your account is created only after this code is verified.
+                      ${safeBody}
                     </p>
 
                     <div style="margin:26px 0;padding:24px;border-radius:24px;background:linear-gradient(135deg,#fff7ef,#f5eadf);border:1px solid #ead9cb;text-align:center;">
@@ -79,12 +104,10 @@ function buildOtpTemplate({
                       <tr>
                         <td style="padding:18px 20px;">
                           <div style="font-size:15px;font-weight:700;color:#4a2e2a;margin-bottom:10px;">
-                            What happens next?
+                            ${safeNextStepsTitle}
                           </div>
                           <div style="font-size:14px;line-height:1.85;color:#5d5046;">
-                            1. Enter the OTP in the signup screen.<br />
-                            2. We verify the code and expiry.<br />
-                            3. Your real user account is created only after successful verification.
+                            ${safeNextSteps}
                           </div>
                         </td>
                       </tr>
@@ -137,7 +160,33 @@ function resendSignupOtpEmailTemplate({ name, otpCode, otpExpiryMinutes }) {
   };
 }
 
+function passwordResetOtpEmailTemplate({ name, otpCode, otpExpiryMinutes }) {
+  return {
+    subject: "Reset your Tirth Sutra password",
+    html: buildOtpTemplate({
+      title: "Reset your password securely",
+      previewText: "Use this OTP to reset your Tirth Sutra password.",
+      name,
+      otpCode,
+      otpExpiryMinutes,
+      introCopy:
+        "Use this short-lived OTP to confirm it is really you before changing your password.",
+      eyebrowCopy: "Password reset for the Mandir Community",
+      otpLabel: "Password Reset OTP",
+      bodyCopy:
+        "Enter this one-time password in the app, then choose a new password. If you did not request this, you can safely ignore this email.",
+      nextStepsTitle: "How to finish reset",
+      nextSteps: [
+        "Enter the OTP in the forgotten password panel.",
+        "Choose a new password with at least 6 characters.",
+        "Sign in again with your new password.",
+      ],
+    }),
+  };
+}
+
 module.exports = {
   signupOtpEmailTemplate,
   resendSignupOtpEmailTemplate,
+  passwordResetOtpEmailTemplate,
 };

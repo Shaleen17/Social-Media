@@ -35,7 +35,7 @@
     <link rel="preconnect" href="https://videos-o57d.vercel.app" crossorigin>
     <link rel="dns-prefetch" href="//videos-o57d.vercel.app">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-    <link href="Style.css?v=20260419-app-loader-2" rel="stylesheet" type="text/css" />
+    <link href="Style.css?v=20260420-password-reset-1" rel="stylesheet" type="text/css" />
     <script src="https://checkout.razorpay.com/v1/checkout.js"></script>
     <!-- Google tag (gtag.js) -->
     <script
@@ -304,6 +304,92 @@
             >
               Sign In 🙏
             </button>
+            <div class="auth-forgot-row">
+              <button
+                class="auth-forgot-link"
+                type="button"
+                onclick="openForgotPasswordPanel()"
+              >
+                Forgotten password?
+              </button>
+            </div>
+            <div id="forgotPasswordPanel" class="auth-reset-panel hide">
+              <p class="auth-reset-copy">
+                Enter your account email. We will send a secure OTP to reset your password.
+              </p>
+              <div class="fg">
+                <label class="fl">Account Email</label>
+                <input
+                  class="fi"
+                  type="email"
+                  id="fpEml"
+                  placeholder="you@email.com"
+                  autocomplete="email"
+                  onkeydown="if(event.key==='Enter'){event.preventDefault();requestPasswordResetOtp()}"
+                />
+              </div>
+              <div class="ferr" id="fpEE">Valid email required</div>
+              <button
+                class="btn btn-w auth-reset-action"
+                id="fpSendBtn"
+                type="button"
+                onclick="requestPasswordResetOtp()"
+              >
+                Send Reset OTP
+              </button>
+              <div id="resetPasswordFields" class="hide">
+                <div class="fg">
+                  <label class="fl">Reset OTP</label>
+                  <input
+                    class="fi"
+                    id="fpOtp"
+                    inputmode="numeric"
+                    maxlength="6"
+                    placeholder="6-digit OTP"
+                    autocomplete="one-time-code"
+                  />
+                </div>
+                <div class="ferr" id="fpOtpE">Enter the 6-digit OTP</div>
+                <div class="fg">
+                  <label class="fl">New Password</label>
+                  <input
+                    class="fi"
+                    type="password"
+                    id="fpPw"
+                    placeholder="New password"
+                    autocomplete="new-password"
+                  />
+                </div>
+                <div class="fg">
+                  <label class="fl">Confirm Password</label>
+                  <input
+                    class="fi"
+                    type="password"
+                    id="fpPw2"
+                    placeholder="Confirm new password"
+                    autocomplete="new-password"
+                    onkeydown="if(event.key==='Enter'){event.preventDefault();submitPasswordReset()}"
+                  />
+                </div>
+                <div class="ferr" id="fpPwE">Password must be at least 6 characters</div>
+                <button
+                  class="btn btn-p auth-reset-action"
+                  id="fpResetBtn"
+                  type="button"
+                  onclick="submitPasswordReset()"
+                >
+                  Change Password
+                </button>
+              </div>
+              <div class="ferr" id="fpErr"></div>
+              <button
+                class="auth-inline-link auth-reset-back"
+                type="button"
+                onclick="closeForgotPasswordPanel()"
+              >
+                Back to sign in
+              </button>
+            </div>
             <!-- Google Sign-In divider -->
             <div class="auth-divider">
               <div class="auth-divider-line"></div>
@@ -3950,7 +4036,7 @@
     </script>
     <script>
       (function () {
-        const runtimeVersion = "20260419-app-loader-2";
+        const runtimeVersion = "20260420-password-reset-1";
         const refreshKey = "ts_frontendRuntimeRefresh_" + runtimeVersion;
         try {
           const storedVersion = localStorage.getItem("ts_frontendRuntimeVersion");
@@ -4005,14 +4091,14 @@
         } catch {}
       })();
     </script>
-    <script src="Script.js?v=20260419-app-loader-2"></script>
+    <script src="Script.js?v=20260420-password-reset-1"></script>
     <script src="https://cdn.socket.io/4.7.4/socket.io.min.js"></script>
     <!-- Vercel Config & API Backend Scripts -->
-    <script src="config.js?v=20260419-app-loader-1"></script>
-    <script src="api.js?v=20260419-app-loader-1"></script>
-    <script src="socket-client.js?v=20260419-app-loader-1"></script>
-    <script src="webrtc-client.js?v=20260419-app-loader-1"></script>
-    <script src="backend-adapter.js?v=20260419-app-loader-2"></script>
-    <script src="donation-module.js?v=20260419-app-loader-1"></script>
+    <script src="config.js?v=20260420-password-reset-1"></script>
+    <script src="api.js?v=20260420-password-reset-1"></script>
+    <script src="socket-client.js?v=20260420-password-reset-1"></script>
+    <script src="webrtc-client.js?v=20260420-password-reset-1"></script>
+    <script src="backend-adapter.js?v=20260420-password-reset-1"></script>
+    <script src="donation-module.js?v=20260420-password-reset-1"></script>
   </body>
 </html>
