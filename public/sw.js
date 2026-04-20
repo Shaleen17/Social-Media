@@ -1,4 +1,4 @@
-self.__TS_SW_VERSION__ = "20260419-translation-quality-fix-1";
+self.__TS_SW_VERSION__ = "20260420-password-reset-3-app-cache-1";
 const TS_STATIC_CACHE = `ts-static-${self.__TS_SW_VERSION__}`;
 
 self.addEventListener("install", (event) => {

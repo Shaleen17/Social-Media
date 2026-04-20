@@ -317,7 +317,7 @@
 
   let _chatPushSetupPromise = null;
   let _pendingOpenChatId = consumeOpenChatParam();
-  const APP_ASSET_VERSION = "20260419-translation-quality-fix-1";
+  const APP_ASSET_VERSION = "20260420-password-reset-3-app-cache-1";
   let _appSwPromise = null;
   let _deferredInstallPrompt = null;
   let _installPromptBound = false;
@@ -636,7 +636,10 @@
     const i = _cachedPosts.findIndex(
       (x) => (x.id || x._id || "").toString() === id.toString()
     );
-    if (i > -1) Object.assign(_cachedPosts[i], data);
+    if (i > -1) {
+      Object.assign(_cachedPosts[i], data);
+      window.clearAppDataCache?.();
+    }
   };
 
   window.saveVideo = function (id, data) {
@@ -654,6 +657,9 @@
     if (CU && (CU.id || CU._id || "").toString() === id.toString()) {
       Object.assign(CU, data);
       API.setUser(CU);
+    }
+    if (i > -1 || (CU && (CU.id || CU._id || "").toString() === id.toString())) {
+      window.clearAppDataCache?.();
     }
     // Also push to backend (fire and forget)
     if (API.getToken()) {
@@ -1502,6 +1508,7 @@
     try {
       const newPost = await API.createPost(txt, imageUrl, compYTId, poll);
       _cachedPosts.unshift(newPost);
+      window.clearAppDataCache?.();
 
       const ta = document.getElementById("compTxt");
       if (ta) ta.value = "";
@@ -1532,6 +1539,7 @@
       _cachedPosts = _cachedPosts.filter(
         (p) => (p.id || p._id || "").toString() !== id.toString()
       );
+      window.clearAppDataCache?.();
       closeMore();
       const el = document.getElementById("pt_" + id);
       if (el) el.remove();
@@ -1563,6 +1571,7 @@
 
       const tu = getUser(uid);
       if (tu) tu.followers = result.targetFollowers;
+      window.clearAppDataCache?.();
 
       const now = result.following;
       if (btn) {

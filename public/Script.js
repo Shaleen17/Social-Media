@@ -146,6 +146,184 @@ const appTopLoaderState = {
   hideTimer: 0,
 };
 
+const APP_DATA_CACHE_VERSION = "20260420-app-cache-1";
+const APP_DATA_CACHE_STORAGE_KEY = "appDataCache";
+const APP_DATA_CACHE_TTLS = {
+  feed: 1000 * 60 * 2,
+  trending: 1000 * 60 * 10,
+  profile: 1000 * 60 * 5,
+  search: 1000 * 60 * 3,
+};
+const APP_DATA_CACHE_LIMITS = {
+  feed: 8,
+  trending: 6,
+  profile: 18,
+  search: 24,
+};
+const APP_DATA_CACHE_MAX_VALUE_CHARS = 180000;
+const APP_DATA_CACHE_STATE = (() => {
+  const cached = Store.g(APP_DATA_CACHE_STORAGE_KEY, null);
+  if (!cached || cached.version !== APP_DATA_CACHE_VERSION) {
+    return { version: APP_DATA_CACHE_VERSION, buckets: {} };
+  }
+  return {
+    version: APP_DATA_CACHE_VERSION,
+    buckets:
+      cached.buckets && typeof cached.buckets === "object"
+        ? cached.buckets
+        : {},
+  };
+})();
+let appDataCachePersistTimer = 0;
+
+function getAppDataCacheBucket(bucketName) {
+  if (!APP_DATA_CACHE_STATE.buckets[bucketName]) {
+    APP_DATA_CACHE_STATE.buckets[bucketName] = {};
+  }
+  return APP_DATA_CACHE_STATE.buckets[bucketName];
+}
+
+function persistAppDataCache() {
+  window.clearTimeout(appDataCachePersistTimer);
+  appDataCachePersistTimer = window.setTimeout(() => {
+    Store.s(APP_DATA_CACHE_STORAGE_KEY, APP_DATA_CACHE_STATE);
+  }, 120);
+}
+
+function trimAppDataCacheBucket(bucketName) {
+  const bucket = getAppDataCacheBucket(bucketName);
+  const limit = APP_DATA_CACHE_LIMITS[bucketName] || 12;
+  const entries = Object.entries(bucket).sort(
+    (a, b) => (b[1]?.createdAt || 0) - (a[1]?.createdAt || 0),
+  );
+  entries.slice(limit).forEach(([key]) => {
+    delete bucket[key];
+  });
+}
+
+function getAppDataCache(bucketName, key) {
+  const bucket = getAppDataCacheBucket(bucketName);
+  const entry = bucket[key];
+  if (!entry) return null;
+  if (Date.now() > entry.expiresAt) {
+    delete bucket[key];
+    persistAppDataCache();
+    return null;
+  }
+  return entry.value;
+}
+
+function setAppDataCache(bucketName, key, value, ttl = APP_DATA_CACHE_TTLS[bucketName]) {
+  if (typeof value !== "string") return value;
+  if (value.length > APP_DATA_CACHE_MAX_VALUE_CHARS) return value;
+  const bucket = getAppDataCacheBucket(bucketName);
+  const now = Date.now();
+  bucket[key] = {
+    value,
+    createdAt: now,
+    expiresAt: now + (ttl || 1000 * 60 * 2),
+  };
+  trimAppDataCacheBucket(bucketName);
+  persistAppDataCache();
+  return value;
+}
+
+function clearAppDataCache(bucketName = "") {
+  if (bucketName) {
+    delete APP_DATA_CACHE_STATE.buckets[bucketName];
+  } else {
+    APP_DATA_CACHE_STATE.buckets = {};
+  }
+  persistAppDataCache();
+}
+
+function compactCachePart(value, maxLength = 80) {
+  return String(value ?? "")
+    .replace(/\s+/g, " ")
+    .slice(0, maxLength);
+}
+
+function hashCacheSignature(value) {
+  const text = String(value ?? "");
+  let hash = 2166136261;
+  for (let i = 0; i < text.length; i += 1) {
+    hash ^= text.charCodeAt(i);
+    hash = Math.imul(hash, 16777619);
+  }
+  return (hash >>> 0).toString(36);
+}
+
+function getPostsCacheSignature(posts = getPosts()) {
+  const list = Array.isArray(posts) ? posts : [];
+  const signature = list
+    .map((post) => {
+      const likes = Array.isArray(post.likes) ? post.likes : [];
+      const reposts = Array.isArray(post.reposts) ? post.reposts : [];
+      const bookmarks = Array.isArray(post.bm) ? post.bm : [];
+      const comments = Array.isArray(post.cmts) ? post.cmts : [];
+      return [
+        post.id || post._id || "",
+        post.uid || "",
+        post.ts || "",
+        post.updatedAt || post.updated || "",
+        compactCachePart(post.t, 24),
+        compactCachePart(post.txt, 64),
+        likes.length,
+        hashCacheSignature(likes.join(",")),
+        reposts.length,
+        hashCacheSignature(reposts.join(",")),
+        comments.length,
+        bookmarks.length,
+        hashCacheSignature(bookmarks.join(",")),
+        post.img ? 1 : 0,
+        post.ytId ? 1 : 0,
+      ].join(":");
+    })
+    .join("|");
+  return `${list.length}:${hashCacheSignature(signature)}`;
+}
+
+function getUsersCacheSignature(users = getUsers()) {
+  const list = Array.isArray(users) ? users : [];
+  const signature = list
+    .map((user) =>
+      [
+        user.id || user._id || "",
+        compactCachePart(user.name, 40),
+        compactCachePart(user.handle, 32),
+        compactCachePart(user.bio, 60),
+        user.avatar ? 1 : 0,
+        user.banner ? 1 : 0,
+        Array.isArray(user.followers) ? user.followers.length : 0,
+        Array.isArray(user.following) ? user.following.length : 0,
+        user.privateAccount ? 1 : 0,
+        Array.isArray(user.blockedUsers) ? user.blockedUsers.length : 0,
+      ].join(":"),
+    )
+    .join("|");
+  return `${list.length}:${hashCacheSignature(signature)}`;
+}
+
+function getTrendingCacheSignature() {
+  const signature = TRENDING.map((item) =>
+    [item.tag, item.cat, item.cnt].map((part) => compactCachePart(part, 40)).join(":"),
+  ).join("|");
+  return `${TRENDING.length}:${hashCacheSignature(signature)}`;
+}
+
+function getAppSessionCacheSignature() {
+  const uid = (CU?.id || CU?._id || "guest").toString();
+  const following = Array.isArray(CU?.following) ? CU.following.join(",") : "";
+  const prefs =
+    typeof getMorePrefs === "function"
+      ? getMorePrefs()
+      : { privateAccount: false, blockedUsers: [] };
+  const blocked = Array.isArray(prefs.blockedUsers) ? prefs.blockedUsers.join(",") : "";
+  return [uid, following, prefs.privateAccount ? 1 : 0, blocked].join("~");
+}
+
+window.clearAppDataCache = clearAppDataCache;
+
 function ensureAppTopLoader() {
   if (appTopLoaderState.root && appTopLoaderState.fill) {
     return appTopLoaderState;
@@ -1191,6 +1369,7 @@ function savePost(id, data) {
   if (i > -1) {
     Object.assign(p[i], data);
     Store.s("posts", p);
+    clearAppDataCache();
   }
 }
 function saveVideo(id, data) {
@@ -1207,10 +1386,12 @@ function updateUser(id, data) {
   if (i > -1) {
     Object.assign(u[i], data);
     Store.s("users", u);
+    clearAppDataCache();
   }
   if (CU && CU.id === id) {
     Object.assign(CU, data);
     Store.s("currentUser", CU);
+    clearAppDataCache();
   }
 }
 function fmtV(n) {
@@ -1254,6 +1435,7 @@ function seedData() {
     // Save fresh seed data
     Store.s("users", SEED_USERS);
     Store.s("posts", SEED_POSTS);
+    clearAppDataCache();
     Store.s("stories", SEED_STORIES);
     Store.s("notifs", SEED_NOTIFS);
     Store.s("convs", SEED_CONVS);
@@ -5083,7 +5265,21 @@ function renderFeed() {
   const fp = document.getElementById("feedPosts");
   if (!fp) return;
   if (sk) sk.style.display = "none";
-  let posts = filterVisiblePosts(getPosts()).sort((a, b) => b.ts - a.ts);
+  const allPosts = getPosts();
+  const feedCacheKey = [
+    curFTab,
+    getPostsCacheSignature(allPosts),
+    getUsersCacheSignature(),
+    getAppSessionCacheSignature(),
+  ].join("::");
+  const cachedFeedHtml = getAppDataCache("feed", feedCacheKey);
+  if (cachedFeedHtml !== null) {
+    fp.innerHTML = cachedFeedHtml;
+    return;
+  }
+
+  let posts = filterVisiblePosts(allPosts).sort((a, b) => b.ts - a.ts);
+  let feedHtml = "";
   if (curFTab === "following" && CU) {
     const fl = CU.following || [];
     posts = posts.filter((p) => fl.includes(p.uid) || p.uid === CU.id);
@@ -5094,10 +5290,12 @@ function renderFeed() {
         b.likes.length + b.reposts.length - (a.likes.length + a.reposts.length),
     );
   if (!posts.length) {
-    fp.innerHTML = `<div class="empty"><div class="empty-ico">🕉</div><div class="empty-ttl">No posts yet</div><div class="empty-sub">${curFTab === "following" ? "Follow people to see their posts" : "Be first to share something!"}</div></div>`;
+    feedHtml = `<div class="empty"><div class="empty-ico">🕉</div><div class="empty-ttl">No posts yet</div><div class="empty-sub">${curFTab === "following" ? "Follow people to see their posts" : "Be first to share something!"}</div></div>`;
+    fp.innerHTML = setAppDataCache("feed", feedCacheKey, feedHtml);
     return;
   }
-  fp.innerHTML = posts.map((p) => mkPost(p)).join("");
+  feedHtml = posts.map((p) => mkPost(p)).join("");
+  fp.innerHTML = setAppDataCache("feed", feedCacheKey, feedHtml);
 }
 function mkPost(p) {
   const u = getUser(p.uid);
@@ -5364,6 +5562,7 @@ function delPost(id) {
   if (!CU) return;
   const posts = getPosts().filter((p) => !(p.id === id && p.uid === CU.id));
   Store.s("posts", posts);
+  clearAppDataCache();
   closeMore();
   const el = document.getElementById("pt_" + id);
   if (el) el.remove();
@@ -5563,6 +5762,7 @@ function submitPost() {
     ts: Date.now(),
   });
   Store.s("posts", posts);
+  clearAppDataCache();
   const ta = document.getElementById("compTxt");
   if (ta) ta.value = "";
   removeCompImg();
@@ -8707,26 +8907,43 @@ function setPTab(tab, el) {
 function renderPTab(uid, tab) {
   const c = document.getElementById("prPosts");
   if (!c) return;
-  let posts = getPosts()
+  const allPosts = getPosts();
+  const profileCacheKey = [
+    uid || "",
+    tab || "posts",
+    getPostsCacheSignature(allPosts),
+    getUsersCacheSignature(),
+    getAppSessionCacheSignature(),
+  ].join("::");
+  const cachedProfileHtml = getAppDataCache("profile", profileCacheKey);
+  if (cachedProfileHtml !== null) {
+    c.innerHTML = cachedProfileHtml;
+    return;
+  }
+
+  let posts = allPosts
     .filter((p) => p.uid === uid)
     .sort((a, b) => b.ts - a.ts);
   if (tab === "likes")
-    posts = getPosts().filter((p) => (p.likes || []).includes(uid));
+    posts = allPosts.filter((p) => (p.likes || []).includes(uid));
   if (tab === "media") posts = posts.filter((p) => p.img);
   if (tab === "replies")
-    posts = getPosts().filter((p) =>
+    posts = allPosts.filter((p) =>
       (p.cmts || []).some((cm) => cm.uid === uid),
     );
   posts = filterVisiblePosts(posts);
   if (!posts.length) {
-    c.innerHTML = `<div class="empty"><div class="empty-ico">🕉</div><div class="empty-ttl">No ${tab} yet</div></div>`;
+    const emptyHtml = `<div class="empty"><div class="empty-ico">🕉</div><div class="empty-ttl">No ${tab} yet</div></div>`;
+    c.innerHTML = setAppDataCache("profile", profileCacheKey, emptyHtml);
     return;
   }
   if (tab === "media") {
-    c.innerHTML = `<div class="media-grid">${posts.map((p) => `<div class="media-cell" onclick="openPD('${p.id}')"><img src="${p.img}" alt="" loading="lazy"></div>`).join("")}</div>`;
+    const mediaHtml = `<div class="media-grid">${posts.map((p) => `<div class="media-cell" onclick="openPD('${p.id}')"><img src="${p.img}" alt="" loading="lazy"></div>`).join("")}</div>`;
+    c.innerHTML = setAppDataCache("profile", profileCacheKey, mediaHtml);
     return;
   }
-  c.innerHTML = posts.map((p) => mkPost(p)).join("");
+  const profileHtml = posts.map((p) => mkPost(p)).join("");
+  c.innerHTML = setAppDataCache("profile", profileCacheKey, profileHtml);
 }
 function toggleFollow(uid, btn) {
   if (!CU) {
@@ -9235,44 +9452,67 @@ function setSTab(t, el) {
   if (el) el.classList.add("on");
   doSearch(document.getElementById("srchIn")?.value || "");
 }
+
+function renderTrendingItems(limit = TRENDING.length) {
+  return TRENDING.slice(0, limit)
+    .map(
+      (t) =>
+        `<div class="trend-item" onclick="searchTag('${t.tag}')"><div class="trend-cat">${t.cat}</div><div class="trend-name">${t.tag}</div><div class="trend-cnt">${t.cnt} posts</div></div>`,
+    )
+    .join("");
+}
+
 function doSearch(q) {
   const c = document.getElementById("srchResults");
   if (!c) return;
+  const searchInput = document.getElementById("srchIn");
+  if (searchInput) {
+    searchInput.placeholder =
+      "Search users, posts, mandirs, reels, bhajans, events, topics...";
+  }
   const query = String(q || "").trim();
+  const activeSearchTab = ["people", "posts", "tags"].includes(curSTabVal)
+    ? curSTabVal
+    : "people";
+  const searchCacheKey = [
+    activeSearchTab,
+    query.toLowerCase(),
+    getPostsCacheSignature(),
+    getUsersCacheSignature(),
+    getTrendingCacheSignature(),
+    getAppSessionCacheSignature(),
+  ].join("::");
+  const cachedSearchHtml = getAppDataCache("search", searchCacheKey);
+  if (cachedSearchHtml !== null) {
+    c.innerHTML = cachedSearchHtml;
+    return;
+  }
+
+  let searchHtml = "";
   if (!query) {
-    c.innerHTML = `<div style="padding:14px 16px"><h3 style="font-size:15px;font-weight:700;margin-bottom:10px">🔥 Trending Today</h3>${TRENDING.map((t) => `<div class="trend-item" onclick="searchTag('${t.tag}')"><div class="trend-cat">${t.cat}</div><div class="trend-name">${t.tag}</div><div class="trend-cnt">${t.cnt} posts</div></div>`).join("")}</div>`;
+    searchHtml = `<div style="padding:14px 16px"><h3 style="font-size:15px;font-weight:700;margin-bottom:10px">🔥 Trending Today</h3>${renderTrendingItems()}</div>`;
+    c.innerHTML = setAppDataCache("search", searchCacheKey, searchHtml);
     return;
   }
   const ql = query.toLowerCase();
-  if (curSTabVal === "people") {
-    c.innerHTML = renderSearchPeopleResults(query);
+  if (activeSearchTab === "people") {
+    searchHtml = renderSearchPeopleResults(query);
+    c.innerHTML = setAppDataCache("search", searchCacheKey, searchHtml);
     return;
-    const users = getUsers().filter(
-      (u) =>
-        u.name.toLowerCase().includes(ql) ||
-        u.handle.toLowerCase().includes(ql) ||
-        (u.bio || "").toLowerCase().includes(ql),
-    );
-    c.innerHTML = !users.length
-      ? `<div class="empty"><div class="empty-sub">No users found</div></div>`
-      : users
-        .map((u) => {
-          const ini = getIni(u.name);
-          return `<div class="s-result" onclick="vpro('${u.id}')"><div class="av av40">${u.avatar ? `<img src="${u.avatar}" alt="">` : ini}</div><div style="flex:1;min-width:0;margin-left:8px"><div class="who-name">${u.name}${u.verified ? " 🔱" : ""}</div><div class="who-hdl">@${u.handle}</div><div style="font-size:13px;color:var(--t2);margin-top:2px">${u.bio || ""}</div></div><button class="btn btn-sm ${CU && (CU.following || []).includes(u.id) ? "btn-o" : "btn-p"}" onclick="event.stopPropagation();toggleFollow('${u.id}',this)">${CU && (CU.following || []).includes(u.id) ? "Following" : "Follow"}</button></div>`;
-        })
-        .join("");
   }
-  if (curSTabVal === "posts") {
+  if (activeSearchTab === "posts") {
     const posts = filterVisiblePosts(getPosts()).filter((p) =>
       p.txt.toLowerCase().includes(ql),
     );
-    c.innerHTML = !posts.length
+    searchHtml = !posts.length
       ? `<div class="empty"><div class="empty-sub">No posts found</div></div>`
       : posts.map((p) => mkPost(p)).join("");
+    c.innerHTML = setAppDataCache("search", searchCacheKey, searchHtml);
   }
-  if (curSTabVal === "tags") {
+  if (activeSearchTab === "tags") {
     const tags = TRENDING.filter((t) => t.tag.toLowerCase().includes(ql));
-    c.innerHTML = `<div style="padding:14px 16px">${!tags.length ? `<div class="empty"><div class="empty-sub">No tags found</div></div>` : tags.map((t) => `<div class="trend-item" onclick="searchTag('${t.tag}')"><div class="trend-cat">${t.cat}</div><div class="trend-name">${t.tag}</div><div class="trend-cnt">${t.cnt} posts</div></div>`).join("")}</div>`;
+    searchHtml = `<div style="padding:14px 16px">${!tags.length ? `<div class="empty"><div class="empty-sub">No tags found</div></div>` : tags.map((t) => `<div class="trend-item" onclick="searchTag('${t.tag}')"><div class="trend-cat">${t.cat}</div><div class="trend-name">${t.tag}</div><div class="trend-cnt">${t.cnt} posts</div></div>`).join("")}</div>`;
+    c.innerHTML = setAppDataCache("search", searchCacheKey, searchHtml);
   }
 }
 function searchTag(tag) {
@@ -9284,16 +9524,505 @@ function searchTag(tag) {
   doSearch(tag);
 }
 
+/* Advanced Search overrides: extends the existing Search page without changing
+   the rest of the navigation or data model. */
+const ADVANCED_SEARCH_TOPICS = [
+  {
+    title: "Bhakti and devotion",
+    category: "Spiritual Topic",
+    copy: "Explore devotion, surrender, nama japa, kirtan, and daily bhakti practices.",
+    query: "bhakti devotion",
+    tags: ["bhakti", "devotion", "japa", "kirtan", "satsang"],
+  },
+  {
+    title: "Mandir darshan",
+    category: "Sacred Topic",
+    copy: "Find temple communities, aarti moments, darshan posts, and mandir updates.",
+    query: "mandir darshan",
+    tags: ["mandir", "darshan", "aarti", "temple"],
+  },
+  {
+    title: "Pilgrimage planning",
+    category: "Yatra Topic",
+    copy: "Search yatras, dham routes, opening dates, and devotee travel experiences.",
+    query: "yatra pilgrimage dham",
+    tags: ["yatra", "pilgrimage", "kedarnath", "char dham"],
+  },
+  {
+    title: "Bhajan and kirtan",
+    category: "Music Topic",
+    copy: "Discover bhajans, naam sankirtan, aarti videos, and devotional music circles.",
+    query: "bhajan kirtan",
+    tags: ["bhajan", "kirtan", "aarti", "sankirtan"],
+  },
+  {
+    title: "Gita wisdom",
+    category: "Scripture Topic",
+    copy: "Search Bhagavad Gita reflections, shlokas, pravachan, and dharma learning.",
+    query: "bhagavad gita shloka",
+    tags: ["gita", "shloka", "dharma", "pravachan"],
+  },
+  {
+    title: "Festivals and events",
+    category: "Community Topic",
+    copy: "Find festival celebrations, spiritual events, mela updates, and live satsangs.",
+    query: "festival events satsang",
+    tags: ["festival", "events", "satsang", "mela"],
+  },
+];
+
+function searchJsArg(value) {
+  return String(value || "")
+    .replace(/\\/g, "\\\\")
+    .replace(/'/g, "\\'")
+    .replace(/\r?\n/g, " ");
+}
+
+function sortSearchMatches(items) {
+  return items
+    .filter((item) => item.score >= 0)
+    .sort((a, b) => b.score - a.score);
+}
+
+function renderSearchSection(title, rows, subtitle = "") {
+  if (!rows.length) return "";
+  return `<section class="search-group"><div class="search-group-title">${esc(title)}${subtitle ? `<span>${esc(subtitle)}</span>` : ""}</div>${rows.join("")}</section>`;
+}
+
+function renderSearchEmptyState() {
+  const categoryPills = [
+    "Users",
+    "Posts",
+    "Mandirs",
+    "Reels",
+    "Bhajans",
+    "Events",
+    "Topics",
+    "Hashtags",
+  ];
+  const topicRows = ADVANCED_SEARCH_TOPICS.slice(0, 4)
+    .map(
+      (topic) =>
+        `<button class="advanced-search-chip" type="button" onclick="setAdvancedSearchQuery('${searchJsArg(topic.query)}','all')">${esc(topic.title)}</button>`,
+    )
+    .join("");
+  return `<div class="advanced-search-intro"><div class="advanced-search-kicker">Advanced Search</div><h3>Find the whole Tirth Sutra community from one place</h3><p>Search users, posts, mandirs, reels, hashtags, bhajans, events, and spiritual topics with one query.</p><div class="advanced-search-pills">${categoryPills.map((pill) => `<span>${esc(pill)}</span>`).join("")}</div><div class="advanced-search-quick">${topicRows}</div></div><div style="padding:14px 16px"><h3 style="font-size:15px;font-weight:700;margin-bottom:10px">Trending Today</h3>${renderTrendingItems()}</div>`;
+}
+
+function renderSearchUserRows(query, limit = Infinity) {
+  return sortSearchMatches(
+    filterDiscoverableUsers(getUsers()).map((u) => ({
+      data: u,
+      score: getSearchScore(query, [u.name, u.handle, u.bio, u.location]),
+    })),
+  )
+    .slice(0, limit)
+    .map(({ data: u }) => {
+      const ini = getIni(u.name);
+      const isFollowing = CU && (CU.following || []).includes(u.id);
+      return `<div class="s-result" onclick="vpro('${u.id}')"><div class="av av40">${u.avatar ? `<img src="${u.avatar}" alt="">` : ini}</div><div class="search-result-main"><div class="search-result-top"><div class="who-name">${esc(u.name)}${u.verified ? " 🔱" : ""}</div><span class="search-result-badge">User</span></div><div class="who-hdl">@${esc(u.handle)}</div><div class="search-result-copy">${esc(u.bio || "Community profile")}</div></div><button class="btn btn-sm ${isFollowing ? "btn-o" : "btn-p"}" onclick="event.stopPropagation();toggleFollow('${u.id}',this)">${isFollowing ? "Following" : "Follow"}</button></div>`;
+    });
+}
+
+function renderSearchSantRows(query, limit = Infinity) {
+  return sortSearchMatches(
+    SANTS.filter((sant) => sant.verified !== false).map((sant) => {
+      const u = sant.uid ? getUser(sant.uid) : null;
+      const name = u ? u.name : sant.name || sant.handle || "Sant";
+      return {
+        sant,
+        name,
+        score: getSearchScore(query, [
+          name,
+          sant.handle,
+          sant.title,
+          sant.category,
+          sant.bio,
+          sant.location,
+          (sant.highlights || []).join(" "),
+        ]),
+      };
+    }),
+  )
+    .slice(0, limit)
+    .map(({ sant, name }) => {
+      const realIdx = SANTS.indexOf(sant);
+      const santKey = getSantFollowKey(sant);
+      const followed = isFollowingSant(santKey);
+      const avatar = sant.src || "";
+      const ini = getIni(name);
+      return `<div class="s-result" onclick="openSantProfile(${realIdx})"><div class="av av40">${avatar ? `<img src="${avatar}" alt="${esc(name)}">` : ini}</div><div class="search-result-main"><div class="search-result-top"><div class="who-name">${esc(name)} 🔱</div><span class="search-result-badge">Verified Sant</span></div><div class="search-result-meta"><span>@${esc(sant.handle || "sant")}</span><span>${esc(sant.title || sant.category || "Spiritual Guide")}</span></div><div class="search-result-copy">${esc(sant.bio || sant.location || "Blessings and guidance")}</div></div><button data-sant-key="${santKey}" class="btn btn-sm ${followed ? "btn-o" : "btn-p"}" onclick="event.stopPropagation();toggleSantFollow('${santKey}',this)">${followed ? "Following" : "Follow"}</button></div>`;
+    });
+}
+
+function renderSearchMandirRows(query, limit = Infinity) {
+  return sortSearchMatches(
+    Object.values(MANDIR_CONFIG).map((mandir) => ({
+      data: mandir,
+      score: getSearchScore(query, [
+        mandir.name,
+        mandir.handle,
+        mandir.location,
+        mandir.category,
+        mandir.bio,
+        (mandir.highlights || []).join(" "),
+      ]),
+    })),
+  )
+    .slice(0, limit)
+    .map(({ data: mandir }) => {
+      const followed = isFollowingMandir(mandir.slug);
+      return `<div class="s-result" onclick="openMandirCommunity('${mandir.slug}')"><div class="av av40">${mandir.image ? `<img src="${mandir.image}" alt="${esc(mandir.name)}">` : "M"}</div><div class="search-result-main"><div class="search-result-top"><div class="who-name">${esc(mandir.name)}</div><span class="search-result-badge">Mandir</span></div><div class="search-result-meta"><span>@${esc(mandir.handle || mandir.slug)}</span><span>${esc(mandir.location || "India")}</span></div><div class="search-result-copy">${esc(mandir.bio || mandir.category || "Temple community")}</div></div><button data-mandir-slug="${mandir.slug}" class="btn btn-sm ${followed ? "btn-o" : "btn-p"}" onclick="event.stopPropagation();toggleMandirFollow('${mandir.slug}',this)">${followed ? "Following" : "Follow"}</button></div>`;
+    });
+}
+
+function renderSearchPostRows(query, options = {}) {
+  const posts = sortSearchMatches(
+    filterVisiblePosts(getPosts()).map((p) => {
+      const u = getUser(p.uid);
+      return {
+        data: p,
+        score: getSearchScore(query, [
+          p.txt,
+          u?.name,
+          u?.handle,
+          (p.cmts || []).map((c) => c.txt).join(" "),
+        ]),
+      };
+    }),
+  ).map((item) => item.data);
+
+  if (options.full) return posts.map((p) => mkPost(p));
+
+  return posts.slice(0, options.limit || Infinity).map((p) => {
+    const u = getUser(p.uid) || {};
+    const preview = String(p.txt || "").replace(/\s+/g, " ").trim();
+    return `<div class="s-result search-content-result" onclick="openPD('${p.id}')"><div class="search-result-icon">P</div><div class="search-result-main"><div class="search-result-top"><div class="who-name">${esc(u.name || "Post")}</div><span class="search-result-badge">Post</span></div><div class="search-result-meta"><span>@${esc(u.handle || "user")}</span><span>${esc(p.t || "")}</span></div><div class="search-result-copy">${esc(preview || "Community post")}</div></div></div>`;
+  });
+}
+
+function renderSearchReelRows(query, limit = Infinity) {
+  return sortSearchMatches(
+    REELS_LIBRARY.map((reel, index) => {
+      const num = String(reel.id || "").replace(/^reel-/, "");
+      const title = `Reel ${num}`;
+      return {
+        reel,
+        index,
+        title,
+        score: getSearchScore(query, [
+          title,
+          reel.id,
+          REELS_UPLOADER_NAME,
+          "reel reels short video devotion mandir satsang bhajan kirtan spiritual",
+        ]),
+      };
+    }),
+  )
+    .slice(0, limit)
+    .map(({ reel, title, index }) => {
+      return `<div class="s-result search-content-result" onclick="openAdvancedSearchReel('${searchJsArg(reel.id)}')"><div class="search-result-icon">R</div><div class="search-result-main"><div class="search-result-top"><div class="who-name">${esc(title)}</div><span class="search-result-badge">Reel</span></div><div class="search-result-meta"><span>${esc(REELS_UPLOADER_NAME)}</span><span>#${index + 1}</span></div><div class="search-result-copy">Short devotional reel from the Tirth Sutra reel library.</div></div></div>`;
+    });
+}
+
+function getBhajanVideos() {
+  const bhajanTerms = ["bhajan", "kirtan", "aarti", "sankirtan", "naam", "bhakti"];
+  return getVideos().filter((video) => {
+    const text = [video.title, video.desc, video.cat].join(" ").toLowerCase();
+    return bhajanTerms.some((term) => text.includes(term));
+  });
+}
+
+function renderSearchBhajanRows(query, limit = Infinity) {
+  return sortSearchMatches(
+    getBhajanVideos().map((video) => {
+      const u = getUser(video.uid);
+      return {
+        data: video,
+        score: getSearchScore(query, [
+          video.title,
+          video.desc,
+          video.cat,
+          u?.name,
+          u?.handle,
+          "bhajan kirtan aarti sankirtan devotional music tirth tube",
+        ]),
+      };
+    }),
+  )
+    .slice(0, limit)
+    .map(({ data: video }) => {
+      const u = getUser(video.uid) || {};
+      return `<div class="s-result search-content-result" onclick="openVideoWatch('${video.id}')"><div class="search-result-icon">B</div><div class="search-result-main"><div class="search-result-top"><div class="who-name">${esc(video.title || "Bhajan")}</div><span class="search-result-badge">Bhajan</span></div><div class="search-result-meta"><span>${esc(video.cat || "Tirth Tube")}</span><span>${fmtV(video.views || 0)} views</span></div><div class="search-result-copy">${esc(video.desc || u.name || "Devotional video")}</div></div></div>`;
+    });
+}
+
+function renderSearchEventRows(query, limit = Infinity) {
+  return sortSearchMatches(
+    EVENTS.map((eventItem, index) => ({
+      data: eventItem,
+      index,
+      score: getSearchScore(query, [
+        eventItem.title,
+        eventItem.sub,
+        eventItem.tag,
+        eventItem.day,
+        eventItem.mon,
+        "event festival yatra mela satsang mandir spiritual calendar",
+      ]),
+    })),
+  )
+    .slice(0, limit)
+    .map(({ data: eventItem, index }) => {
+      return `<div class="s-result search-content-result" onclick="openAdvancedEventResult(${index})"><div class="search-date-chip"><strong>${esc(eventItem.day)}</strong><span>${esc(eventItem.mon)}</span></div><div class="search-result-main"><div class="search-result-top"><div class="who-name">${esc(eventItem.title)}</div><span class="search-result-badge">Event</span></div><div class="search-result-meta"><span>${esc(eventItem.tag)}</span></div><div class="search-result-copy">${esc(eventItem.sub)}</div></div></div>`;
+    });
+}
+
+function renderSearchTopicRows(query, limit = Infinity) {
+  return sortSearchMatches(
+    ADVANCED_SEARCH_TOPICS.map((topic) => ({
+      data: topic,
+      score: getSearchScore(query, [
+        topic.title,
+        topic.category,
+        topic.copy,
+        topic.query,
+        (topic.tags || []).join(" "),
+      ]),
+    })),
+  )
+    .slice(0, limit)
+    .map(({ data: topic }) => {
+      return `<div class="s-result search-content-result" onclick="setAdvancedSearchQuery('${searchJsArg(topic.query)}','all')"><div class="search-result-icon">T</div><div class="search-result-main"><div class="search-result-top"><div class="who-name">${esc(topic.title)}</div><span class="search-result-badge">${esc(topic.category)}</span></div><div class="search-result-copy">${esc(topic.copy)}</div><div class="search-topic-tags">${(topic.tags || []).map((tag) => `<span>${esc(tag)}</span>`).join("")}</div></div></div>`;
+    });
+}
+
+function getSearchHashtags() {
+  const tagMap = new Map();
+  const addTag = (tag, category = "Hashtag", countLabel = "") => {
+    const normalized = String(tag || "").trim();
+    if (!normalized) return;
+    const label = normalized.startsWith("#") ? normalized : `#${normalized}`;
+    const key = label.toLowerCase();
+    const current = tagMap.get(key) || {
+      tag: label,
+      category,
+      count: 0,
+      countLabel,
+    };
+    current.count += 1;
+    if (countLabel) current.countLabel = countLabel;
+    tagMap.set(key, current);
+  };
+
+  TRENDING.forEach((tag) => addTag(tag.tag, tag.cat, `${tag.cnt} posts`));
+  filterVisiblePosts(getPosts()).forEach((post) => {
+    String(post.txt || "").replace(/#[a-z0-9_]+/gi, (match) => {
+      addTag(match, "Post Hashtag");
+      return match;
+    });
+  });
+  getVideos().forEach((video) => {
+    [video.title, video.desc, video.cat].join(" ").replace(/#[a-z0-9_]+/gi, (match) => {
+      addTag(match, "Video Hashtag");
+      return match;
+    });
+  });
+
+  return Array.from(tagMap.values()).map((item) => ({
+    ...item,
+    countLabel: item.countLabel || `${item.count} result${item.count === 1 ? "" : "s"}`,
+  }));
+}
+
+function renderSearchTagRows(query, limit = Infinity) {
+  return sortSearchMatches(
+    getSearchHashtags().map((tag) => ({
+      data: tag,
+      score: getSearchScore(query, [tag.tag, tag.category, tag.countLabel]),
+    })),
+  )
+    .slice(0, limit)
+    .map(({ data: tag }) => {
+      return `<div class="trend-item advanced-tag-result" onclick="searchTag('${searchJsArg(tag.tag)}')"><div class="trend-cat">${esc(tag.category)}</div><div class="trend-name">${esc(tag.tag)}</div><div class="trend-cnt">${esc(tag.countLabel)}</div></div>`;
+    });
+}
+
+function renderSearchPeopleResults(query) {
+  const sections = [
+    renderSearchSection("Users", renderSearchUserRows(query), "Devotees"),
+    renderSearchSection("Verified Sants", renderSearchSantRows(query), "Spiritual guides"),
+  ].filter(Boolean);
+
+  return sections.length
+    ? sections.join("")
+    : `<div class="empty"><div class="empty-sub">No users or verified sants found</div></div>`;
+}
+
+function renderAdvancedSearchAll(query) {
+  const groups = [
+    { title: "Users", subtitle: "Devotees", rows: renderSearchUserRows(query, 4) },
+    { title: "Mandirs", subtitle: "Temple communities", rows: renderSearchMandirRows(query, 4) },
+    { title: "Posts", subtitle: "Community updates", rows: renderSearchPostRows(query, { limit: 4 }) },
+    { title: "Reels", subtitle: "Short spiritual videos", rows: renderSearchReelRows(query, 4) },
+    { title: "Bhajans", subtitle: "Kirtan and aarti", rows: renderSearchBhajanRows(query, 4) },
+    { title: "Events", subtitle: "Festivals and yatras", rows: renderSearchEventRows(query, 4) },
+    { title: "Spiritual Topics", subtitle: "Guided discovery", rows: renderSearchTopicRows(query, 4) },
+    { title: "Hashtags", subtitle: "Trending tags", rows: renderSearchTagRows(query, 6) },
+    { title: "Verified Sants", subtitle: "Spiritual guides", rows: renderSearchSantRows(query, 4) },
+  ];
+  const sections = groups
+    .map((group) => renderSearchSection(group.title, group.rows, group.subtitle))
+    .filter(Boolean);
+  const total = groups.reduce((count, group) => count + group.rows.length, 0);
+
+  return sections.length
+    ? `<div class="advanced-search-summary"><strong>${total}</strong> focused result${total === 1 ? "" : "s"} for <span>${esc(query)}</span></div>${sections.join("")}`
+    : `<div class="empty"><div class="empty-sub">No advanced search results found</div></div>`;
+}
+
+function renderSearchTabResults(query) {
+  const tab = curSTabVal === "people" ? "users" : curSTabVal;
+  if (tab === "users") return renderSearchPeopleResults(query);
+  if (tab === "posts") {
+    const rows = renderSearchPostRows(query, { full: true });
+    return rows.length
+      ? rows.join("")
+      : `<div class="empty"><div class="empty-sub">No posts found</div></div>`;
+  }
+  if (tab === "mandirs") {
+    const rows = renderSearchMandirRows(query);
+    return rows.length
+      ? renderSearchSection("Mandirs", rows, "Temple communities")
+      : `<div class="empty"><div class="empty-sub">No mandirs found</div></div>`;
+  }
+  if (tab === "reels") {
+    const rows = renderSearchReelRows(query);
+    return rows.length
+      ? renderSearchSection("Reels", rows, "Short spiritual videos")
+      : `<div class="empty"><div class="empty-sub">No reels found</div></div>`;
+  }
+  if (tab === "bhajans") {
+    const rows = renderSearchBhajanRows(query);
+    return rows.length
+      ? renderSearchSection("Bhajans", rows, "Kirtan, aarti, and devotional music")
+      : `<div class="empty"><div class="empty-sub">No bhajans found</div></div>`;
+  }
+  if (tab === "events") {
+    const rows = renderSearchEventRows(query);
+    return rows.length
+      ? renderSearchSection("Events", rows, "Festivals, yatras, and gatherings")
+      : `<div class="empty"><div class="empty-sub">No events found</div></div>`;
+  }
+  if (tab === "topics") {
+    const rows = renderSearchTopicRows(query);
+    return rows.length
+      ? renderSearchSection("Spiritual Topics", rows, "Guided discovery")
+      : `<div class="empty"><div class="empty-sub">No spiritual topics found</div></div>`;
+  }
+  if (tab === "tags") {
+    const rows = renderSearchTagRows(query);
+    return `<div style="padding:14px 16px">${!rows.length ? `<div class="empty"><div class="empty-sub">No hashtags found</div></div>` : rows.join("")}</div>`;
+  }
+  return renderAdvancedSearchAll(query);
+}
+
+function setAdvancedSearchQuery(query, tab = "all") {
+  gp("search");
+  const input = document.getElementById("srchIn");
+  if (input) input.value = query;
+  const tabButton = document.querySelector(`#srchTabs .tab[data-search-tab="${tab}"]`);
+  setSTab(tab, tabButton);
+}
+
+function openAdvancedSearchReel(reelId) {
+  gp("reels");
+  window.setTimeout(() => {
+    if (!reelsSession.length) buildReelsSession();
+    const index = reelsSession.findIndex((reel) => reel.id === reelId);
+    if (index >= 0) {
+      reelsActiveIndex = index;
+      scrollToReel(index, true);
+      playReel(index);
+    }
+  }, 160);
+}
+
+function openAdvancedEventResult(index) {
+  const eventItem = EVENTS[Number(index)];
+  gp("mandir");
+  window.setTimeout(() => {
+    document.getElementById("eventsList")?.scrollIntoView({
+      behavior: "smooth",
+      block: "center",
+    });
+    if (eventItem) MC.info(`${eventItem.title} - ${eventItem.sub}`);
+  }, 160);
+}
+
+function setSTab(t, el) {
+  curSTabVal = t || "all";
+  document
+    .querySelectorAll("#srchTabs .tab")
+    .forEach((x) => x.classList.remove("on"));
+  if (el) el.classList.add("on");
+  else {
+    const fallback = document.querySelector(`#srchTabs .tab[data-search-tab="${curSTabVal}"]`);
+    if (fallback) fallback.classList.add("on");
+  }
+  doSearch(document.getElementById("srchIn")?.value || "");
+}
+
+function doSearch(q) {
+  const c = document.getElementById("srchResults");
+  if (!c) return;
+  const query = String(q || "").trim();
+  const activeSearchTab = curSTabVal || "all";
+  const searchCacheKey = [
+    "advanced-v1",
+    activeSearchTab,
+    query.toLowerCase(),
+    getPostsCacheSignature(),
+    getUsersCacheSignature(),
+    getTrendingCacheSignature(),
+    getAppSessionCacheSignature(),
+  ].join("|");
+  const cachedSearchHtml = getAppDataCache("search", searchCacheKey);
+  if (cachedSearchHtml !== null) {
+    c.innerHTML = cachedSearchHtml;
+    return;
+  }
+
+  const searchHtml = !query ? renderSearchEmptyState() : renderSearchTabResults(query);
+  c.innerHTML = setAppDataCache("search", searchCacheKey, searchHtml);
+}
+
+function searchTag(tag) {
+  gp("search");
+  const inp = document.getElementById("srchIn");
+  if (inp) inp.value = tag;
+  const pt = document.querySelector('#srchTabs .tab[data-search-tab="posts"]');
+  if (pt) setSTab("posts", pt);
+  else doSearch(tag);
+}
+
 /* ── WIDGETS ── */
 function renderWidgets() {
   const tw = document.getElementById("trendW");
-  if (tw)
-    tw.innerHTML = TRENDING.slice(0, 5)
-      .map(
-        (t) =>
-          `<div class="trend-item" onclick="searchTag('${t.tag}')"><div class="trend-cat">${t.cat}</div><div class="trend-name">${t.tag}</div><div class="trend-cnt">${t.cnt} posts</div></div>`,
-      )
-      .join("");
+  if (tw) {
+    const trendingCacheKey = ["widget", getTrendingCacheSignature()].join("::");
+    const cachedTrendingHtml = getAppDataCache("trending", trendingCacheKey);
+    const trendingHtml =
+      cachedTrendingHtml !== null
+        ? cachedTrendingHtml
+        : setAppDataCache(
+            "trending",
+            trendingCacheKey,
+            renderTrendingItems(5),
+            APP_DATA_CACHE_TTLS.trending,
+          );
+    tw.innerHTML = trendingHtml;
+  }
   const wf = document.getElementById("wtfW");
   if (wf) {
     const fl = CU ? CU.following || [] : [];
