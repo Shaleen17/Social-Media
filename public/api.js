@@ -22,6 +22,14 @@ const API = (() => {
     return getBackendBase() + "/api";
   }
 
+  function getSameOriginApiBase() {
+    if (!window.location || window.location.protocol === "file:") {
+      return "";
+    }
+
+    return window.location.origin.replace(/\/+$/, "") + "/api";
+  }
+
   function getToken() {
     return localStorage.getItem("ts_token");
   }
@@ -61,7 +69,7 @@ const API = (() => {
     }
 
     try {
-      const endpoint = getApiBase() + path;
+      const endpoint = /^https?:\/\//i.test(path) ? path : getApiBase() + path;
       const res = await fetch(endpoint, {
         ...options,
         headers,
@@ -98,7 +106,7 @@ const API = (() => {
 
   async function requestWithRouteFallback(paths, options = {}) {
     let lastError;
-    for (const path of paths) {
+    for (const path of paths.filter(Boolean)) {
       try {
         return await request(path, options);
       } catch (err) {
@@ -180,14 +188,26 @@ const API = (() => {
     },
 
     async requestPasswordReset(email) {
-      return requestWithRouteFallback(["/auth/forgot-password", "/auth/password/forgot"], {
+      const sameOriginApi = getSameOriginApiBase();
+      return requestWithRouteFallback([
+        "/auth/forgot-password",
+        "/auth/password/forgot",
+        sameOriginApi && `${sameOriginApi}/auth/forgot-password`,
+        sameOriginApi && `${sameOriginApi}/auth/password/forgot`,
+      ], {
         method: "POST",
         body: JSON.stringify({ email }),
       });
     },
 
     async resetPassword(email, otp, password) {
-      return requestWithRouteFallback(["/auth/reset-password", "/auth/password/reset"], {
+      const sameOriginApi = getSameOriginApiBase();
+      return requestWithRouteFallback([
+        "/auth/reset-password",
+        "/auth/password/reset",
+        sameOriginApi && `${sameOriginApi}/auth/reset-password`,
+        sameOriginApi && `${sameOriginApi}/auth/password/reset`,
+      ], {
         method: "POST",
         body: JSON.stringify({ email, otp, password }),
       });
