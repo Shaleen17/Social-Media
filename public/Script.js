@@ -1921,6 +1921,8 @@ async function verifySignupOtp() {
       const el = document.getElementById(id);
       if (el) el.value = "";
     });
+    const marketingConsent = document.getElementById("suMarketingConsent");
+    if (marketingConsent) marketingConsent.checked = false;
     toggleFieldError("suErr", false);
     toggleFieldError("suOtpErr", false);
     closeOvl("authOvl");
@@ -2150,6 +2152,9 @@ async function doSignup() {
     .toLowerCase()
     .replace(/\s+/g, "");
   const pw = document.getElementById("suPw")?.value || "";
+  const marketingConsent = !!document.getElementById("suMarketingConsent")?.checked;
+  const timezone =
+    Intl.DateTimeFormat().resolvedOptions().timeZone || "Asia/Kolkata";
   let ok = true;
 
   toggleFieldError("suNE", !nm);
@@ -2163,7 +2168,15 @@ async function doSignup() {
   if (!ok) return;
 
   try {
-    const data = await API.signup(nm, hdl, em, pw, getActiveReferralCode());
+    const data = await API.signup(
+      nm,
+      hdl,
+      em,
+      pw,
+      getActiveReferralCode(),
+      marketingConsent,
+      timezone
+    );
     toggleFieldError("suErr", false);
     toggleFieldError("suOtpErr", false);
     setPendingSignupOtp(data.email || em, {
@@ -2202,6 +2215,13 @@ function doGoogleLogin() {
   const referralCode = getActiveReferralCode();
   if (referralCode) {
     returnTo.searchParams.set("ref", referralCode);
+  }
+  if (document.getElementById("suMarketingConsent")?.checked) {
+    returnTo.searchParams.set("marketing", "1");
+    returnTo.searchParams.set(
+      "tz",
+      Intl.DateTimeFormat().resolvedOptions().timeZone || "Asia/Kolkata"
+    );
   }
   window.setTimeout(() => {
     stopAppTopLoader(loaderToken, { delay: 0, minVisible: 120 });

@@ -40,6 +40,13 @@ const userSchema = new mongoose.Schema(
     followedSants: [{ type: String, trim: true, lowercase: true }],
     verified: { type: Boolean, default: false },
     emailVerified: { type: Boolean, default: false },
+    marketing: {
+      emailConsent: { type: Boolean, default: false },
+      emailConsentAt: { type: Date, default: null },
+      emailConsentSource: { type: String, default: null },
+      emailUnsubscribedAt: { type: Date, default: null },
+      timezone: { type: String, default: "Asia/Kolkata" },
+    },
     passwordResetOtpHash: { type: String, select: false, default: null },
     passwordResetOtpExpiresAt: { type: Date, select: false, default: null },
     passwordResetOtpLastSentAt: { type: Date, select: false, default: null },

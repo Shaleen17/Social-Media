@@ -52,6 +52,8 @@ const mandirRoutes = require("./routes/mandir");
 const paymentRoutes = require("./routes/payments");
 const translationRoutes = require("./routes/translation");
 const supportRoutes = require("./routes/support");
+const emailCampaignRoutes = require("./routes/emailCampaign");
+const { startEmailCampaignWorker } = require("./services/emailCampaignService");
 
 const app = express();
 const server = http.createServer(app);
@@ -149,6 +151,7 @@ app.use("/api/mandir", mandirRoutes);
 app.use("/api/payments", paymentRoutes);
 app.use("/api/translate", translationRoutes);
 app.use("/api/support", supportRoutes);
+app.use("/api/email-campaign", emailCampaignRoutes);
 
 // Health check
 app.get("/api/health", (req, res) => {
@@ -218,7 +221,11 @@ app.use((err, req, res, next) => {
 });
 
 // Connect DB (Mongoose handles connection pooling automatically)
-connectDB().catch(console.error);
+connectDB()
+  .then(() => {
+    startEmailCampaignWorker();
+  })
+  .catch(console.error);
 
 const PORT = process.env.PORT || 5000;
 const SHOULD_VERIFY_SMTP_ON_STARTUP =

@@ -28,6 +28,10 @@ const pendingSignupSchema = new mongoose.Schema(
     createdFromIp: { type: String, default: null },
     lastRequestIp: { type: String, default: null },
     userAgent: { type: String, default: null },
+    marketingEmailConsent: { type: Boolean, default: false },
+    marketingConsentAt: { type: Date, default: null },
+    marketingConsentSource: { type: String, default: null },
+    marketingTimezone: { type: String, default: "Asia/Kolkata", trim: true },
     referralCodeUsed: {
       type: String,
       default: null,

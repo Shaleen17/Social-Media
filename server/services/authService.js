@@ -42,6 +42,7 @@ const {
   attachReferralRelationship,
   ensureUserReferralCode,
 } = require("../utils/referrals");
+const { enrollUserInEmailCampaign } = require("./emailCampaignService");
 
 const googleClient = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
 
@@ -69,6 +70,25 @@ function sanitizeHandle(handle = "") {
 
 function normalizeIp(ip = "") {
   return String(ip || "unknown").trim();
+}
+
+function toBoolean(value) {
+  return value === true || value === "true" || value === "1" || value === "on";
+}
+
+function sanitizeTimezone(timezone = "") {
+  const normalized = String(timezone || "").trim();
+  return normalized && normalized.length <= 64 ? normalized : "Asia/Kolkata";
+}
+
+function getMarketingConsentPayload(payload = {}, context = {}) {
+  const marketingConsent = toBoolean(payload.marketingConsent);
+  return {
+    marketingConsent,
+    marketingConsentAt: marketingConsent ? new Date() : null,
+    marketingConsentSource: marketingConsent ? "signup_form" : null,
+    marketingTimezone: sanitizeTimezone(payload.timezone || context.timezone),
+  };
 }
 
 function createGoogleCallbackUrl(req) {
@@ -372,7 +392,17 @@ async function ensureSignupInputIsAvailable({ email, handle, legacyUserId }) {
 }
 
 async function createOrUpdatePendingSignup(
-  { name, handle, email, password, referralCode },
+  {
+    name,
+    handle,
+    email,
+    password,
+    referralCode,
+    marketingConsent,
+    marketingConsentAt,
+    marketingConsentSource,
+    marketingTimezone,
+  },
   context = {}
 ) {
   const existingUser = await User.findOne({ email }).select("+password");
@@ -398,6 +428,10 @@ async function createOrUpdatePendingSignup(
       createdFromIp: normalizeIp(context.ip),
       lastRequestIp: normalizeIp(context.ip),
       userAgent: context.userAgent || null,
+      marketingEmailConsent: !!marketingConsent,
+      marketingConsentAt: marketingConsent ? marketingConsentAt || new Date() : null,
+      marketingConsentSource: marketingConsent ? marketingConsentSource || "signup_form" : null,
+      marketingTimezone: sanitizeTimezone(marketingTimezone),
       pendingExpiresAt: createPendingSignupExpiryDate(),
     });
   } else {
@@ -412,6 +446,14 @@ async function createOrUpdatePendingSignup(
     pendingSignup.passwordHash = await bcrypt.hash(password, 12);
     pendingSignup.lastRequestIp = normalizeIp(context.ip);
     pendingSignup.userAgent = context.userAgent || pendingSignup.userAgent;
+    pendingSignup.marketingEmailConsent = !!marketingConsent;
+    pendingSignup.marketingConsentAt = marketingConsent
+      ? marketingConsentAt || pendingSignup.marketingConsentAt || new Date()
+      : null;
+    pendingSignup.marketingConsentSource = marketingConsent
+      ? marketingConsentSource || "signup_form"
+      : null;
+    pendingSignup.marketingTimezone = sanitizeTimezone(marketingTimezone);
     pendingSignup.pendingExpiresAt = createPendingSignupExpiryDate();
   }
 
@@ -480,6 +522,18 @@ async function upsertVerifiedUserFromPendingSignup(pendingSignup) {
   if (!user.referredBy && pendingSignup.referredBy) {
     user.referredBy = pendingSignup.referredBy;
   }
+  user.marketing = {
+    ...(user.marketing?.toObject ? user.marketing.toObject() : user.marketing || {}),
+    emailConsent: !!pendingSignup.marketingEmailConsent,
+    emailConsentAt: pendingSignup.marketingEmailConsent
+      ? pendingSignup.marketingConsentAt || new Date()
+      : null,
+    emailConsentSource: pendingSignup.marketingEmailConsent
+      ? pendingSignup.marketingConsentSource || "signup_form"
+      : null,
+    emailUnsubscribedAt: null,
+    timezone: sanitizeTimezone(pendingSignup.marketingTimezone),
+  };
 
   await user.save();
   if (pendingSignup.referralCodeUsed) {
@@ -494,6 +548,7 @@ async function signupLocalUser(payload = {}, context = {}) {
   const email = normalizeEmail(payload.email);
   const password = String(payload.password || "");
   const ip = normalizeIp(context.ip);
+  const marketing = getMarketingConsentPayload(payload, context);
 
   assertRateLimit({
     key: `auth:signup:ip:${ip}`,
@@ -534,6 +589,7 @@ async function signupLocalUser(payload = {}, context = {}) {
       email,
       password,
       referralCode: payload.referralCode,
+      ...marketing,
     },
     context
   );
@@ -679,6 +735,21 @@ async function verifySignupOtp(payload = {}, context = {}) {
 
   const user = await upsertVerifiedUserFromPendingSignup(pendingSignup);
   await PendingSignup.deleteOne({ _id: pendingSignup._id });
+
+  if (pendingSignup.marketingEmailConsent) {
+    try {
+      await enrollUserInEmailCampaign(user, {
+        marketingConsent: true,
+        consentAt: pendingSignup.marketingConsentAt,
+        source: pendingSignup.marketingConsentSource || "signup_form",
+        timezone: pendingSignup.marketingTimezone,
+        ip: normalizeIp(context.ip),
+        userAgent: context.userAgent || null,
+      });
+    } catch (error) {
+      console.error("[EmailCampaign] enrollment failed:", error.message);
+    }
+  }
 
   const safeUser = await User.findById(user._id);
   await ensureUserReferralCode(safeUser);
@@ -931,7 +1002,14 @@ async function getGoogleProfile({ token, tokenType }) {
   return ticket.getPayload();
 }
 
-async function loginWithGoogle({ token, tokenType, referralCode }) {
+async function loginWithGoogle({
+  token,
+  tokenType,
+  referralCode,
+  marketingConsent,
+  timezone,
+  consentSource,
+}) {
   const profile = await getGoogleProfile({ token, tokenType });
   const {
     email,
@@ -945,6 +1023,7 @@ async function loginWithGoogle({ token, tokenType, referralCode }) {
     throw new AppError("Your Google account email could not be verified.", 401);
   }
 
+  const wantsMarketing = toBoolean(marketingConsent);
   const normalizedEmail = normalizeEmail(email);
   const normalizedReferralCode = sanitizeReferralCode(referralCode);
   const referrer = normalizedReferralCode
@@ -967,6 +1046,13 @@ async function loginWithGoogle({ token, tokenType, referralCode }) {
       emailVerified: true,
       referralCode: await generateUniqueReferralCode(handle || normalizedEmail),
       referredBy: referrer ? referrer._id : null,
+      marketing: {
+        emailConsent: wantsMarketing,
+        emailConsentAt: wantsMarketing ? new Date() : null,
+        emailConsentSource: wantsMarketing ? consentSource || "google_signup" : null,
+        emailUnsubscribedAt: null,
+        timezone: sanitizeTimezone(timezone),
+      },
     });
   } else {
     user.authProvider = user.authProvider || "google";
@@ -985,12 +1071,34 @@ async function loginWithGoogle({ token, tokenType, referralCode }) {
     if (picture && !user.avatar) {
       user.avatar = picture;
     }
+    if (wantsMarketing) {
+      user.marketing = {
+        ...(user.marketing?.toObject ? user.marketing.toObject() : user.marketing || {}),
+        emailConsent: true,
+        emailConsentAt: user.marketing?.emailConsentAt || new Date(),
+        emailConsentSource: consentSource || "google_signup",
+        emailUnsubscribedAt: null,
+        timezone: sanitizeTimezone(timezone),
+      };
+    }
     await user.save({ validateBeforeSave: false });
   }
 
   await PendingSignup.deleteOne({ email: normalizedEmail }).catch(() => {});
   if (referrer) {
     await attachReferralRelationship(user, referrer.referralCode);
+  }
+  if (wantsMarketing) {
+    try {
+      await enrollUserInEmailCampaign(user, {
+        marketingConsent: true,
+        consentAt: user.marketing?.emailConsentAt || new Date(),
+        source: consentSource || "google_signup",
+        timezone,
+      });
+    } catch (error) {
+      console.error("[EmailCampaign] Google enrollment failed:", error.message);
+    }
   }
 
   const safeUser = await User.findById(user._id);
@@ -1049,6 +1157,9 @@ async function exchangeGoogleCode(req, { code, state }) {
     token: tokens.id_token,
     tokenType: "id_token",
     referralCode: parsedReturnTo?.searchParams?.get("ref"),
+    marketingConsent: parsedReturnTo?.searchParams?.get("marketing") === "1",
+    timezone: parsedReturnTo?.searchParams?.get("tz"),
+    consentSource: "google_signup",
   });
 
   return {
