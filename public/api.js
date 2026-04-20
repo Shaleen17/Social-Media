@@ -73,7 +73,10 @@ const API = (() => {
         data = JSON.parse(text);
       } catch (parseErr) {
         console.error("Non-JSON response from", endpoint, ":", text.substring(0, 200));
-        throw new Error(res.ok ? "Invalid server response" : `Server error (${res.status})`);
+        const error = new Error(res.ok ? "Invalid server response" : `Server error (${res.status})`);
+        error.status = res.status;
+        error.responseText = text;
+        throw error;
       }
       if (!res.ok) {
         const error = new Error(data.error || "Request failed");
@@ -87,6 +90,25 @@ const API = (() => {
       console.error("API error:", path, err.message);
       throw err;
     }
+  }
+
+  function isRouteMissingError(err) {
+    return Boolean(err && (err.status === 404 || /\b404\b/.test(err.message || "")));
+  }
+
+  async function requestWithRouteFallback(paths, options = {}) {
+    let lastError;
+    for (const path of paths) {
+      try {
+        return await request(path, options);
+      } catch (err) {
+        lastError = err;
+        if (!isRouteMissingError(err)) {
+          throw err;
+        }
+      }
+    }
+    throw lastError;
   }
 
   async function uploadFile(file) {
@@ -158,14 +180,14 @@ const API = (() => {
     },
 
     async requestPasswordReset(email) {
-      return request("/auth/forgot-password", {
+      return requestWithRouteFallback(["/auth/forgot-password", "/auth/password/forgot"], {
         method: "POST",
         body: JSON.stringify({ email }),
       });
     },
 
     async resetPassword(email, otp, password) {
-      return request("/auth/reset-password", {
+      return requestWithRouteFallback(["/auth/reset-password", "/auth/password/reset"], {
         method: "POST",
         body: JSON.stringify({ email, otp, password }),
       });

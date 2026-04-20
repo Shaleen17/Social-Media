@@ -36,6 +36,10 @@ if (missing.length > 0) {
 
 // Route imports
 const authRoutes = require("./routes/auth");
+const {
+  forgotPassword,
+  resetPassword,
+} = require("./controllers/authController");
 const postRoutes = require("./routes/posts");
 const userRoutes = require("./routes/users");
 const messageRoutes = require("./routes/messages");
@@ -124,6 +128,14 @@ app.use(
 );
 
 // API routes
+// Register reset endpoints directly as deployment-safe aliases. The auth router
+// still owns the full auth surface, but these keep reset working if a deployed
+// platform serves the main server file before the router bundle is refreshed.
+app.post("/api/auth/forgot-password", forgotPassword);
+app.post("/api/auth/password/forgot", forgotPassword);
+app.post("/api/auth/reset-password", resetPassword);
+app.post("/api/auth/password/reset", resetPassword);
+
 app.use("/api/auth", authRoutes);
 app.use("/api/posts", postRoutes);
 app.use("/api/users", userRoutes);
