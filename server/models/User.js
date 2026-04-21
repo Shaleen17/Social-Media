@@ -111,6 +111,22 @@ userSchema.pre("save", function (next) {
   next();
 });
 
+userSchema.index({ createdAt: -1 });
+userSchema.index({ lastSeen: -1 });
+userSchema.index({ followers: 1 });
+userSchema.index({ following: 1 });
+userSchema.index({
+  name: "text",
+  handle: "text",
+  bio: "text",
+  location: "text",
+  spiritualName: "text",
+  homeMandir: "text",
+  favoriteDeity: "text",
+  spiritualPath: "text",
+  interests: "text",
+});
+
 // JSON transform: hide password
 userSchema.set("toJSON", {
   transform: (doc, ret) => {

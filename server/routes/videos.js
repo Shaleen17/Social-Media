@@ -1,6 +1,13 @@
 const express = require("express");
 const Video = require("../models/Video");
 const { auth, optionalAuth } = require("../middleware/auth");
+const {
+  cleanEnum,
+  cleanMediaUrl,
+  cleanString,
+  getPagination,
+  validateObjectIdParam,
+} = require("../utils/validation");
 
 const router = express.Router();
 
@@ -70,8 +77,11 @@ function mapVideo(v) {
 // GET /api/videos - list videos
 router.get("/", optionalAuth, async (req, res) => {
   try {
-    const { category, tab, page = 1, limit = 20 } = req.query;
-    const skip = (parseInt(page, 10) - 1) * parseInt(limit, 10);
+    const { category, tab } = req.query;
+    const { page, limit, skip } = getPagination(req.query, {
+      defaultLimit: 20,
+      maxLimit: 50,
+    });
     const query = {};
 
     if (category && category !== "All") {
@@ -85,12 +95,15 @@ router.get("/", optionalAuth, async (req, res) => {
     const videos = await Video.find(query)
       .sort({ createdAt: -1 })
       .skip(skip)
-      .limit(parseInt(limit, 10))
+      .limit(limit)
       .populate("user", "name handle avatar verified followers following bio")
       .populate("comments.user", "name handle avatar verified")
       .populate("comments.replies.user", "name handle avatar verified")
       .lean();
 
+    res.setHeader("X-Page", String(page));
+    res.setHeader("X-Limit", String(limit));
+    res.setHeader("X-Has-More", String(videos.length === limit));
     res.json(videos.map(mapVideo));
   } catch (err) {
     res.status(500).json({ error: "Server error" });
@@ -124,7 +137,7 @@ router.get("/stories", optionalAuth, async (req, res) => {
 });
 
 // GET /api/videos/:id - get single video
-router.get("/:id", optionalAuth, async (req, res) => {
+router.get("/:id", validateObjectIdParam("id"), optionalAuth, async (req, res, next) => {
   try {
     const video = await Video.findById(req.params.id)
       .populate("user", "name handle avatar verified followers following bio")
@@ -135,26 +148,41 @@ router.get("/:id", optionalAuth, async (req, res) => {
 
     res.json(mapVideo(video));
   } catch (err) {
-    res.status(500).json({ error: "Server error" });
+    next(err);
   }
 });
 
 // POST /api/videos - upload/create video
-router.post("/", auth, async (req, res) => {
+router.post("/", auth, async (req, res, next) => {
   try {
     const { title, description, category, src, thumbnail, duration } = req.body;
-    if (!title || !src) {
+    const safeTitle = cleanString(title, {
+      field: "Video title",
+      max: 140,
+      required: true,
+    });
+    const safeSrc = cleanMediaUrl(src, {
+      field: "Video source",
+      max: 4096,
+      allowData: false,
+      required: true,
+    });
+    const safeThumbnail = cleanMediaUrl(thumbnail, {
+      field: "Video thumbnail",
+      max: 750000,
+    });
+    if (!safeTitle || !safeSrc) {
       return res.status(400).json({ error: "Title and video source required" });
     }
 
     const video = await Video.create({
       user: req.user._id,
-      title,
-      description: description || "",
-      category: category || "Spiritual",
-      src,
-      thumbnail: thumbnail || null,
-      duration: duration || "0:00",
+      title: safeTitle,
+      description: cleanString(description, { field: "Video description", max: 5000 }),
+      category: cleanEnum(category, ["Spiritual", "Pilgrimage", "Discourse", "Bhajan", "Aarti", "Meditation", "Katha", "Other"], "Spiritual"),
+      src: safeSrc,
+      thumbnail: safeThumbnail || null,
+      duration: cleanString(duration, { field: "Video duration", max: 20 }) || "0:00",
     });
 
     res.status(201).json({
@@ -174,12 +202,12 @@ router.post("/", auth, async (req, res) => {
       live: false,
     });
   } catch (err) {
-    res.status(500).json({ error: "Server error" });
+    next(err);
   }
 });
 
 // PUT /api/videos/:id/like - toggle video like
-router.put("/:id/like", auth, async (req, res) => {
+router.put("/:id/like", validateObjectIdParam("id"), auth, async (req, res, next) => {
   try {
     const video = await Video.findById(req.params.id);
     if (!video) return res.status(404).json({ error: "Video not found" });
@@ -201,12 +229,12 @@ router.put("/:id/like", auth, async (req, res) => {
       liked: video.likes.some((l) => l.toString() === userId),
     });
   } catch (err) {
-    res.status(500).json({ error: "Server error" });
+    next(err);
   }
 });
 
 // PUT /api/videos/:id/dislike - toggle video dislike
-router.put("/:id/dislike", auth, async (req, res) => {
+router.put("/:id/dislike", validateObjectIdParam("id"), auth, async (req, res, next) => {
   try {
     const video = await Video.findById(req.params.id);
     if (!video) return res.status(404).json({ error: "Video not found" });
@@ -230,15 +258,18 @@ router.put("/:id/dislike", auth, async (req, res) => {
       disliked: video.dislikes.some((d) => d.toString() === userId),
     });
   } catch (err) {
-    res.status(500).json({ error: "Server error" });
+    next(err);
   }
 });
 
 // PUT /api/videos/:id/comment - add top-level comment
-router.put("/:id/comment", auth, async (req, res) => {
+router.put("/:id/comment", validateObjectIdParam("id"), auth, async (req, res, next) => {
   try {
-    const { text } = req.body;
-    if (!text) return res.status(400).json({ error: "Comment text required" });
+    const text = cleanString(req.body.text, {
+      field: "Comment text",
+      max: 1000,
+      required: true,
+    });
 
     const video = await Video.findById(req.params.id);
     if (!video) return res.status(404).json({ error: "Video not found" });
@@ -263,15 +294,18 @@ router.put("/:id/comment", auth, async (req, res) => {
       replies: [],
     });
   } catch (err) {
-    res.status(500).json({ error: "Server error" });
+    next(err);
   }
 });
 
 // PUT /api/videos/:id/comment/:commentId/reply - add reply to a comment
-router.put("/:id/comment/:commentId/reply", auth, async (req, res) => {
+router.put("/:id/comment/:commentId/reply", validateObjectIdParam("id"), validateObjectIdParam("commentId"), auth, async (req, res, next) => {
   try {
-    const { text } = req.body;
-    if (!text) return res.status(400).json({ error: "Reply text required" });
+    const text = cleanString(req.body.text, {
+      field: "Reply text",
+      max: 1000,
+      required: true,
+    });
 
     const video = await Video.findById(req.params.id);
     if (!video) return res.status(404).json({ error: "Video not found" });
@@ -297,12 +331,12 @@ router.put("/:id/comment/:commentId/reply", auth, async (req, res) => {
       t: "Just now",
     });
   } catch (err) {
-    res.status(500).json({ error: "Server error" });
+    next(err);
   }
 });
 
 // PUT /api/videos/:id/comment/:commentId/pin - pin or unpin comment
-router.put("/:id/comment/:commentId/pin", auth, async (req, res) => {
+router.put("/:id/comment/:commentId/pin", validateObjectIdParam("id"), validateObjectIdParam("commentId"), auth, async (req, res, next) => {
   try {
     const video = await Video.findById(req.params.id);
     if (!video) return res.status(404).json({ error: "Video not found" });
@@ -322,39 +356,51 @@ router.put("/:id/comment/:commentId/pin", auth, async (req, res) => {
       pinnedCommentId: video.pinnedComment ? video.pinnedComment.toString() : null,
     });
   } catch (err) {
-    res.status(500).json({ error: "Server error" });
+    next(err);
   }
 });
 
 // PUT /api/videos/:id/view - increment view count
-router.put("/:id/view", async (req, res) => {
+router.put("/:id/view", validateObjectIdParam("id"), async (req, res, next) => {
   try {
     await Video.findByIdAndUpdate(req.params.id, { $inc: { views: 1 } });
     res.json({ success: true });
   } catch (err) {
-    res.status(500).json({ error: "Server error" });
+    next(err);
   }
 });
 
 // POST /api/videos/live - start live stream
-router.post("/live", auth, async (req, res) => {
+router.post("/live", auth, async (req, res, next) => {
   try {
     const { title, src, viewers } = req.body;
-    if (!title) return res.status(400).json({ error: "Title required" });
+    const safeTitle = cleanString(title, {
+      field: "Live stream title",
+      max: 140,
+      required: true,
+    });
+    const safeSrc = src
+      ? cleanMediaUrl(src, {
+          field: "Live stream source",
+          max: 4096,
+          allowData: false,
+        })
+      : "";
+    const safeViewers = Math.max(0, Math.min(Number(viewers) || 0, 100000));
 
     const video = await Video.create({
       user: req.user._id,
-      title,
-      src: src || "",
+      title: safeTitle,
+      src: safeSrc,
       isLive: true,
-      liveViewers: viewers || 0,
+      liveViewers: safeViewers,
       liveStarted: "Just now",
       category: "Spiritual",
     });
 
     res.status(201).json({ id: video._id });
   } catch (err) {
-    res.status(500).json({ error: "Server error" });
+    next(err);
   }
 });
 

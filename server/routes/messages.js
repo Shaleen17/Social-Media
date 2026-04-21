@@ -1,8 +1,17 @@
 const express = require("express");
 const Conversation = require("../models/Message");
 const Notification = require("../models/Notification");
+const User = require("../models/User");
 const { auth } = require("../middleware/auth");
 const { sendPushToUsers } = require("../utils/push");
+const {
+  assertObjectId,
+  cleanMediaUrl,
+  cleanString,
+  cleanStringArray,
+  getPagination,
+  validateObjectIdParam,
+} = require("../utils/validation");
 
 const router = express.Router();
 
@@ -21,7 +30,7 @@ function dedupeIds(list = []) {
 }
 
 function getAttachmentKind(mimeType = "", explicitKind = "") {
-  if (explicitKind) return explicitKind;
+  if (["image", "video", "audio", "document"].includes(explicitKind)) return explicitKind;
   if (mimeType.startsWith("image/")) return "image";
   if (mimeType.startsWith("video/")) return "video";
   if (mimeType.startsWith("audio/")) return "audio";
@@ -31,26 +40,34 @@ function getAttachmentKind(mimeType = "", explicitKind = "") {
 function sanitizeAttachments(rawAttachments) {
   if (!Array.isArray(rawAttachments)) return [];
   return rawAttachments
+    .slice(0, 5)
     .filter((item) => item && item.url)
     .map((item) => ({
-      kind: getAttachmentKind(item.mimeType || "", item.kind || ""),
-      url: item.url,
-      name: item.name || "",
-      mimeType: item.mimeType || "",
-      size: Number(item.size) || 0,
+      kind: getAttachmentKind(cleanString(item.mimeType, { field: "Attachment mime type", max: 120 }), cleanString(item.kind, { field: "Attachment kind", max: 20 })),
+      url: cleanMediaUrl(item.url, {
+        field: "Attachment URL",
+        max: 4096,
+        allowData: false,
+        required: true,
+      }),
+      name: cleanString(item.name, { field: "Attachment name", max: 180 }),
+      mimeType: cleanString(item.mimeType, { field: "Attachment mime type", max: 120 }),
+      size: Math.max(0, Math.min(Number(item.size) || 0, 25 * 1024 * 1024)),
       duration: item.duration != null ? Number(item.duration) || null : null,
     }));
 }
 
 function sanitizeReply(reply) {
   if (!reply || !reply.messageId || !reply.sender) return null;
+  assertObjectId(reply.messageId, "reply message id");
+  assertObjectId(reply.sender, "reply sender id");
   return {
     messageId: reply.messageId,
     sender: reply.sender,
-    senderName: reply.senderName || "",
-    text: reply.text || "",
-    attachmentKind: reply.attachmentKind || "",
-    attachmentName: reply.attachmentName || "",
+    senderName: cleanString(reply.senderName, { field: "Reply sender name", max: 80 }),
+    text: cleanString(reply.text, { field: "Reply text", max: 280 }),
+    attachmentKind: cleanString(reply.attachmentKind, { field: "Reply attachment kind", max: 20 }),
+    attachmentName: cleanString(reply.attachmentName, { field: "Reply attachment name", max: 120 }),
   };
 }
 
@@ -329,12 +346,21 @@ async function persistAndEmitMessage(req, conv, senderUser, options) {
 
 router.get("/", auth, async (req, res) => {
   try {
+    const { page, limit, skip } = getPagination(req.query, {
+      defaultLimit: 30,
+      maxLimit: 60,
+    });
     const conversations = await Conversation.find({
       participants: req.user._id,
     })
       .populate("participants", "name handle avatar verified lastSeen")
-      .sort({ lastMessageAt: -1 });
+      .sort({ lastMessageAt: -1 })
+      .skip(skip)
+      .limit(limit);
 
+    res.setHeader("X-Page", String(page));
+    res.setHeader("X-Limit", String(limit));
+    res.setHeader("X-Has-More", String(conversations.length === limit));
     res.json(conversations.map((conv) => mapConversation(conv, req.user._id)));
   } catch (err) {
     console.error("Get conversations error:", err);
@@ -342,7 +368,7 @@ router.get("/", auth, async (req, res) => {
   }
 });
 
-router.get("/:convId", auth, async (req, res) => {
+router.get("/:convId", validateObjectIdParam("convId"), auth, async (req, res) => {
   try {
     const conv = await Conversation.findOne({
       _id: req.params.convId,
@@ -355,6 +381,10 @@ router.get("/:convId", auth, async (req, res) => {
 
     const participantIds = (conv.participants || []).map((participant) => toIdString(participant));
     const viewerId = req.user._id.toString();
+    const { page, limit } = getPagination(req.query, {
+      defaultLimit: 80,
+      maxLimit: 120,
+    });
     const changedMessageIds = [];
     const senderIds = new Set();
 
@@ -396,6 +426,11 @@ router.get("/:convId", auth, async (req, res) => {
       );
     }
 
+    const visibleMessages = conv.messages.filter((message) => !hasId(message.deletedFor, viewerId));
+    const end = Math.max(0, visibleMessages.length - (page - 1) * limit);
+    const start = Math.max(0, end - limit);
+    const pageMessages = visibleMessages.slice(start, end);
+
     res.json({
       id: conv._id.toString(),
       participants: (conv.participants || []).map((participant) => ({
@@ -408,9 +443,13 @@ router.get("/:convId", auth, async (req, res) => {
       })),
       isGroup: !!conv.isGroup,
       groupName: conv.groupName,
-      messages: conv.messages
-        .filter((message) => !hasId(message.deletedFor, viewerId))
-        .map((message) => mapMessage(message, viewerId, participantIds)),
+      messages: pageMessages.map((message) => mapMessage(message, viewerId, participantIds)),
+      pagination: {
+        page,
+        limit,
+        total: visibleMessages.length,
+        hasMore: start > 0,
+      },
     });
   } catch (err) {
     console.error("Get messages error:", err);
@@ -418,9 +457,44 @@ router.get("/:convId", auth, async (req, res) => {
   }
 });
 
-router.post("/:convId", auth, async (req, res) => {
+router.post("/group", auth, async (req, res, next) => {
   try {
-    const text = (req.body.text || "").trim();
+    const name = cleanString(req.body.name, {
+      field: "Group name",
+      max: 80,
+      required: true,
+    });
+    const participants = cleanStringArray(req.body.participants, {
+      maxItems: 20,
+      maxLength: 40,
+    }).filter((participant) => participant !== req.user._id.toString());
+
+    if (!participants.length) {
+      return res.status(400).json({ error: "At least one participant is required" });
+    }
+
+    participants.forEach((participant) => assertObjectId(participant, "participant id"));
+    const foundUsers = await User.countDocuments({ _id: { $in: participants } });
+    if (foundUsers !== participants.length) {
+      return res.status(400).json({ error: "One or more participants are invalid" });
+    }
+
+    const conv = await Conversation.create({
+      participants: [req.user._id, ...participants],
+      isGroup: true,
+      groupName: name,
+      messages: [],
+    });
+
+    res.status(201).json({ id: conv._id });
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.post("/:convId", validateObjectIdParam("convId"), auth, async (req, res, next) => {
+  try {
+    const text = cleanString(req.body.text, { field: "Message text", max: 4000 });
     const attachments = sanitizeAttachments(req.body.attachments);
     const replyTo = sanitizeReply(req.body.replyTo);
     const forwarded = !!req.body.forwarded;
@@ -445,16 +519,19 @@ router.post("/:convId", auth, async (req, res) => {
     res.json(payload);
   } catch (err) {
     console.error("Send message error:", err);
-    res.status(500).json({ error: "Server error" });
+    next(err);
   }
 });
 
-router.post("/forward/message", auth, async (req, res) => {
+router.post("/forward/message", auth, async (req, res, next) => {
   try {
     const { sourceConvId, messageId, targetConvId } = req.body;
     if (!sourceConvId || !messageId || !targetConvId) {
       return res.status(400).json({ error: "Source, message, and target are required" });
     }
+    assertObjectId(sourceConvId, "source conversation id");
+    assertObjectId(messageId, "message id");
+    assertObjectId(targetConvId, "target conversation id");
 
     const [sourceConv, targetConv] = await Promise.all([
       Conversation.findOne({
@@ -486,11 +563,11 @@ router.post("/forward/message", auth, async (req, res) => {
     res.json(payload);
   } catch (err) {
     console.error("Forward message error:", err);
-    res.status(500).json({ error: "Server error" });
+    next(err);
   }
 });
 
-router.post("/:convId/:messageId/delete", auth, async (req, res) => {
+router.post("/:convId/:messageId/delete", validateObjectIdParam("convId"), validateObjectIdParam("messageId"), auth, async (req, res, next) => {
   try {
     const scope = req.body.scope === "everyone" ? "everyone" : "me";
     const conv = await Conversation.findOne({
@@ -541,15 +618,19 @@ router.post("/:convId/:messageId/delete", auth, async (req, res) => {
     });
   } catch (err) {
     console.error("Delete message error:", err);
-    res.status(500).json({ error: "Server error" });
+    next(err);
   }
 });
 
-router.post("/new/:userId", auth, async (req, res) => {
+router.post("/new/:userId", validateObjectIdParam("userId"), auth, async (req, res, next) => {
   try {
     const targetId = req.params.userId;
     if (targetId === req.user._id.toString()) {
       return res.status(400).json({ error: "Cannot message yourself" });
+    }
+    const targetUser = await User.exists({ _id: targetId });
+    if (!targetUser) {
+      return res.status(404).json({ error: "User not found" });
     }
 
     let conv = await Conversation.findOne({
@@ -570,33 +651,7 @@ router.post("/new/:userId", auth, async (req, res) => {
     res.status(201).json({ id: conv._id, existing: false });
   } catch (err) {
     console.error("Start conversation error:", err);
-    res.status(500).json({ error: "Server error" });
-  }
-});
-
-router.post("/group", auth, async (req, res) => {
-  try {
-    const { name, participants } = req.body;
-    if (!name || !participants || participants.length < 1) {
-      return res.status(400).json({ error: "Group name and participants required" });
-    }
-
-    const allParticipants = [
-      req.user._id,
-      ...participants.filter((participant) => participant !== req.user._id.toString()),
-    ];
-
-    const conv = await Conversation.create({
-      participants: allParticipants,
-      isGroup: true,
-      groupName: name,
-      messages: [],
-    });
-
-    res.status(201).json({ id: conv._id });
-  } catch (err) {
-    console.error("Create group error:", err);
-    res.status(500).json({ error: "Server error" });
+    next(err);
   }
 });
 

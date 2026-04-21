@@ -3,6 +3,13 @@ const User = require("../models/User");
 const Post = require("../models/Post");
 const Notification = require("../models/Notification");
 const { auth, optionalAuth } = require("../middleware/auth");
+const {
+  cleanHttpUrl,
+  cleanMediaUrl,
+  cleanString,
+  getPagination,
+  validateObjectIdParam,
+} = require("../utils/validation");
 
 const router = express.Router();
 
@@ -14,6 +21,10 @@ function normalizeStringList(values) {
       .map((value) => String(value || "").trim().toLowerCase())
       .filter(Boolean)
   )];
+}
+
+function escapeRegex(value = "") {
+  return String(value).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
 const PROFILE_EXTRA_FIELDS = [
@@ -47,23 +58,27 @@ function pickProfileExtras(user) {
 
 function applyProfileExtraUpdates(body, updates) {
   PROFILE_EXTRA_FIELDS.forEach((field) => {
-    if (body[field] !== undefined) updates[field] = String(body[field] || "").trim();
+    if (body[field] !== undefined) {
+      updates[field] = cleanString(body[field], { field, max: 240 });
+    }
   });
 }
 
 // GET /api/users/search?q=query
-router.get("/search", optionalAuth, async (req, res) => {
+router.get("/search", optionalAuth, async (req, res, next) => {
   try {
-    const q = (req.query.q || "").trim();
+    const q = cleanString(req.query.q, { field: "Search query", max: 80 });
     if (!q) return res.json([]);
+    const safeRegex = escapeRegex(q);
+    const { limit } = getPagination(req.query, { defaultLimit: 20, maxLimit: 50 });
 
     const users = await User.find({
       $or: USER_SEARCH_FIELDS.map((field) => ({
-        [field]: { $regex: q, $options: "i" },
+        [field]: { $regex: safeRegex, $options: "i" },
       })),
     })
       .select(`name handle avatar bio location website verified followers ${PROFILE_EXTRA_SELECT}`)
-      .limit(20)
+      .limit(limit)
       .lean();
 
     res.json(
@@ -81,18 +96,27 @@ router.get("/search", optionalAuth, async (req, res) => {
       }))
     );
   } catch (err) {
-    res.status(500).json({ error: "Server error" });
+    next(err);
   }
 });
 
 // GET /api/users/all — list all users (for suggestions)
-router.get("/all", optionalAuth, async (req, res) => {
+router.get("/all", optionalAuth, async (req, res, next) => {
   try {
+    const { page, limit, skip } = getPagination(req.query, {
+      defaultLimit: 100,
+      maxLimit: 100,
+    });
     const users = await User.find()
+      .sort({ createdAt: -1 })
+      .skip(skip)
       .select(`name handle avatar bio verified followers following followedMandirs followedSants location website joined ${PROFILE_EXTRA_SELECT}`)
-      .limit(50)
+      .limit(limit)
       .lean();
 
+    res.setHeader("X-Page", String(page));
+    res.setHeader("X-Limit", String(limit));
+    res.setHeader("X-Has-More", String(users.length === limit));
     res.json(
       users.map((u) => ({
         id: u._id,
@@ -112,24 +136,19 @@ router.get("/all", optionalAuth, async (req, res) => {
       }))
     );
   } catch (err) {
-    res.status(500).json({ error: "Server error" });
+    next(err);
   }
 });
 
 // GET /api/users/:id — get profile
-router.get("/:id", optionalAuth, async (req, res) => {
+router.get("/:id", validateObjectIdParam("id"), optionalAuth, async (req, res, next) => {
   try {
     const user = await User.findById(req.params.id)
       .select("-password")
       .lean();
     if (!user) return res.status(404).json({ error: "User not found" });
 
-    // Get user's posts
-    const posts = await Post.find({ user: user._id })
-      .sort({ createdAt: -1 })
-      .populate("user", "name handle avatar verified")
-      .populate("comments.user", "name handle avatar")
-      .lean();
+    const postsCount = await Post.countDocuments({ user: user._id });
 
     res.json({
       id: user._id,
@@ -148,15 +167,15 @@ router.get("/:id", optionalAuth, async (req, res) => {
       following: (user.following || []).map((f) => f.toString()),
       followedMandirs: normalizeStringList(user.followedMandirs),
       followedSants: normalizeStringList(user.followedSants),
-      postsCount: posts.length,
+      postsCount,
     });
   } catch (err) {
-    res.status(500).json({ error: "Server error" });
+    next(err);
   }
 });
 
 // PUT /api/users/:id — update profile
-router.put("/:id", auth, async (req, res) => {
+router.put("/:id", validateObjectIdParam("id"), auth, async (req, res, next) => {
   try {
     if (req.user._id.toString() !== req.params.id) {
       return res.status(403).json({ error: "Not authorized" });
@@ -173,13 +192,21 @@ router.put("/:id", auth, async (req, res) => {
       followedSants,
     } = req.body;
     const updates = {};
-    if (name !== undefined) updates.name = name;
-    if (bio !== undefined) updates.bio = bio;
-    if (location !== undefined) updates.location = location;
-    if (website !== undefined) updates.website = website;
+    if (name !== undefined) {
+      updates.name = cleanString(name, { field: "Name", max: 80, required: true });
+    }
+    if (bio !== undefined) updates.bio = cleanString(bio, { field: "Bio", max: 500 });
+    if (location !== undefined) {
+      updates.location = cleanString(location, { field: "Location", max: 120 });
+    }
+    if (website !== undefined) updates.website = cleanHttpUrl(website, { field: "Website" });
     applyProfileExtraUpdates(req.body, updates);
-    if (avatar !== undefined) updates.avatar = avatar;
-    if (banner !== undefined) updates.banner = banner;
+    if (avatar !== undefined) {
+      updates.avatar = cleanMediaUrl(avatar, { field: "Avatar", max: 750000 });
+    }
+    if (banner !== undefined) {
+      updates.banner = cleanMediaUrl(banner, { field: "Banner", max: 1500000 });
+    }
     if (followedMandirs !== undefined) {
       updates.followedMandirs = normalizeStringList(followedMandirs);
     }
@@ -193,12 +220,12 @@ router.put("/:id", auth, async (req, res) => {
 
     res.json(user.toJSON());
   } catch (err) {
-    res.status(500).json({ error: "Server error" });
+    next(err);
   }
 });
 
 // PUT /api/users/:id/follow — toggle follow
-router.put("/:id/follow", auth, async (req, res) => {
+router.put("/:id/follow", validateObjectIdParam("id"), auth, async (req, res, next) => {
   try {
     const targetId = req.params.id;
     if (req.user._id.toString() === targetId) {
@@ -247,19 +274,27 @@ router.put("/:id/follow", auth, async (req, res) => {
       targetFollowers: targetUser.followers.map((f) => f.toString()),
     });
   } catch (err) {
-    res.status(500).json({ error: "Server error" });
+    next(err);
   }
 });
 
 // GET /api/users/:id/followers — get followers list
-router.get("/:id/followers", async (req, res) => {
+router.get("/:id/followers", validateObjectIdParam("id"), async (req, res, next) => {
   try {
+    const { page, limit, skip } = getPagination(req.query, {
+      defaultLimit: 50,
+      maxLimit: 100,
+    });
     const user = await User.findById(req.params.id)
       .populate("followers", "name handle avatar verified")
       .lean();
     if (!user) return res.status(404).json({ error: "User not found" });
+    const followers = (user.followers || []).slice(skip, skip + limit);
+    res.setHeader("X-Page", String(page));
+    res.setHeader("X-Limit", String(limit));
+    res.setHeader("X-Has-More", String((user.followers || []).length > skip + limit));
     res.json(
-      (user.followers || []).map((f) => ({
+      followers.map((f) => ({
         id: f._id,
         name: f.name,
         handle: f.handle,
@@ -268,19 +303,27 @@ router.get("/:id/followers", async (req, res) => {
       }))
     );
   } catch (err) {
-    res.status(500).json({ error: "Server error" });
+    next(err);
   }
 });
 
 // GET /api/users/:id/following — get following list
-router.get("/:id/following", async (req, res) => {
+router.get("/:id/following", validateObjectIdParam("id"), async (req, res, next) => {
   try {
+    const { page, limit, skip } = getPagination(req.query, {
+      defaultLimit: 50,
+      maxLimit: 100,
+    });
     const user = await User.findById(req.params.id)
       .populate("following", "name handle avatar verified")
       .lean();
     if (!user) return res.status(404).json({ error: "User not found" });
+    const following = (user.following || []).slice(skip, skip + limit);
+    res.setHeader("X-Page", String(page));
+    res.setHeader("X-Limit", String(limit));
+    res.setHeader("X-Has-More", String((user.following || []).length > skip + limit));
     res.json(
-      (user.following || []).map((f) => ({
+      following.map((f) => ({
         id: f._id,
         name: f.name,
         handle: f.handle,
@@ -289,7 +332,7 @@ router.get("/:id/following", async (req, res) => {
       }))
     );
   } catch (err) {
-    res.status(500).json({ error: "Server error" });
+    next(err);
   }
 });
 

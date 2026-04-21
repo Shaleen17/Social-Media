@@ -31,4 +31,9 @@ mandirPostSchema.set("toJSON", {
   },
 });
 
+mandirPostSchema.index({ mandirId: 1, createdAt: -1 });
+mandirPostSchema.index({ mandirId: 1, mediaType: 1, createdAt: -1 });
+mandirPostSchema.index({ user: 1, createdAt: -1 });
+mandirPostSchema.index({ likes: 1 });
+
 module.exports = mongoose.model("MandirPost", mandirPostSchema);

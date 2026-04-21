@@ -1,16 +1,22 @@
 const express = require("express");
 const Notification = require("../models/Notification");
 const { auth } = require("../middleware/auth");
+const { getPagination } = require("../utils/validation");
 
 const router = express.Router();
 
 // GET /api/notifications — list user's notifications
-router.get("/", auth, async (req, res) => {
+router.get("/", auth, async (req, res, next) => {
   try {
+    const { page, limit, skip } = getPagination(req.query, {
+      defaultLimit: 50,
+      maxLimit: 100,
+    });
     const notifs = await Notification.find({ recipient: req.user._id })
       .populate("sender", "name handle avatar")
       .sort({ createdAt: -1 })
-      .limit(50)
+      .skip(skip)
+      .limit(limit)
       .lean();
 
     const result = notifs.map((n) => ({
@@ -24,14 +30,17 @@ router.get("/", auth, async (req, res) => {
       unread: !n.read,
     }));
 
+    res.setHeader("X-Page", String(page));
+    res.setHeader("X-Limit", String(limit));
+    res.setHeader("X-Has-More", String(result.length === limit));
     res.json(result);
   } catch (err) {
-    res.status(500).json({ error: "Server error" });
+    next(err);
   }
 });
 
 // PUT /api/notifications/read — mark all as read
-router.put("/read", auth, async (req, res) => {
+router.put("/read", auth, async (req, res, next) => {
   try {
     await Notification.updateMany(
       { recipient: req.user._id, read: false },
@@ -39,12 +48,12 @@ router.put("/read", auth, async (req, res) => {
     );
     res.json({ success: true });
   } catch (err) {
-    res.status(500).json({ error: "Server error" });
+    next(err);
   }
 });
 
 // GET /api/notifications/unread-count
-router.get("/unread-count", auth, async (req, res) => {
+router.get("/unread-count", auth, async (req, res, next) => {
   try {
     const count = await Notification.countDocuments({
       recipient: req.user._id,
@@ -52,7 +61,7 @@ router.get("/unread-count", auth, async (req, res) => {
     });
     res.json({ count });
   } catch (err) {
-    res.status(500).json({ error: "Server error" });
+    next(err);
   }
 });
 

@@ -127,4 +127,8 @@ donationSchema.set("toJSON", {
   },
 });
 
+donationSchema.index({ status: 1, paidAt: -1 });
+donationSchema.index({ user: 1, createdAt: -1 });
+donationSchema.index({ campaignKey: 1, status: 1, paidAt: -1 });
+
 module.exports = mongoose.model("Donation", donationSchema);

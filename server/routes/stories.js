@@ -1,17 +1,30 @@
 const express = require("express");
 const Story = require("../models/Story");
 const { auth, optionalAuth } = require("../middleware/auth");
+const {
+  cleanEnum,
+  cleanMediaUrl,
+  cleanString,
+  getPagination,
+  validateObjectIdParam,
+} = require("../utils/validation");
 
 const router = express.Router();
 
 // GET /api/stories — list active (non-expired) stories
-router.get("/", optionalAuth, async (req, res) => {
+router.get("/", optionalAuth, async (req, res, next) => {
   try {
+    const { page, limit, skip } = getPagination(req.query, {
+      defaultLimit: 30,
+      maxLimit: 60,
+    });
     const stories = await Story.find({
       expiresAt: { $gt: new Date() },
     })
       .populate("user", "name handle avatar")
       .sort({ createdAt: -1 })
+      .skip(skip)
+      .limit(limit)
       .lean();
 
     const result = stories.map((s) => ({
@@ -30,24 +43,32 @@ router.get("/", optionalAuth, async (req, res) => {
         : false,
     }));
 
+    res.setHeader("X-Page", String(page));
+    res.setHeader("X-Limit", String(limit));
+    res.setHeader("X-Has-More", String(result.length === limit));
     res.json(result);
   } catch (err) {
-    res.status(500).json({ error: "Server error" });
+    next(err);
   }
 });
 
 // POST /api/stories — create story
-router.post("/", auth, async (req, res) => {
+router.post("/", auth, async (req, res, next) => {
   try {
     const { type, src, caption, emoji } = req.body;
-    if (!src) return res.status(400).json({ error: "Story source required" });
+    const safeSrc = cleanMediaUrl(src, {
+      field: "Story source",
+      max: 750000,
+      required: true,
+    });
+    const safeType = cleanEnum(type, ["image", "video"], "image");
 
     const story = await Story.create({
       user: req.user._id,
-      type: type || "image",
-      src,
-      caption: caption || "",
-      emoji: emoji || "",
+      type: safeType,
+      src: safeSrc,
+      caption: cleanString(caption, { field: "Story caption", max: 280 }),
+      emoji: cleanString(emoji, { field: "Story emoji", max: 12 }),
     });
 
     res.status(201).json({
@@ -60,12 +81,12 @@ router.post("/", auth, async (req, res) => {
       t: "Just now",
     });
   } catch (err) {
-    res.status(500).json({ error: "Server error" });
+    next(err);
   }
 });
 
 // PUT /api/stories/:id/view — mark story as viewed
-router.put("/:id/view", auth, async (req, res) => {
+router.put("/:id/view", validateObjectIdParam("id"), auth, async (req, res, next) => {
   try {
     const story = await Story.findById(req.params.id);
     if (!story) return res.status(404).json({ error: "Story not found" });
@@ -77,7 +98,7 @@ router.put("/:id/view", auth, async (req, res) => {
 
     res.json({ viewed: true });
   } catch (err) {
-    res.status(500).json({ error: "Server error" });
+    next(err);
   }
 });
 

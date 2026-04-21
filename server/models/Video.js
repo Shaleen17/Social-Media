@@ -54,4 +54,11 @@ videoSchema.set("toJSON", {
   },
 });
 
+videoSchema.index({ createdAt: -1 });
+videoSchema.index({ user: 1, createdAt: -1 });
+videoSchema.index({ category: 1, createdAt: -1 });
+videoSchema.index({ isLive: 1, createdAt: -1 });
+videoSchema.index({ likes: 1 });
+videoSchema.index({ "comments.user": 1 });
+
 module.exports = mongoose.model("Video", videoSchema);

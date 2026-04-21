@@ -2,6 +2,7 @@ const express = require("express");
 const PushSubscription = require("../models/PushSubscription");
 const { auth } = require("../middleware/auth");
 const { getPublicVapidKey } = require("../utils/push");
+const { cleanHttpUrl, cleanString } = require("../utils/validation");
 
 const router = express.Router();
 
@@ -9,7 +10,7 @@ router.get("/public-key", auth, (req, res) => {
   res.json({ publicKey: getPublicVapidKey() });
 });
 
-router.post("/", auth, async (req, res) => {
+router.post("/", auth, async (req, res, next) => {
   try {
     const subscription = req.body?.subscription;
     if (
@@ -21,27 +22,26 @@ router.post("/", auth, async (req, res) => {
     }
 
     await PushSubscription.findOneAndUpdate(
-      { endpoint: subscription.endpoint },
+      { endpoint: cleanHttpUrl(subscription.endpoint, { field: "Subscription endpoint" }) },
       {
         user: req.user._id,
-        endpoint: subscription.endpoint,
+        endpoint: cleanHttpUrl(subscription.endpoint, { field: "Subscription endpoint" }),
         keys: {
-          p256dh: subscription.keys.p256dh,
-          auth: subscription.keys.auth,
+          p256dh: cleanString(subscription.keys.p256dh, { field: "Push key", max: 500, required: true }),
+          auth: cleanString(subscription.keys.auth, { field: "Push auth", max: 200, required: true }),
         },
-        userAgent: req.get("user-agent") || "",
+        userAgent: cleanString(req.get("user-agent"), { field: "User agent", max: 500 }),
       },
       { upsert: true, new: true, setDefaultsOnInsert: true }
     );
 
     res.json({ success: true });
   } catch (err) {
-    console.error("Save push subscription error:", err);
-    res.status(500).json({ error: "Could not save push subscription" });
+    next(err);
   }
 });
 
-router.delete("/", auth, async (req, res) => {
+router.delete("/", auth, async (req, res, next) => {
   try {
     const endpoint = req.body?.endpoint;
     if (!endpoint) {
@@ -50,13 +50,12 @@ router.delete("/", auth, async (req, res) => {
 
     await PushSubscription.deleteOne({
       user: req.user._id,
-      endpoint,
+      endpoint: cleanHttpUrl(endpoint, { field: "Subscription endpoint" }),
     });
 
     res.json({ success: true });
   } catch (err) {
-    console.error("Delete push subscription error:", err);
-    res.status(500).json({ error: "Could not delete push subscription" });
+    next(err);
   }
 });
 

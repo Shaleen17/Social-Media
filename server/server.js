@@ -5,9 +5,24 @@ const { Server } = require("socket.io");
 const cors = require("cors");
 const path = require("path");
 const cloudinary = require("cloudinary").v2;
+const mongoose = require("mongoose");
 const connectDB = require("./config/db");
 const setupSocket = require("./socket/chat");
 const AppError = require("./utils/appError");
+const securityHeaders = require("./middleware/securityHeaders");
+const {
+  apiLimiter,
+  authLimiter,
+  uploadLimiter,
+  writeLimiter,
+} = require("./middleware/rateLimit");
+const { log, logError, requestLogger } = require("./utils/logger");
+const {
+  getMonitoringSnapshot,
+  monitoringMiddleware,
+  recordError,
+} = require("./services/monitoringService");
+const { scheduleDatabaseBackups } = require("./services/backupService");
 const {
   verifyEmailTransport,
   isEmailDeliveryConfigured,
@@ -53,6 +68,7 @@ const paymentRoutes = require("./routes/payments");
 const translationRoutes = require("./routes/translation");
 const supportRoutes = require("./routes/support");
 const emailCampaignRoutes = require("./routes/emailCampaign");
+const adminRoutes = require("./routes/admin");
 const { startEmailCampaignWorker } = require("./services/emailCampaignService");
 
 const app = express();
@@ -65,15 +81,27 @@ const ALLOWED_ORIGINS = [
   "http://localhost:5000",
   "http://localhost:3000",
   "http://127.0.0.1:5000",
+  process.env.CLIENT_URL,
   process.env.FRONTEND_URL, // optional: set in .env for production
+  process.env.SERVER_URL,
   process.env.RENDER_EXTERNAL_URL,
 ].filter(Boolean);
+const IS_PRODUCTION = process.env.NODE_ENV === "production";
+
+function isOriginAllowed(origin) {
+  if (!origin) return true;
+  if (ALLOWED_ORIGINS.includes(origin)) return true;
+  return !IS_PRODUCTION;
+}
 
 // Socket.io
 const io = new Server(server, {
   cors: {
-    origin: ALLOWED_ORIGINS.length > 0 ? ALLOWED_ORIGINS : "*",
+    origin: function (origin, callback) {
+      callback(null, isOriginAllowed(origin));
+    },
     methods: ["GET", "POST", "PUT", "DELETE"],
+    credentials: true,
   },
 });
 
@@ -91,21 +119,24 @@ cloudinary.config({
 });
 
 // Middleware
+app.use(securityHeaders);
+app.use(monitoringMiddleware);
+app.use(requestLogger);
 app.use(
   cors({
     origin: function (origin, callback) {
-      // Allow requests with no origin (mobile apps, curl, same-origin)
-      if (!origin || ALLOWED_ORIGINS.includes(origin)) {
+      if (isOriginAllowed(origin)) {
         callback(null, true);
       } else {
-        callback(null, true); // In dev, allow all; tighten in production
+        callback(new AppError("Origin is not allowed by CORS", 403));
       }
     },
     credentials: true,
   })
 );
-app.use(express.json({ limit: "50mb" }));
-app.use(express.urlencoded({ extended: true, limit: "50mb" }));
+app.use("/api", apiLimiter);
+app.use(express.json({ limit: process.env.JSON_BODY_LIMIT || "10mb" }));
+app.use(express.urlencoded({ extended: true, limit: process.env.URLENCODED_BODY_LIMIT || "2mb" }));
 
 // Serve static files from public/ directory
 app.use(
@@ -138,27 +169,54 @@ app.post("/api/auth/password/forgot", forgotPassword);
 app.post("/api/auth/reset-password", resetPassword);
 app.post("/api/auth/password/reset", resetPassword);
 
-app.use("/api/auth", authRoutes);
-app.use("/api/posts", postRoutes);
-app.use("/api/users", userRoutes);
-app.use("/api/messages", messageRoutes);
-app.use("/api/stories", storyRoutes);
-app.use("/api/videos", videoRoutes);
+app.use("/api/auth", authLimiter, authRoutes);
+app.use("/api/posts", writeLimiter, postRoutes);
+app.use("/api/users", writeLimiter, userRoutes);
+app.use("/api/messages", writeLimiter, messageRoutes);
+app.use("/api/stories", writeLimiter, storyRoutes);
+app.use("/api/videos", writeLimiter, videoRoutes);
 app.use("/api/notifications", notificationRoutes);
-app.use("/api/push-subscriptions", pushSubscriptionRoutes);
-app.use("/api/upload", uploadRoutes);
-app.use("/api/mandir", mandirRoutes);
-app.use("/api/payments", paymentRoutes);
-app.use("/api/translate", translationRoutes);
-app.use("/api/support", supportRoutes);
+app.use("/api/push-subscriptions", writeLimiter, pushSubscriptionRoutes);
+app.use("/api/upload", uploadLimiter, uploadRoutes);
+app.use("/api/mandir", writeLimiter, mandirRoutes);
+app.use("/api/payments", writeLimiter, paymentRoutes);
+app.use("/api/translate", writeLimiter, translationRoutes);
+app.use("/api/support", writeLimiter, supportRoutes);
 app.use("/api/email-campaign", emailCampaignRoutes);
+app.use("/api/admin", adminRoutes);
 
 // Health check
 app.get("/api/health", (req, res) => {
   res.json({
     status: "ok",
     timestamp: new Date().toISOString(),
+    uptimeSeconds: Math.floor(process.uptime()),
+    dbState: mongoose.connection.readyState,
+    memory: process.memoryUsage(),
     email: isEmailDeliveryConfigured() ? "configured" : "NOT_CONFIGURED",
+  });
+});
+
+app.get("/api/health/ready", (req, res) => {
+  const dbReady = mongoose.connection.readyState === 1;
+  res.status(dbReady ? 200 : 503).json({
+    status: dbReady ? "ready" : "not_ready",
+    dbState: mongoose.connection.readyState,
+    timestamp: new Date().toISOString(),
+  });
+});
+
+app.get("/api/health/metrics", (req, res) => {
+  const snapshot = getMonitoringSnapshot();
+  res.json({
+    status: "ok",
+    startedAt: snapshot.startedAt,
+    uptimeSeconds: snapshot.uptimeSeconds,
+    memory: snapshot.memory,
+    totalRequests: snapshot.totalRequests,
+    totalApiRequests: snapshot.totalApiRequests,
+    totalErrors: snapshot.totalErrors,
+    statusCounts: snapshot.statusCounts,
   });
 });
 
@@ -196,6 +254,10 @@ app.get("/api/health/email", async (req, res) => {
   }
 });
 
+app.use("/api", (req, res) => {
+  res.status(404).json({ error: "API route not found" });
+});
+
 // Catch-all: serve index.html for SPA
 app.get("*", (req, res) => {
   res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate, proxy-revalidate");
@@ -210,12 +272,14 @@ app.use((err, req, res, next) => {
   const statusCode =
     err instanceof AppError ? err.statusCode : err.statusCode || 500;
 
-  if (statusCode >= 500) {
-    console.error("Server error:", err);
-  }
+  recordError(err, req);
+  logError(err, req);
 
   res.status(statusCode).json({
-    error: err.message || "Internal server error",
+    error:
+      statusCode >= 500 && process.env.NODE_ENV === "production"
+        ? "Internal server error"
+        : err.message || "Internal server error",
     ...(err.details ? { details: err.details } : {}),
   });
 });
@@ -224,8 +288,9 @@ app.use((err, req, res, next) => {
 connectDB()
   .then(() => {
     startEmailCampaignWorker();
+    scheduleDatabaseBackups();
   })
-  .catch(console.error);
+  .catch((error) => log("error", "Database startup failed", { error: error.message }));
 
 const PORT = process.env.PORT || 5000;
 const SHOULD_VERIFY_SMTP_ON_STARTUP =

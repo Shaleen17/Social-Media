@@ -1,6 +1,12 @@
 const express = require("express");
 const MandirPost = require("../models/MandirPost");
 const { auth, optionalAuth } = require("../middleware/auth");
+const {
+  cleanMediaUrl,
+  cleanString,
+  getPagination,
+  validateObjectIdParam,
+} = require("../utils/validation");
 
 const router = express.Router();
 
@@ -65,8 +71,11 @@ router.get("/accounts", (req, res) => {
 // GET /api/mandir/:mandirId/posts — public viewing
 router.get("/:mandirId/posts", validateMandir, optionalAuth, async (req, res) => {
   try {
-    const { page = 1, limit = 30, type } = req.query;
-    const skip = (parseInt(page) - 1) * parseInt(limit);
+    const { type } = req.query;
+    const { page, limit, skip } = getPagination(req.query, {
+      defaultLimit: 30,
+      maxLimit: 60,
+    });
 
     // Build filter
     const filter = { mandirId: req.params.mandirId };
@@ -76,7 +85,7 @@ router.get("/:mandirId/posts", validateMandir, optionalAuth, async (req, res) =>
     const posts = await MandirPost.find(filter)
       .sort({ createdAt: -1 })
       .skip(skip)
-      .limit(parseInt(limit))
+      .limit(limit)
       .populate("user", "name handle avatar verified mandirId")
       .populate("comments.user", "name handle avatar")
       .lean();
@@ -86,6 +95,9 @@ router.get("/:mandirId/posts", validateMandir, optionalAuth, async (req, res) =>
     res.json({
       posts: posts.map(transformPost),
       total,
+      page,
+      limit,
+      hasMore: skip + posts.length < total,
       mandirId: req.params.mandirId,
     });
   } catch (err) {
@@ -95,7 +107,7 @@ router.get("/:mandirId/posts", validateMandir, optionalAuth, async (req, res) =>
 });
 
 // POST /api/mandir/:mandirId/posts — authorized posting (mandir admin only)
-router.post("/:mandirId/posts", validateMandir, auth, async (req, res) => {
+router.post("/:mandirId/posts", validateMandir, auth, async (req, res, next) => {
   try {
     // Check that the logged-in user is the admin for THIS mandir
     if (req.user.mandirId !== req.params.mandirId) {
@@ -105,21 +117,28 @@ router.post("/:mandirId/posts", validateMandir, auth, async (req, res) => {
     }
 
     const { text, image, video } = req.body;
-    if (!text && !image && !video) {
+    const safeText = cleanString(text, { field: "Mandir post text", max: 5000 });
+    const safeImage = cleanMediaUrl(image, { field: "Mandir post image", max: 750000 });
+    const safeVideo = cleanMediaUrl(video, {
+      field: "Mandir post video",
+      max: 4096,
+      allowData: false,
+    });
+    if (!safeText && !safeImage && !safeVideo) {
       return res.status(400).json({ error: "Post content required (text, image, or video)" });
     }
 
     // Determine media type
     let mediaType = "text";
-    if (video) mediaType = "video";
-    else if (image) mediaType = "image";
+    if (safeVideo) mediaType = "video";
+    else if (safeImage) mediaType = "image";
 
     const post = await MandirPost.create({
       mandirId: req.params.mandirId,
       user: req.user._id,
-      text: text || "",
-      image: image || null,
-      video: video || null,
+      text: safeText,
+      image: safeImage || null,
+      video: safeVideo || null,
       mediaType,
     });
 
@@ -130,13 +149,12 @@ router.post("/:mandirId/posts", validateMandir, auth, async (req, res) => {
 
     res.status(201).json(transformPost(populated.toJSON()));
   } catch (err) {
-    console.error("Create mandir post error:", err);
-    res.status(500).json({ error: "Server error" });
+    next(err);
   }
 });
 
 // PUT /api/mandir/:mandirId/posts/:postId/like — toggle like (any logged-in user)
-router.put("/:mandirId/posts/:postId/like", validateMandir, auth, async (req, res) => {
+router.put("/:mandirId/posts/:postId/like", validateMandir, validateObjectIdParam("postId"), auth, async (req, res, next) => {
   try {
     const post = await MandirPost.findOne({
       _id: req.params.postId,
@@ -157,15 +175,18 @@ router.put("/:mandirId/posts/:postId/like", validateMandir, auth, async (req, re
       liked: post.likes.includes(req.user._id),
     });
   } catch (err) {
-    res.status(500).json({ error: "Server error" });
+    next(err);
   }
 });
 
 // PUT /api/mandir/:mandirId/posts/:postId/comment — add comment (any logged-in user)
-router.put("/:mandirId/posts/:postId/comment", validateMandir, auth, async (req, res) => {
+router.put("/:mandirId/posts/:postId/comment", validateMandir, validateObjectIdParam("postId"), auth, async (req, res, next) => {
   try {
-    const { text } = req.body;
-    if (!text) return res.status(400).json({ error: "Comment text required" });
+    const text = cleanString(req.body.text, {
+      field: "Comment text",
+      max: 1000,
+      required: true,
+    });
 
     const post = await MandirPost.findOne({
       _id: req.params.postId,
@@ -190,12 +211,12 @@ router.put("/:mandirId/posts/:postId/comment", validateMandir, auth, async (req,
       t: "Just now",
     });
   } catch (err) {
-    res.status(500).json({ error: "Server error" });
+    next(err);
   }
 });
 
 // DELETE /api/mandir/:mandirId/posts/:postId — delete own post
-router.delete("/:mandirId/posts/:postId", validateMandir, auth, async (req, res) => {
+router.delete("/:mandirId/posts/:postId", validateMandir, validateObjectIdParam("postId"), auth, async (req, res, next) => {
   try {
     const post = await MandirPost.findOne({
       _id: req.params.postId,
@@ -208,7 +229,7 @@ router.delete("/:mandirId/posts/:postId", validateMandir, auth, async (req, res)
     await post.deleteOne();
     res.json({ success: true });
   } catch (err) {
-    res.status(500).json({ error: "Server error" });
+    next(err);
   }
 });
 

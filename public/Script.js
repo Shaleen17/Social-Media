@@ -9725,23 +9725,7 @@ function renderSearchSection(title, rows, subtitle = "") {
 }
 
 function renderSearchEmptyState() {
-  const categoryPills = [
-    "Users",
-    "Posts",
-    "Mandirs",
-    "Reels",
-    "Bhajans",
-    "Events",
-    "Topics",
-    "Hashtags",
-  ];
-  const topicRows = ADVANCED_SEARCH_TOPICS.slice(0, 4)
-    .map(
-      (topic) =>
-        `<button class="advanced-search-chip" type="button" onclick="setAdvancedSearchQuery('${searchJsArg(topic.query)}','all')">${esc(topic.title)}</button>`,
-    )
-    .join("");
-  return `<div class="advanced-search-intro"><div class="advanced-search-kicker">Advanced Search</div><h3>Find the whole Tirth Sutra community from one place</h3><p>Search users, posts, mandirs, reels, hashtags, bhajans, events, and spiritual topics with one query.</p><div class="advanced-search-pills">${categoryPills.map((pill) => `<span>${esc(pill)}</span>`).join("")}</div><div class="advanced-search-quick">${topicRows}</div></div><div style="padding:14px 16px"><h3 style="font-size:15px;font-weight:700;margin-bottom:10px">Trending Today</h3>${renderTrendingItems()}</div>`;
+  return `<div style="padding:14px 16px"><h3 style="font-size:15px;font-weight:700;margin-bottom:10px">Trending Today</h3>${renderTrendingItems()}</div>`;
 }
 
 function renderSearchUserRows(query, limit = Infinity) {
@@ -10114,7 +10098,7 @@ function doSearch(q) {
   const query = String(q || "").trim();
   const activeSearchTab = curSTabVal || "all";
   const searchCacheKey = [
-    "advanced-v1",
+    "search-clean-v1",
     activeSearchTab,
     query.toLowerCase(),
     getPostsCacheSignature(),

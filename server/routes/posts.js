@@ -2,14 +2,24 @@ const express = require("express");
 const Post = require("../models/Post");
 const Notification = require("../models/Notification");
 const { auth, optionalAuth } = require("../middleware/auth");
+const {
+  cleanMediaUrl,
+  cleanString,
+  cleanStringArray,
+  getPagination,
+  validateObjectIdParam,
+} = require("../utils/validation");
 
 const router = express.Router();
 
 // GET /api/posts — list posts
-router.get("/", optionalAuth, async (req, res) => {
+router.get("/", optionalAuth, async (req, res, next) => {
   try {
-    const { tab, page = 1, limit = 20 } = req.query;
-    const skip = (parseInt(page) - 1) * parseInt(limit);
+    const { tab } = req.query;
+    const { page, limit, skip } = getPagination(req.query, {
+      defaultLimit: 20,
+      maxLimit: 50,
+    });
     let query = {};
 
     if (tab === "following" && req.user) {
@@ -26,7 +36,7 @@ router.get("/", optionalAuth, async (req, res) => {
     let posts = await Post.find(query)
       .sort(sort)
       .skip(skip)
-      .limit(parseInt(limit))
+      .limit(limit)
       .populate("user", "name handle avatar verified")
       .populate("comments.user", "name handle avatar")
       .lean();
@@ -65,15 +75,17 @@ router.get("/", optionalAuth, async (req, res) => {
       ts: new Date(p.createdAt).getTime(),
     }));
 
+    res.setHeader("X-Page", String(page));
+    res.setHeader("X-Limit", String(limit));
+    res.setHeader("X-Has-More", String(result.length === limit));
     res.json(result);
   } catch (err) {
-    console.error("Get posts error:", err);
-    res.status(500).json({ error: "Server error" });
+    next(err);
   }
 });
 
 // GET /api/posts/:id — get single post
-router.get("/:id", optionalAuth, async (req, res) => {
+router.get("/:id", validateObjectIdParam("id"), optionalAuth, async (req, res, next) => {
   try {
     const post = await Post.findById(req.params.id)
       .populate("user", "name handle avatar verified")
@@ -82,27 +94,37 @@ router.get("/:id", optionalAuth, async (req, res) => {
 
     res.json(transformPost(post.toJSON()));
   } catch (err) {
-    res.status(500).json({ error: "Server error" });
+    next(err);
   }
 });
 
 // POST /api/posts — create post
-router.post("/", auth, async (req, res) => {
+router.post("/", auth, async (req, res, next) => {
   try {
     const { text, image, ytId, poll } = req.body;
-    if (!text && !image && !ytId) {
+    const safeText = cleanString(text, { field: "Post text", max: 5000 });
+    const safeImage = cleanMediaUrl(image, { field: "Post image", max: 750000 });
+    const safeYtId = cleanString(ytId, { field: "YouTube video id", max: 80 });
+
+    if (!safeText && !safeImage && !safeYtId) {
       return res.status(400).json({ error: "Post content required" });
     }
 
     const postData = {
       user: req.user._id,
-      text: text || "",
-      image: image || null,
-      ytId: ytId || null,
+      text: safeText,
+      image: safeImage || null,
+      ytId: safeYtId || null,
     };
 
     if (poll && poll.opts && poll.opts.length >= 2) {
-      postData.poll = { options: poll.opts, votes: [] };
+      const options = cleanStringArray(poll.opts, {
+        maxItems: 6,
+        maxLength: 120,
+      });
+      if (options.length >= 2) {
+        postData.poll = { options, votes: [] };
+      }
     }
 
     const post = await Post.create(postData);
@@ -111,13 +133,12 @@ router.post("/", auth, async (req, res) => {
 
     res.status(201).json(transformPost(populated.toJSON()));
   } catch (err) {
-    console.error("Create post error:", err);
-    res.status(500).json({ error: "Server error" });
+    next(err);
   }
 });
 
 // PUT /api/posts/:id/like — toggle like
-router.put("/:id/like", auth, async (req, res) => {
+router.put("/:id/like", validateObjectIdParam("id"), auth, async (req, res, next) => {
   try {
     const post = await Post.findById(req.params.id);
     if (!post) return res.status(404).json({ error: "Post not found" });
@@ -153,15 +174,18 @@ router.put("/:id/like", auth, async (req, res) => {
       liked: post.likes.includes(req.user._id),
     });
   } catch (err) {
-    res.status(500).json({ error: "Server error" });
+    next(err);
   }
 });
 
 // PUT /api/posts/:id/comment — add comment
-router.put("/:id/comment", auth, async (req, res) => {
+router.put("/:id/comment", validateObjectIdParam("id"), auth, async (req, res, next) => {
   try {
-    const { text } = req.body;
-    if (!text) return res.status(400).json({ error: "Comment text required" });
+    const text = cleanString(req.body.text, {
+      field: "Comment text",
+      max: 1000,
+      required: true,
+    });
 
     const post = await Post.findById(req.params.id);
     if (!post) return res.status(404).json({ error: "Post not found" });
@@ -197,12 +221,12 @@ router.put("/:id/comment", auth, async (req, res) => {
       t: "Just now",
     });
   } catch (err) {
-    res.status(500).json({ error: "Server error" });
+    next(err);
   }
 });
 
 // PUT /api/posts/:id/repost — toggle repost
-router.put("/:id/repost", auth, async (req, res) => {
+router.put("/:id/repost", validateObjectIdParam("id"), auth, async (req, res, next) => {
   try {
     const post = await Post.findById(req.params.id);
     if (!post) return res.status(404).json({ error: "Post not found" });
@@ -236,12 +260,12 @@ router.put("/:id/repost", auth, async (req, res) => {
       reposted: post.reposts.includes(req.user._id),
     });
   } catch (err) {
-    res.status(500).json({ error: "Server error" });
+    next(err);
   }
 });
 
 // PUT /api/posts/:id/bookmark — toggle bookmark
-router.put("/:id/bookmark", auth, async (req, res) => {
+router.put("/:id/bookmark", validateObjectIdParam("id"), auth, async (req, res, next) => {
   try {
     const post = await Post.findById(req.params.id);
     if (!post) return res.status(404).json({ error: "Post not found" });
@@ -259,16 +283,19 @@ router.put("/:id/bookmark", auth, async (req, res) => {
       bookmarked: post.bookmarks.includes(req.user._id),
     });
   } catch (err) {
-    res.status(500).json({ error: "Server error" });
+    next(err);
   }
 });
 
 // PUT /api/posts/:id/vote — cast poll vote
-router.put("/:id/vote", auth, async (req, res) => {
+router.put("/:id/vote", validateObjectIdParam("id"), auth, async (req, res, next) => {
   try {
-    const { option } = req.body;
+    const option = Number.parseInt(req.body.option, 10);
     const post = await Post.findById(req.params.id);
     if (!post || !post.poll) return res.status(404).json({ error: "Poll not found" });
+    if (!Number.isInteger(option) || option < 0 || option >= post.poll.options.length) {
+      return res.status(400).json({ error: "Invalid poll option" });
+    }
 
     const userId = req.user._id.toString();
     const alreadyVoted = post.poll.votes.find((v) =>
@@ -284,12 +311,12 @@ router.put("/:id/vote", auth, async (req, res) => {
 
     res.json({ poll: { opts: post.poll.options, votes: post.poll.votes } });
   } catch (err) {
-    res.status(500).json({ error: "Server error" });
+    next(err);
   }
 });
 
 // DELETE /api/posts/:id
-router.delete("/:id", auth, async (req, res) => {
+router.delete("/:id", validateObjectIdParam("id"), auth, async (req, res, next) => {
   try {
     const post = await Post.findById(req.params.id);
     if (!post) return res.status(404).json({ error: "Post not found" });
@@ -299,22 +326,31 @@ router.delete("/:id", auth, async (req, res) => {
     await post.deleteOne();
     res.json({ success: true });
   } catch (err) {
-    res.status(500).json({ error: "Server error" });
+    next(err);
   }
 });
 
 // GET /api/posts/bookmarked/me — get user's bookmarked posts
-router.get("/bookmarked/me", auth, async (req, res) => {
+router.get("/bookmarked/me", auth, async (req, res, next) => {
   try {
+    const { page, limit, skip } = getPagination(req.query, {
+      defaultLimit: 20,
+      maxLimit: 50,
+    });
     const posts = await Post.find({ bookmarks: req.user._id })
       .sort({ createdAt: -1 })
+      .skip(skip)
+      .limit(limit)
       .populate("user", "name handle avatar verified")
       .populate("comments.user", "name handle avatar")
       .lean();
 
+    res.setHeader("X-Page", String(page));
+    res.setHeader("X-Limit", String(limit));
+    res.setHeader("X-Has-More", String(posts.length === limit));
     res.json(posts.map(transformPostLean));
   } catch (err) {
-    res.status(500).json({ error: "Server error" });
+    next(err);
   }
 });
 

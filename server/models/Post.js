@@ -33,4 +33,10 @@ postSchema.set("toJSON", {
   },
 });
 
+postSchema.index({ createdAt: -1 });
+postSchema.index({ user: 1, createdAt: -1 });
+postSchema.index({ likes: 1 });
+postSchema.index({ bookmarks: 1, createdAt: -1 });
+postSchema.index({ "comments.user": 1 });
+
 module.exports = mongoose.model("Post", postSchema);

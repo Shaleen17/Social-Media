@@ -24,4 +24,7 @@ storySchema.set("toJSON", {
   },
 });
 
+storySchema.index({ user: 1, createdAt: -1 });
+storySchema.index({ createdAt: -1 });
+
 module.exports = mongoose.model("Story", storySchema);

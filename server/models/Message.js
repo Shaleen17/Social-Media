@@ -64,4 +64,8 @@ conversationSchema.set("toJSON", {
   },
 });
 
+conversationSchema.index({ participants: 1, lastMessageAt: -1 });
+conversationSchema.index({ lastMessageAt: -1 });
+conversationSchema.index({ "messages.sender": 1 });
+
 module.exports = mongoose.model("Conversation", conversationSchema);
