@@ -1746,6 +1746,9 @@
       bio: document.getElementById("epBio")?.value?.trim() || "",
       location: document.getElementById("epLoc")?.value?.trim() || "",
       website: document.getElementById("epWeb")?.value?.trim() || "",
+      ...(typeof getProfileOptionalUpdates === "function"
+        ? getProfileOptionalUpdates()
+        : {}),
     };
 
     updateUser(CU.id || CU._id, updates);

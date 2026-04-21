@@ -2215,6 +2215,65 @@ video {
   stroke-linecap: round;
   stroke-linejoin: round;
 }
+.prof-extra {
+  margin: 8px 0 12px;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+.prof-extra-card {
+  padding: 10px 12px;
+  border: 1px solid var(--bd);
+  border-radius: 14px;
+  background: var(--bg2);
+  min-width: 0;
+}
+.prof-extra-card span {
+  display: block;
+  color: var(--t3);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+.prof-extra-card strong {
+  display: block;
+  margin-top: 4px;
+  color: var(--t);
+  font-size: 13px;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+.prof-extra-card a {
+  color: var(--p);
+  text-decoration: none;
+}
+.prof-extra-card a:hover {
+  text-decoration: underline;
+}
+.prof-extra-card.full {
+  grid-column: 1 / -1;
+}
+.prof-extra-chips {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.prof-extra-chip {
+  border: 1px solid var(--bd);
+  border-radius: 999px;
+  background: var(--bg2);
+  color: var(--t2);
+  font-size: 12px;
+  font-weight: 600;
+  padding: 5px 10px;
+}
+@media (max-width: 640px) {
+  .prof-extra {
+    grid-template-columns: 1fr;
+  }
+}
 .prof-stats {
   display: flex;
   gap: 20px;
@@ -6620,6 +6679,44 @@ video {
   stroke-linecap: round;
   stroke-linejoin: round;
   pointer-events: none;
+}
+.ep-extra-card {
+  margin-top: 4px;
+  padding: 14px;
+  border: 1px solid var(--bd);
+  border-radius: 16px;
+  background: linear-gradient(180deg, var(--bg2), var(--bg));
+}
+.ep-extra-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+.ep-extra-head strong {
+  display: block;
+  font-size: 15px;
+  color: var(--t);
+}
+.ep-extra-head span {
+  display: block;
+  margin-top: 3px;
+  font-size: 12px;
+  color: var(--t3);
+  line-height: 1.4;
+}
+.ep-extra-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0 12px;
+}
+.ep-extra-card .fg:last-child {
+  margin-bottom: 0;
+}
+@media (max-width: 640px) {
+  .ep-extra-grid {
+    grid-template-columns: 1fr;
+  }
 }
 .media-grid {
   display: grid;

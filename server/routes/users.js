@@ -16,6 +16,41 @@ function normalizeStringList(values) {
   )];
 }
 
+const PROFILE_EXTRA_FIELDS = [
+  "spiritualName",
+  "homeMandir",
+  "favoriteDeity",
+  "spiritualPath",
+  "interests",
+  "spokenLanguages",
+  "seva",
+  "yatraWishlist",
+  "sankalp",
+];
+
+const PROFILE_EXTRA_SELECT = PROFILE_EXTRA_FIELDS.join(" ");
+const USER_SEARCH_FIELDS = [
+  "name",
+  "handle",
+  "bio",
+  "location",
+  "website",
+  ...PROFILE_EXTRA_FIELDS,
+];
+
+function pickProfileExtras(user) {
+  return PROFILE_EXTRA_FIELDS.reduce((acc, field) => {
+    acc[field] = user?.[field] || "";
+    return acc;
+  }, {});
+}
+
+function applyProfileExtraUpdates(body, updates) {
+  PROFILE_EXTRA_FIELDS.forEach((field) => {
+    if (body[field] !== undefined) updates[field] = String(body[field] || "").trim();
+  });
+}
+
 // GET /api/users/search?q=query
 router.get("/search", optionalAuth, async (req, res) => {
   try {
@@ -23,12 +58,11 @@ router.get("/search", optionalAuth, async (req, res) => {
     if (!q) return res.json([]);
 
     const users = await User.find({
-      $or: [
-        { name: { $regex: q, $options: "i" } },
-        { handle: { $regex: q, $options: "i" } },
-      ],
+      $or: USER_SEARCH_FIELDS.map((field) => ({
+        [field]: { $regex: q, $options: "i" },
+      })),
     })
-      .select("name handle avatar bio verified followers")
+      .select(`name handle avatar bio location website verified followers ${PROFILE_EXTRA_SELECT}`)
       .limit(20)
       .lean();
 
@@ -39,6 +73,9 @@ router.get("/search", optionalAuth, async (req, res) => {
         handle: u.handle,
         avatar: u.avatar,
         bio: u.bio,
+        location: u.location || "",
+        website: u.website || "",
+        ...pickProfileExtras(u),
         verified: u.verified,
         followersCount: (u.followers || []).length,
       }))
@@ -52,7 +89,7 @@ router.get("/search", optionalAuth, async (req, res) => {
 router.get("/all", optionalAuth, async (req, res) => {
   try {
     const users = await User.find()
-      .select("name handle avatar bio verified followers following followedMandirs followedSants")
+      .select(`name handle avatar bio verified followers following followedMandirs followedSants location website joined ${PROFILE_EXTRA_SELECT}`)
       .limit(50)
       .lean();
 
@@ -63,6 +100,9 @@ router.get("/all", optionalAuth, async (req, res) => {
         handle: u.handle,
         avatar: u.avatar,
         bio: u.bio,
+        location: u.location || "",
+        website: u.website || "",
+        ...pickProfileExtras(u),
         verified: u.verified,
         followers: (u.followers || []).map((f) => f.toString()),
         following: (u.following || []).map((f) => f.toString()),
@@ -99,6 +139,7 @@ router.get("/:id", optionalAuth, async (req, res) => {
       bio: user.bio,
       location: user.location,
       website: user.website,
+      ...pickProfileExtras(user),
       avatar: user.avatar,
       banner: user.banner,
       verified: user.verified,
@@ -136,6 +177,7 @@ router.put("/:id", auth, async (req, res) => {
     if (bio !== undefined) updates.bio = bio;
     if (location !== undefined) updates.location = location;
     if (website !== undefined) updates.website = website;
+    applyProfileExtraUpdates(req.body, updates);
     if (avatar !== undefined) updates.avatar = avatar;
     if (banner !== undefined) updates.banner = banner;
     if (followedMandirs !== undefined) {

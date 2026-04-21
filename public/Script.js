@@ -292,6 +292,7 @@ function getUsersCacheSignature(users = getUsers()) {
         compactCachePart(user.name, 40),
         compactCachePart(user.handle, 32),
         compactCachePart(user.bio, 60),
+        compactCachePart(getUserProfileSearchText(user), 120),
         user.avatar ? 1 : 0,
         user.banner ? 1 : 0,
         Array.isArray(user.followers) ? user.followers.length : 0,
@@ -8714,6 +8715,129 @@ function vpro(uid) {
   curProfId = uid;
   gp("profile");
 }
+
+const PROFILE_OPTIONAL_FIELD_IDS = [
+  "SpiritualName",
+  "HomeMandir",
+  "FavoriteDeity",
+  "SpiritualPath",
+  "Interests",
+  "SpokenLanguages",
+  "Seva",
+  "YatraWishlist",
+  "Sankalp",
+];
+
+function getProfileInputValue(id) {
+  return document.getElementById(id)?.value?.trim() || "";
+}
+
+function getProfileOptionalUpdates() {
+  return {
+    spiritualName: getProfileInputValue("epSpiritualName"),
+    homeMandir: getProfileInputValue("epHomeMandir"),
+    favoriteDeity: getProfileInputValue("epFavoriteDeity"),
+    spiritualPath: getProfileInputValue("epSpiritualPath"),
+    interests: getProfileInputValue("epInterests"),
+    spokenLanguages: getProfileInputValue("epSpokenLanguages"),
+    seva: getProfileInputValue("epSeva"),
+    yatraWishlist: getProfileInputValue("epYatraWishlist"),
+    sankalp: getProfileInputValue("epSankalp"),
+  };
+}
+
+function setProfileOptionalInputs(user) {
+  const u = user || {};
+  PROFILE_OPTIONAL_FIELD_IDS.forEach((suffix) => {
+    const key = suffix.charAt(0).toLowerCase() + suffix.slice(1);
+    const el = document.getElementById("ep" + suffix);
+    if (el) el.value = u[key] || "";
+  });
+}
+
+function splitProfileList(value) {
+  return String(value || "")
+    .split(",")
+    .map((item) => item.trim())
+    .filter(Boolean)
+    .slice(0, 8);
+}
+
+function getSafeProfileUrl(raw) {
+  const value = String(raw || "").trim();
+  if (!value) return "";
+  const withProtocol = /^https?:\/\//i.test(value) ? value : `https://${value}`;
+  try {
+    const url = new URL(withProtocol);
+    return ["http:", "https:"].includes(url.protocol) ? url.href : "";
+  } catch {
+    return "";
+  }
+}
+
+function renderProfileOptionalDetails(user) {
+  if (!user) return "";
+  const websiteUrl = getSafeProfileUrl(user.website);
+  const detailItems = [
+    { label: "Spiritual name", value: user.spiritualName },
+    { label: "Home mandir", value: user.homeMandir },
+    { label: "Favorite deity", value: user.favoriteDeity },
+    { label: "Path", value: user.spiritualPath },
+    { label: "Languages", value: user.spokenLanguages },
+    { label: "Seva", value: user.seva },
+    { label: "Yatra wishlist", value: user.yatraWishlist },
+    {
+      label: "Website",
+      value: websiteUrl
+        ? `<a href="${websiteUrl}" target="_blank" rel="noopener noreferrer">${esc(user.website)}</a>`
+        : "",
+      html: true,
+    },
+    { label: "Current sankalp", value: user.sankalp, full: true },
+  ].filter((item) => String(item.value || "").trim());
+
+  const interestChips = splitProfileList(user.interests)
+    .map((item) => `<span class="prof-extra-chip">${esc(item)}</span>`)
+    .join("");
+
+  if (!detailItems.length && !interestChips) return "";
+
+  return `<div class="prof-extra" id="prExtra">${detailItems
+    .map(
+      (item) =>
+        `<div class="prof-extra-card${item.full ? " full" : ""}"><span>${esc(item.label)}</span><strong>${item.html ? item.value : esc(item.value)}</strong></div>`,
+    )
+    .join("")}${interestChips ? `<div class="prof-extra-chips">${interestChips}</div>` : ""}</div>`;
+}
+
+function mountProfileOptionalDetails(user) {
+  const old = document.getElementById("prExtra");
+  if (old) old.remove();
+  const prMeta = document.getElementById("prMeta");
+  if (!prMeta) return;
+  const html = renderProfileOptionalDetails(user);
+  if (html) prMeta.insertAdjacentHTML("afterend", html);
+}
+
+function getUserProfileSearchText(user) {
+  if (!user) return "";
+  return [
+    user.name,
+    user.handle,
+    user.bio,
+    user.location,
+    user.website,
+    user.spiritualName,
+    user.homeMandir,
+    user.favoriteDeity,
+    user.spiritualPath,
+    user.interests,
+    user.spokenLanguages,
+    user.seva,
+    user.yatraWishlist,
+    user.sankalp,
+  ].join(" ");
+}
 function renderGuestProfilePrompt(
   title = "Sign in to view your profile",
   subtitle = "Create an account to manage your posts, followers, bookmarks, and spiritual journey.",
@@ -8744,6 +8868,7 @@ function renderGuestProfilePrompt(
   if (prBio) prBio.textContent = subtitle;
   const prMeta = document.getElementById("prMeta");
   if (prMeta) prMeta.innerHTML = "";
+  mountProfileOptionalDetails(null);
   const prStats = document.getElementById("prStats");
   if (prStats) {
     prStats.innerHTML =
@@ -8798,6 +8923,7 @@ function renderProfileAccessState(
   if (prMeta) {
     prMeta.innerHTML = `<span><svg viewBox="0 0 24 24"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg>${esc(postsLabel)}</span>`;
   }
+  mountProfileOptionalDetails(null);
   const prStats = document.getElementById("prStats");
   if (prStats) {
     prStats.innerHTML = `<div class="ps"><strong>${followingItems.length}</strong> <span>Following</span></div><div class="ps"><strong>${visibleFollowers.length}</strong> <span>Followers</span></div><div class="ps"><strong>${totalPosts}</strong> <span>Posts</span></div>`;
@@ -8891,6 +9017,7 @@ function renderProfile(uid) {
   }
   const prMeta = document.getElementById("prMeta");
   if (prMeta) prMeta.innerHTML = meta;
+  mountProfileOptionalDetails(u);
   const myPosts = filterVisiblePosts(getPosts().filter((p) => p.uid === u.id));
   const phName = document.getElementById("phName");
   if (phName) phName.textContent = u.name;
@@ -9025,6 +9152,7 @@ function openEP() {
   if (epBio) epBio.value = CU.bio || "";
   if (epLoc) epLoc.value = CU.location || "";
   if (epWeb) epWeb.value = CU.website || "";
+  setProfileOptionalInputs(CU);
   const ini = getIni(CU.name);
   if (epAv)
     epAv.innerHTML = CU.avatar ? `<img src="${CU.avatar}" alt="">` : ini;
@@ -9046,6 +9174,7 @@ function saveEP() {
     bio: document.getElementById("epBio")?.value?.trim() || "",
     location: document.getElementById("epLoc")?.value?.trim() || "",
     website: document.getElementById("epWeb")?.value?.trim() || "",
+    ...getProfileOptionalUpdates(),
   });
   closeOvl("epOvl");
   renderProfile(CU.id);
@@ -9380,14 +9509,14 @@ function renderSearchPeopleResults(query) {
   const users = filterDiscoverableUsers(getUsers())
     .map((u) => ({
       data: u,
-      score: getSearchScore(query, [u.name, u.handle, u.bio, u.location]),
+      score: getSearchScore(query, [getUserProfileSearchText(u)]),
     }))
     .filter((item) => item.score >= 0)
     .sort((a, b) => b.score - a.score)
     .map(({ data: u }) => {
       const ini = getIni(u.name);
       const isFollowing = CU && (CU.following || []).includes(u.id);
-      return `<div class="s-result" onclick="vpro('${u.id}')"><div class="av av40">${u.avatar ? `<img src="${u.avatar}" alt="">` : ini}</div><div class="search-result-main"><div class="search-result-top"><div class="who-name">${esc(u.name)}${u.verified ? " 🔱" : ""}</div><span class="search-result-badge">Devotee</span></div><div class="who-hdl">@${esc(u.handle)}</div><div class="search-result-copy">${esc(u.bio || "Community profile")}</div></div><button class="btn btn-sm ${isFollowing ? "btn-o" : "btn-p"}" onclick="event.stopPropagation();toggleFollow('${u.id}',this)">${isFollowing ? "Following" : "Follow"}</button></div>`;
+      return `<div class="s-result" onclick="vpro('${u.id}')"><div class="av av40">${u.avatar ? `<img src="${u.avatar}" alt="">` : ini}</div><div class="search-result-main"><div class="search-result-top"><div class="who-name">${esc(u.name)}${u.verified ? " 🔱" : ""}</div><span class="search-result-badge">Devotee</span></div><div class="who-hdl">@${esc(u.handle)}</div><div class="search-result-copy">${esc(u.bio || u.spiritualPath || u.interests || "Community profile")}</div></div><button class="btn btn-sm ${isFollowing ? "btn-o" : "btn-p"}" onclick="event.stopPropagation();toggleFollow('${u.id}',this)">${isFollowing ? "Following" : "Follow"}</button></div>`;
     });
 
   const mandirs = Object.values(MANDIR_CONFIG)
@@ -9619,14 +9748,14 @@ function renderSearchUserRows(query, limit = Infinity) {
   return sortSearchMatches(
     filterDiscoverableUsers(getUsers()).map((u) => ({
       data: u,
-      score: getSearchScore(query, [u.name, u.handle, u.bio, u.location]),
+      score: getSearchScore(query, [getUserProfileSearchText(u)]),
     })),
   )
     .slice(0, limit)
     .map(({ data: u }) => {
       const ini = getIni(u.name);
       const isFollowing = CU && (CU.following || []).includes(u.id);
-      return `<div class="s-result" onclick="vpro('${u.id}')"><div class="av av40">${u.avatar ? `<img src="${u.avatar}" alt="">` : ini}</div><div class="search-result-main"><div class="search-result-top"><div class="who-name">${esc(u.name)}${u.verified ? " 🔱" : ""}</div><span class="search-result-badge">User</span></div><div class="who-hdl">@${esc(u.handle)}</div><div class="search-result-copy">${esc(u.bio || "Community profile")}</div></div><button class="btn btn-sm ${isFollowing ? "btn-o" : "btn-p"}" onclick="event.stopPropagation();toggleFollow('${u.id}',this)">${isFollowing ? "Following" : "Follow"}</button></div>`;
+      return `<div class="s-result" onclick="vpro('${u.id}')"><div class="av av40">${u.avatar ? `<img src="${u.avatar}" alt="">` : ini}</div><div class="search-result-main"><div class="search-result-top"><div class="who-name">${esc(u.name)}${u.verified ? " 🔱" : ""}</div><span class="search-result-badge">User</span></div><div class="who-hdl">@${esc(u.handle)}</div><div class="search-result-copy">${esc(u.bio || u.spiritualPath || u.interests || "Community profile")}</div></div><button class="btn btn-sm ${isFollowing ? "btn-o" : "btn-p"}" onclick="event.stopPropagation();toggleFollow('${u.id}',this)">${isFollowing ? "Following" : "Follow"}</button></div>`;
     });
 }
 
