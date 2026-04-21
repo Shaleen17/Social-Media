@@ -282,7 +282,7 @@ async function translateOneWithMyMemory(text, source, target) {
 }
 
 async function translateWithMyMemory(texts, source, target) {
-  const CONCURRENCY = 3; // MyMemory rate limit protection
+  const CONCURRENCY = 5; // Increased from 3 - still safe within MyMemory rate limits
   const results = new Array(texts.length).fill("");
 
   for (let i = 0; i < texts.length; i += CONCURRENCY) {

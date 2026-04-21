@@ -2396,7 +2396,7 @@ const APP_TRANSLATION_CODES = Array.from(
   ),
 );
 const APP_TRANSLATION_STATE = {
-  ready: false,
+  ready: true,  // Set true at boot so MutationObserver captures all DOM changes
   applyTimer: 0,
   pauseTimer: 0,
   observer: null,
@@ -2418,7 +2418,7 @@ const APP_TRANSLATION_STATE = {
 };
 const APP_TRANSLATION_ATTRS = ["placeholder", "title", "aria-label", "alt", "value"];
 const APP_TRANSLATION_BATCH_SEPARATOR = "\n<ts-sep-918273645/>\n";
-const APP_TRANSLATION_PACK_VERSION = "20260419-translation-quality-fix-1";
+const APP_TRANSLATION_PACK_VERSION = "20260421-i18n-corruption-fix-1";
 const APP_TRANSLATION_ASCII_ONLY_FALLBACK_LANGUAGES = new Set([
   "hi",
   "bn",
@@ -3093,7 +3093,7 @@ async function translateOneMyMemory(text, targetLang, sourceLang = "en") {
 }
 
 async function translateBatchMyMemory(texts, targetLang, sourceLanguage = "auto") {
-  const CONCURRENCY = 3;
+  const CONCURRENCY = 5; // Increased from 3 for faster batching
   const results = new Array(texts.length).fill("");
 
   for (const group of groupTextsByDetectedSource(texts, sourceLanguage)) {
@@ -3262,7 +3262,7 @@ function scheduleQueuedTranslationRefresh(languageCode = getCurrentLanguageCode(
     return;
   }
 
-  const wait = Math.max(APP_TRANSLATION_STATE.pauseUntil - Date.now(), 0) + 120;
+  const wait = Math.max(APP_TRANSLATION_STATE.pauseUntil - Date.now(), 0) + 60;
   APP_TRANSLATION_STATE.pauseTimer = window.setTimeout(() => {
     APP_TRANSLATION_STATE.pauseTimer = 0;
     const activeCode =
@@ -3359,11 +3359,11 @@ async function syncGoogleTranslate(languageCode, force = false) {
   window.clearTimeout(APP_TRANSLATION_STATE.pauseTimer);
   APP_TRANSLATION_STATE.pauseTimer = 0;
   APP_TRANSLATION_STATE.pendingRefresh = false;
-  APP_TRANSLATION_STATE.pauseUntil = Date.now() + 900;
+  APP_TRANSLATION_STATE.pauseUntil = Date.now() + 300; // Reduced from 900ms for faster page-nav re-translation
 
   if (nextCode === "en") {
     restoreTranslatedDom();
-    APP_TRANSLATION_STATE.pauseUntil = Date.now() + 400;
+    APP_TRANSLATION_STATE.pauseUntil = Date.now() + 150;
     APP_TRANSLATION_STATE.pendingRefresh = false;
     return;
   }
@@ -3419,7 +3419,7 @@ async function syncGoogleTranslate(languageCode, force = false) {
   }
 
   APP_TRANSLATION_STATE.lastAppliedCode = nextCode;
-  APP_TRANSLATION_STATE.pauseUntil = Date.now() + 700;
+  APP_TRANSLATION_STATE.pauseUntil = Date.now() + 250; // Reduced from 700ms
   if (APP_TRANSLATION_STATE.pendingRefresh) {
     scheduleQueuedTranslationRefresh(nextCode);
   }
@@ -3757,19 +3757,15 @@ function updateMoreMenuSummaries() {
   }
 }
 
-function applyLanguagePreference() {
+function applyLanguagePreference(options = {}) {
   const prefs = getMorePrefs();
   const selectedLanguage = getMoreLanguageOption(prefs.language);
   document.documentElement.lang = selectedLanguage.htmlLang || "en";
   document.documentElement.setAttribute("data-app-language", selectedLanguage.id);
   updateMoreMenuSummaries();
   primeLanguageTranslation(selectedLanguage.htmlLang || "en");
-  scheduleGoogleTranslate({
-    languageCode: selectedLanguage.htmlLang || "en",
-    force:
-      APP_TRANSLATION_STATE.lastAppliedCode !==
-      (selectedLanguage.htmlLang || "en"),
-  });
+  const needsForce = !!options.immediate || APP_TRANSLATION_STATE.lastAppliedCode !== (selectedLanguage.htmlLang || "en");
+  scheduleGoogleTranslate({ languageCode: selectedLanguage.htmlLang || "en", force: needsForce, immediate: !!options.immediate });
 }
 
 function refreshMorePreferencePages() {
@@ -3789,12 +3785,7 @@ function setAppLanguage(languageId) {
   const prefs = getMorePrefs();
   prefs.language = getMoreLanguageOption(languageId).id;
   saveMorePrefs(prefs);
-  applyLanguagePreference();
-  scheduleGoogleTranslate({
-    languageCode: getMoreLanguageOption(prefs.language).htmlLang || "en",
-    force: true,
-    immediate: true,
-  });
+  applyLanguagePreference({ immediate: true }); // single immediate call
   const selectedLanguage = getMoreLanguageOption(prefs.language);
   MC.success(`${selectedLanguage.label} selected for this device.`);
 }
@@ -5013,12 +5004,7 @@ function gp(page) {
     }
     if (!isReelsPage) pauseAllReels();
     if (renderers[page]) renderers[page]();
-    applyLanguagePreference();
-    scheduleGoogleTranslate({
-      languageCode: getCurrentLanguageCode(),
-      force: getCurrentLanguageCode() !== "en",
-      delay: 140,
-    });
+    if (getCurrentLanguageCode() !== "en") { applyLanguagePreference(); }
     window.scrollTo({
       top: 0,
       behavior: isReelsPage || REELS_PREFERS_REDUCED_MOTION ? "auto" : "smooth",

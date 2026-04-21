@@ -255,7 +255,7 @@ if (!process.env.VERCEL) {
       } catch (err) {
         console.error(`[Keep-Alive] Ping setup error:`, err.message);
       }
-    }, 15 * 60 * 1000); // 15 minutes
+    }, 13 * 60 * 1000); // 13 min -- keeps Render free tier awake
   });
 
   // Verify SMTP on startup only when explicitly enabled in env.
