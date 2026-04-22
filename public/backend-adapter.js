@@ -317,7 +317,7 @@
 
   let _chatPushSetupPromise = null;
   let _pendingOpenChatId = consumeOpenChatParam();
-  const APP_ASSET_VERSION = "20260422-reel-library-1";
+  const APP_ASSET_VERSION = "20260422-webrtc-socket-signaling-1";
   let _appSwPromise = null;
   let _deferredInstallPrompt = null;
   let _installPromptBound = false;
@@ -3424,18 +3424,29 @@
 
       if (renderedFromCache) {
         renderCurrentPageShell();
+        if (typeof window.handlePendingReelRoute === "function") {
+          window.handlePendingReelRoute();
+        }
         if (typeof window.hideBrandSplash === "function") {
           window.hideBrandSplash();
         }
 
         loadAllData()
           .then((loaded) => {
-            if (loaded) renderCurrentPageShell();
+            if (loaded) {
+              renderCurrentPageShell();
+              if (typeof window.handlePendingReelRoute === "function") {
+                window.handlePendingReelRoute();
+              }
+            }
           })
           .catch(() => {});
       } else {
         await loadAllData();
         renderCurrentPageShell();
+        if (typeof window.handlePendingReelRoute === "function") {
+          window.handlePendingReelRoute();
+        }
         if (typeof window.hideBrandSplash === "function") {
           window.hideBrandSplash();
         }

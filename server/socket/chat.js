@@ -131,6 +131,42 @@ module.exports = function setupSocket(io) {
     return Array.from(onlineUsers.keys());
   }
 
+  const WEBRTC_EVENTS = {
+    START: "webrtc:call:start",
+    INCOMING: "webrtc:call:incoming",
+    ACCEPT: "webrtc:call:accept",
+    ACCEPTED: "webrtc:call:accepted",
+    REJECT: "webrtc:call:reject",
+    REJECTED: "webrtc:call:rejected",
+    END: "webrtc:call:end",
+    ENDED: "webrtc:call:ended",
+    ICE: "webrtc:ice-candidate",
+    RINGING: "webrtc:call:ringing",
+  };
+
+  const LEGACY_WEBRTC_EVENTS = {
+    START: "callUser",
+    ACCEPT: "answerCall",
+    ACCEPTED: "callAccepted",
+    REJECT: "rejectCall",
+    REJECTED: "callRejected",
+    END: "endCall",
+    ENDED: "callEnded",
+    ICE: "iceCandidate",
+    RINGING: "callRinging",
+  };
+
+  function ack(ackFn, payload) {
+    if (typeof ackFn === "function") ackFn(payload);
+  }
+
+  function emitSignal(targetUserId, canonicalEvent, legacyEvent, canonicalPayload, legacyPayload = canonicalPayload) {
+    if (!targetUserId) return;
+    const room = targetUserId.toString();
+    io.to(room).emit(canonicalEvent, canonicalPayload);
+    io.to(room).emit(legacyEvent, legacyPayload);
+  }
+
   io.on("connection", (socket) => {
     console.log("Socket connected:", socket.id);
 
@@ -249,90 +285,154 @@ module.exports = function setupSocket(io) {
         });
     });
 
-    // WebRTC signaling
-    socket.on("callUser", (data, ack) => {
-      if (!data?.userToCall || !data?.from || !data?.signalData) {
-        if (typeof ack === "function") {
-          ack({ ok: false, error: "Invalid call payload" });
-        }
+    // WebRTC signaling. New explicit events are used by the current client,
+    // while legacy event names stay registered for cached/older browsers.
+    function handleCallStart(data, ackFn) {
+      const targetUserId = data?.to || data?.userToCall;
+      const callerId = data?.from || socket.userId;
+      const signal = data?.signal || data?.signalData;
+
+      if (!targetUserId || !callerId || !signal) {
+        ack(ackFn, { ok: false, error: "Invalid call payload" });
         return;
       }
 
       console.log(
-        `callUser: ${data.from} -> ${data.userToCall} (online: ${isOnline(data.userToCall)})`
+        `webrtc:call:start ${callerId} -> ${targetUserId} (online: ${isOnline(targetUserId)})`
       );
 
-      if (!isOnline(data.userToCall)) {
-        socket.emit("callRejected", { reason: "User is offline" });
-        if (typeof ack === "function") {
-          ack({ ok: false, error: "User is offline" });
-        }
+      if (!isOnline(targetUserId)) {
+        const rejectedPayload = {
+          callId: data.callId || "",
+          reason: "User is offline",
+        };
+        socket.emit(WEBRTC_EVENTS.REJECTED, rejectedPayload);
+        socket.emit(LEGACY_WEBRTC_EVENTS.REJECTED, rejectedPayload);
+        ack(ackFn, { ok: false, error: "User is offline" });
         return;
       }
 
-      io.to(data.userToCall).emit("callUser", {
-        signal: data.signalData,
-        from: data.from,
-        name: data.name,
-        isVideo: data.isVideo,
-      });
+      const incomingPayload = {
+        callId: data.callId || "",
+        signal,
+        signalData: signal,
+        from: callerId,
+        name: data.name || "Someone",
+        avatar: data.avatar || "",
+        isVideo: !!data.isVideo,
+      };
 
-      socket.emit("callRinging", { to: data.userToCall });
-      if (typeof ack === "function") {
-        ack({ ok: true, ringing: true, to: data.userToCall });
-      }
-    });
+      emitSignal(
+        targetUserId,
+        WEBRTC_EVENTS.INCOMING,
+        LEGACY_WEBRTC_EVENTS.START,
+        incomingPayload,
+        incomingPayload
+      );
 
-    socket.on("answerCall", (data, ack) => {
-      if (!data?.to || !data?.signal) {
-        if (typeof ack === "function") {
-          ack({ ok: false, error: "Invalid answer payload" });
-        }
+      const ringingPayload = { callId: data.callId || "", to: targetUserId };
+      socket.emit(WEBRTC_EVENTS.RINGING, ringingPayload);
+      socket.emit(LEGACY_WEBRTC_EVENTS.RINGING, ringingPayload);
+      ack(ackFn, { ok: true, ringing: true, to: targetUserId });
+    }
+
+    function handleCallAccept(data, ackFn) {
+      const targetUserId = data?.to || data?.userToCall;
+      const signal = data?.signal || data?.signalData;
+
+      if (!targetUserId || !signal) {
+        ack(ackFn, { ok: false, error: "Invalid answer payload" });
         return;
       }
 
-      io.to(data.to).emit("callAccepted", data.signal);
-      if (typeof ack === "function") {
-        ack({ ok: true });
-      }
-    });
+      const acceptedPayload = {
+        callId: data.callId || "",
+        signal,
+      };
+      emitSignal(
+        targetUserId,
+        WEBRTC_EVENTS.ACCEPTED,
+        LEGACY_WEBRTC_EVENTS.ACCEPTED,
+        acceptedPayload,
+        signal
+      );
+      ack(ackFn, { ok: true });
+    }
 
-    socket.on("iceCandidate", (data, ack) => {
-      if (!data?.to || !data?.candidate) {
-        if (typeof ack === "function") {
-          ack({ ok: false, error: "Invalid ICE payload" });
-        }
+    function handleIceCandidate(data, ackFn) {
+      const targetUserId = data?.to || data?.userToCall;
+      const candidate = data?.candidate;
+
+      if (!targetUserId || !candidate) {
+        ack(ackFn, { ok: false, error: "Invalid ICE payload" });
         return;
       }
 
-      io.to(data.to).emit("iceCandidate", data.candidate);
-      if (typeof ack === "function") {
-        ack({ ok: true });
-      }
-    });
+      const icePayload = {
+        callId: data.callId || "",
+        candidate,
+      };
+      emitSignal(
+        targetUserId,
+        WEBRTC_EVENTS.ICE,
+        LEGACY_WEBRTC_EVENTS.ICE,
+        icePayload,
+        candidate
+      );
+      ack(ackFn, { ok: true });
+    }
 
-    socket.on("rejectCall", (data, ack) => {
-      if (!data?.to) {
-        if (typeof ack === "function") {
-          ack({ ok: false, error: "Invalid reject payload" });
-        }
+    function handleCallReject(data, ackFn) {
+      const targetUserId = data?.to || data?.userToCall;
+
+      if (!targetUserId) {
+        ack(ackFn, { ok: false, error: "Invalid reject payload" });
         return;
       }
 
-      io.to(data.to).emit("callRejected");
-      if (typeof ack === "function") {
-        ack({ ok: true });
-      }
-    });
+      const rejectedPayload = {
+        callId: data.callId || "",
+        reason: data.reason || "Call Rejected",
+      };
+      emitSignal(
+        targetUserId,
+        WEBRTC_EVENTS.REJECTED,
+        LEGACY_WEBRTC_EVENTS.REJECTED,
+        rejectedPayload,
+        rejectedPayload
+      );
+      ack(ackFn, { ok: true });
+    }
 
-    socket.on("endCall", (data, ack) => {
-      if (data.to) {
-        io.to(data.to).emit("callEnded");
+    function handleCallEnd(data, ackFn) {
+      const targetUserId = data?.to || data?.userToCall;
+
+      if (targetUserId) {
+        const endedPayload = {
+          callId: data.callId || "",
+          reason: data.reason || "Call Ended",
+        };
+        emitSignal(
+          targetUserId,
+          WEBRTC_EVENTS.ENDED,
+          LEGACY_WEBRTC_EVENTS.ENDED,
+          endedPayload,
+          endedPayload
+        );
       }
-      if (typeof ack === "function") {
-        ack({ ok: true });
-      }
-    });
+      ack(ackFn, { ok: true });
+    }
+
+    socket.on(WEBRTC_EVENTS.START, handleCallStart);
+    socket.on(LEGACY_WEBRTC_EVENTS.START, handleCallStart);
+    socket.on(WEBRTC_EVENTS.ACCEPT, handleCallAccept);
+    socket.on(LEGACY_WEBRTC_EVENTS.ACCEPT, handleCallAccept);
+    socket.on(WEBRTC_EVENTS.ICE, handleIceCandidate);
+    socket.on(LEGACY_WEBRTC_EVENTS.ICE, handleIceCandidate);
+    socket.on(WEBRTC_EVENTS.REJECT, handleCallReject);
+    socket.on(LEGACY_WEBRTC_EVENTS.REJECT, handleCallReject);
+    socket.on(WEBRTC_EVENTS.END, handleCallEnd);
+    socket.on(LEGACY_WEBRTC_EVENTS.END, handleCallEnd);
 
     socket.on("disconnect", () => {
       const userId = socket.userId;

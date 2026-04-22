@@ -9,6 +9,33 @@ const WebRTCClient = (() => {
   let pendingIceCandidates = [];
   let boundSocket = null;
   let removeSocketReadyListener = null;
+  let currentCallId = "";
+  const seenSignalEvents = new Map();
+
+  const SIGNAL_EVENTS = {
+    START: "webrtc:call:start",
+    INCOMING: "webrtc:call:incoming",
+    ACCEPT: "webrtc:call:accept",
+    ACCEPTED: "webrtc:call:accepted",
+    REJECT: "webrtc:call:reject",
+    REJECTED: "webrtc:call:rejected",
+    END: "webrtc:call:end",
+    ENDED: "webrtc:call:ended",
+    ICE: "webrtc:ice-candidate",
+    RINGING: "webrtc:call:ringing",
+  };
+
+  const LEGACY_SIGNAL_EVENTS = {
+    START: "callUser",
+    ACCEPT: "answerCall",
+    ACCEPTED: "callAccepted",
+    REJECT: "rejectCall",
+    REJECTED: "callRejected",
+    END: "endCall",
+    ENDED: "callEnded",
+    ICE: "iceCandidate",
+    RINGING: "callRinging",
+  };
 
   // Call State
   let isInCall = false;
@@ -95,27 +122,35 @@ const WebRTCClient = (() => {
     bindSocketListeners(socket);
   }
 
+  function bindSignalHandler(socket, events, handler, method = "on") {
+    events.forEach((eventName) => {
+      if (typeof socket?.[method] === "function") {
+        socket[method](eventName, handler);
+      }
+    });
+  }
+
   function bindSocketListeners(socket) {
     if (!socket) return;
     // Rebind if Socket.io recreated the socket instance after reconnect/login
     if (boundSocket === socket) return;
     if (boundSocket) {
-      boundSocket.off("callUser", handleIncomingCall);
-      boundSocket.off("callAccepted", handleCallAccepted);
-      boundSocket.off("iceCandidate", handleIceCandidate);
-      boundSocket.off("callRejected", handleCallRejected);
-      boundSocket.off("callEnded", handleCallEnded);
-      boundSocket.off("callRinging", handleCallRinging);
+      bindSignalHandler(boundSocket, [SIGNAL_EVENTS.INCOMING, LEGACY_SIGNAL_EVENTS.START], handleIncomingCall, "off");
+      bindSignalHandler(boundSocket, [SIGNAL_EVENTS.ACCEPTED, LEGACY_SIGNAL_EVENTS.ACCEPTED], handleCallAccepted, "off");
+      bindSignalHandler(boundSocket, [SIGNAL_EVENTS.ICE, LEGACY_SIGNAL_EVENTS.ICE], handleIceCandidate, "off");
+      bindSignalHandler(boundSocket, [SIGNAL_EVENTS.REJECTED, LEGACY_SIGNAL_EVENTS.REJECTED], handleCallRejected, "off");
+      bindSignalHandler(boundSocket, [SIGNAL_EVENTS.ENDED, LEGACY_SIGNAL_EVENTS.ENDED], handleCallEnded, "off");
+      bindSignalHandler(boundSocket, [SIGNAL_EVENTS.RINGING, LEGACY_SIGNAL_EVENTS.RINGING], handleCallRinging, "off");
     }
 
     boundSocket = socket;
 
-    socket.on("callUser", handleIncomingCall);
-    socket.on("callAccepted", handleCallAccepted);
-    socket.on("iceCandidate", handleIceCandidate);
-    socket.on("callRejected", handleCallRejected);
-    socket.on("callEnded", handleCallEnded);
-    socket.on("callRinging", handleCallRinging);
+    bindSignalHandler(socket, [SIGNAL_EVENTS.INCOMING, LEGACY_SIGNAL_EVENTS.START], handleIncomingCall);
+    bindSignalHandler(socket, [SIGNAL_EVENTS.ACCEPTED, LEGACY_SIGNAL_EVENTS.ACCEPTED], handleCallAccepted);
+    bindSignalHandler(socket, [SIGNAL_EVENTS.ICE, LEGACY_SIGNAL_EVENTS.ICE], handleIceCandidate);
+    bindSignalHandler(socket, [SIGNAL_EVENTS.REJECTED, LEGACY_SIGNAL_EVENTS.REJECTED], handleCallRejected);
+    bindSignalHandler(socket, [SIGNAL_EVENTS.ENDED, LEGACY_SIGNAL_EVENTS.ENDED], handleCallEnded);
+    bindSignalHandler(socket, [SIGNAL_EVENTS.RINGING, LEGACY_SIGNAL_EVENTS.RINGING], handleCallRinging);
     
     console.log("WebRTC Client: Socket listeners attached successfully.");
   }
@@ -209,11 +244,59 @@ const WebRTCClient = (() => {
     };
   }
 
+  function createCallId(peerId) {
+    const selfId =
+      typeof SocketClient !== "undefined" && typeof SocketClient.getUserId === "function"
+        ? SocketClient.getUserId()
+        : "anonymous";
+    return `${selfId || "anonymous"}-${peerId || "peer"}-${Date.now()}-${Math.random()
+      .toString(36)
+      .slice(2, 8)}`;
+  }
+
+  function getSessionDescription(payload) {
+    if (!payload) return null;
+    return payload.signal || payload.signalData || payload;
+  }
+
+  function getCandidate(payload) {
+    if (!payload) return null;
+    return payload.candidate || payload;
+  }
+
+  function isDuplicateSignal(kind, payload) {
+    const now = Date.now();
+    for (const [key, seenAt] of seenSignalEvents) {
+      if (now - seenAt > 8000) seenSignalEvents.delete(key);
+    }
+
+    const signal = getSessionDescription(payload);
+    const candidate = getCandidate(payload);
+    const key = signal?.sdp
+      ? `${kind}:sdp:${signal.sdp.slice(0, 160)}`
+      : candidate?.candidate
+        ? `${kind}:ice:${candidate.candidate.slice(0, 160)}`
+        : [
+            kind,
+            payload?.callId || "",
+            payload?.from || payload?.to || "",
+            payload?.reason || "",
+          ].filter(Boolean).join(":") || `${kind}:${JSON.stringify(payload).slice(0, 120)}`;
+
+    if (seenSignalEvents.has(key) && now - seenSignalEvents.get(key) < 1500) {
+      return true;
+    }
+
+    seenSignalEvents.set(key, now);
+    return false;
+  }
+
   // 1. Initializer: Start a call (from UI)
   async function startCall(userToCallUid, userName, userAvatar, withVideo) {
     if (isInCall) return MC?.info("You are already in a call");
     
     currentCallUser = { id: userToCallUid, name: userName, avatar: userAvatar };
+    currentCallId = createCallId(userToCallUid);
     isVideoEnabled = withVideo;
     isCaller = true;
     
@@ -226,11 +309,15 @@ const WebRTCClient = (() => {
       const offer = await peerConnection.createOffer();
       await peerConnection.setLocalDescription(offer);
       
-      await emitWithAck("callUser", {
+      await emitWithAck(SIGNAL_EVENTS.START, {
+        callId: currentCallId,
+        to: userToCallUid,
         userToCall: userToCallUid,
+        signal: serializeSessionDescription(offer),
         signalData: serializeSessionDescription(offer),
         from: SocketClient.getUserId(),
         name: (typeof CU !== "undefined" && CU) ? CU.name : "Someone",
+        avatar: (typeof CU !== "undefined" && CU) ? (CU.avatar || CU.profilePic || "") : "",
         isVideo: withVideo,
       }, { requireAck: false, timeoutMs: 5000, fallbackResolveMs: 1200 });
       if (els.statusTxt) els.statusTxt.textContent = "Ringing...";
@@ -254,21 +341,35 @@ const WebRTCClient = (() => {
   // 2. Incoming Call Handler
   let pendingOffer = null;
   function handleIncomingCall(data) {
-    console.log("WebRTC: Received incoming call from", data.name);
+    const incomingSignal = getSessionDescription(data);
+    const callerId = data?.from || data?.callerId;
+    const callId = data?.callId || "";
+    const callerName = data?.name || "Someone";
+
+    if (!incomingSignal || !callerId || isDuplicateSignal("incoming", data)) {
+      return;
+    }
+
+    console.log("WebRTC: Received incoming call from", callerName);
     // Add visual toast debug
-    if (typeof MC !== "undefined") MC.info("Signaling: Incoming call from " + (data.name || "Someone"));
+    if (typeof MC !== "undefined") MC.info("Signaling: Incoming call from " + callerName);
     
     // data: { signal, from, name, isVideo }
     if (isInCall) {
       console.log("WebRTC: Busy, rejecting call");
-      emitWithAck("rejectCall", { to: data.from }, { requireAck: false, timeoutMs: 3000, fallbackResolveMs: 800 }).catch(() => {});
+      emitWithAck(SIGNAL_EVENTS.REJECT, {
+        to: callerId,
+        callId,
+        reason: "User is busy",
+      }, { requireAck: false, timeoutMs: 3000, fallbackResolveMs: 800 }).catch(() => {});
       return;
     }
     
-    currentCallUser = { id: data.from, name: data.name, avatar: "" };
-    isVideoEnabled = data.isVideo;
+    currentCallId = callId || createCallId(callerId);
+    currentCallUser = { id: callerId, name: callerName, avatar: data.avatar || "" };
+    isVideoEnabled = !!data.isVideo;
     isCaller = false;
-    pendingOffer = data.signal;
+    pendingOffer = incomingSignal;
     pendingIceCandidates = [];
     
     showOverlay("Incoming Call...", currentCallUser, false);
@@ -290,8 +391,9 @@ const WebRTCClient = (() => {
       const answer = await peerConnection.createAnswer();
       await peerConnection.setLocalDescription(answer);
       
-      await emitWithAck("answerCall", {
+      await emitWithAck(SIGNAL_EVENTS.ACCEPT, {
         to: currentCallUser.id,
+        callId: currentCallId,
         signal: serializeSessionDescription(answer)
       }, { requireAck: false, timeoutMs: 4000, fallbackResolveMs: 1000 });
       
@@ -304,12 +406,21 @@ const WebRTCClient = (() => {
 
   // 4. Reject Call
   function rejectCall() {
-    emitWithAck("rejectCall", { to: currentCallUser.id }, { requireAck: false, timeoutMs: 3000, fallbackResolveMs: 800 }).catch(() => {});
+    if (currentCallUser) {
+      emitWithAck(SIGNAL_EVENTS.REJECT, {
+        to: currentCallUser.id,
+        callId: currentCallId,
+        reason: "Call Rejected",
+      }, { requireAck: false, timeoutMs: 3000, fallbackResolveMs: 800 }).catch(() => {});
+    }
     resetCallUI();
   }
 
   // 5. Caller handles accepted call
-  async function handleCallAccepted(signal) {
+  async function handleCallAccepted(payload) {
+    const signal = getSessionDescription(payload);
+    if (!signal || isDuplicateSignal("accepted", payload)) return;
+    if (payload?.callId) currentCallId = payload.callId;
     clearTimeout(callTimeout);
     showActiveUi();
     if (!peerConnection) return;
@@ -318,8 +429,10 @@ const WebRTCClient = (() => {
   }
 
   // 6. Handle ICE Candidates
-  async function handleIceCandidate(candidate) {
+  async function handleIceCandidate(payload) {
+    const candidate = getCandidate(payload);
     if (!candidate) return;
+    if (isDuplicateSignal("ice", payload)) return;
 
     // ICE often arrives before the peer connection or remote description is ready.
     if (!peerConnection || !peerConnection.remoteDescription) {
@@ -352,6 +465,7 @@ const WebRTCClient = (() => {
 
   // 7. Handle Call Rejection
   function handleCallRejected(data) {
+    if (isDuplicateSignal("rejected", data || { callId: currentCallId })) return;
     clearTimeout(callTimeout);
     const reason = (data && data.reason) ? data.reason : "Call Rejected";
     els.statusTxt.textContent = reason;
@@ -361,12 +475,14 @@ const WebRTCClient = (() => {
 
   // 7b. Handle Call Ringing confirmation
   function handleCallRinging(data) {
+    if (isDuplicateSignal("ringing", data || { callId: currentCallId })) return;
     console.log("WebRTC: Call is ringing on", data?.to);
     if (els.statusTxt) els.statusTxt.textContent = "Ringing...";
   }
 
   // 8. Handle Remote End Call
-  function handleCallEnded() {
+  function handleCallEnded(data) {
+    if (isDuplicateSignal("ended", data || { callId: currentCallId })) return;
     clearTimeout(callTimeout);
     resetCallUI();
     MC?.info("Call ended");
@@ -375,7 +491,10 @@ const WebRTCClient = (() => {
   // 9. End Call Locally
   function endCallLocally() {
     if (currentCallUser) {
-      emitWithAck("endCall", { to: currentCallUser.id }, { requireAck: false, timeoutMs: 3000, fallbackResolveMs: 800 }).catch(() => {});
+      emitWithAck(SIGNAL_EVENTS.END, {
+        to: currentCallUser.id,
+        callId: currentCallId,
+      }, { requireAck: false, timeoutMs: 3000, fallbackResolveMs: 800 }).catch(() => {});
     }
     resetCallUI();
   }
@@ -453,8 +572,9 @@ const WebRTCClient = (() => {
     // Send ICE candidates to remote peer
     peerConnection.onicecandidate = (event) => {
       if (event.candidate) {
-        emitWithAck("iceCandidate", {
+        emitWithAck(SIGNAL_EVENTS.ICE, {
           to: targetUserId,
+          callId: currentCallId,
           candidate: serializeIceCandidate(event.candidate),
         }, { requireAck: false, timeoutMs: 3000, fallbackResolveMs: 700 }).catch((err) => {
           console.warn("ICE candidate signaling failed:", err.message);
@@ -522,6 +642,7 @@ const WebRTCClient = (() => {
   function resetCallUI() {
     isInCall = false;
     currentCallUser = null;
+    currentCallId = "";
     isCaller = false;
     pendingOffer = null;
     pendingIceCandidates = [];

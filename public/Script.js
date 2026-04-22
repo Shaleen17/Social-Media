@@ -524,6 +524,7 @@ let reelsLoaded = new Set();
 let reelsLastSignature = "";
 let reelsObserver = null;
 let reelsListenersBound = false;
+let pendingSharedReelId = getInitialSharedReelId();
 
 /* ── SEED DATA ── */
 const SEED_USERS = [
@@ -7057,6 +7058,105 @@ function getReelsMuteIcon() {
     : `<svg viewBox="0 0 24 24"><polygon points="11 5 6 9 3 9 3 15 6 15 11 19 11 5"></polygon><path d="M15 9a5 5 0 0 1 0 6"></path><path d="M18.5 6.5a9 9 0 0 1 0 11"></path></svg>`;
 }
 
+function getReelsShareIcon() {
+  return `<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="18" cy="5" r="3"></circle><circle cx="6" cy="12" r="3"></circle><circle cx="18" cy="19" r="3"></circle><path d="M8.59 13.51l6.83 3.98"></path><path d="M15.41 6.51L8.59 10.49"></path></svg>`;
+}
+
+function normalizeReelId(reelId) {
+  return String(reelId || "")
+    .trim()
+    .replace(/[^\w-]/g, "");
+}
+
+function getInitialSharedReelId() {
+  try {
+    const params = new URLSearchParams(window.location.search);
+    return normalizeReelId(params.get("reel") || params.get("r") || "");
+  } catch {
+    return "";
+  }
+}
+
+function buildReelShareUrl(reelId) {
+  const url = new URL(window.location.href);
+  url.hash = "";
+  url.search = "";
+  url.searchParams.set("reel", normalizeReelId(reelId));
+  return url.toString();
+}
+
+function findReelIndexById(reelId) {
+  const cleanId = normalizeReelId(reelId);
+  if (!cleanId) return -1;
+  if (!reelsSession.length) buildReelsSession();
+  return reelsSession.findIndex((reel) => reel.id === cleanId);
+}
+
+function openReelById(reelId, options = {}) {
+  const cleanId = normalizeReelId(reelId);
+  if (!cleanId) return false;
+  if (!REELS_LIBRARY.some((reel) => reel.id === cleanId)) {
+    MC.warn("This reel is not available right now.");
+    return false;
+  }
+
+  if (curPage !== "reels") {
+    gp("reels");
+  } else if (!getReelsFeed()?.childElementCount) {
+    renderReelsPage(false, false);
+  }
+
+  window.setTimeout(() => {
+    const index = findReelIndexById(cleanId);
+    if (index < 0) return;
+    reelsActiveIndex = index;
+    scrollToReel(index, options.immediate !== false);
+    playReel(index);
+  }, options.delay ?? 160);
+  return true;
+}
+
+function handlePendingReelRoute() {
+  const reelId = pendingSharedReelId || getInitialSharedReelId();
+  if (!reelId) return false;
+  pendingSharedReelId = "";
+  return openReelById(reelId, { immediate: true });
+}
+window.handlePendingReelRoute = handlePendingReelRoute;
+
+async function shareReel(reelId, event) {
+  if (event) {
+    event.preventDefault();
+    event.stopPropagation();
+  }
+  const cleanId = normalizeReelId(reelId);
+  const reel = REELS_LIBRARY.find((item) => item.id === cleanId);
+  if (!reel) {
+    MC.warn("This reel is not available right now.");
+    return;
+  }
+
+  const shareUrl = buildReelShareUrl(cleanId);
+  const shareData = {
+    title: "Tirth Sutra Reel",
+    text: "Watch this devotional reel on Tirth Sutra.",
+    url: shareUrl,
+  };
+
+  if (navigator.share) {
+    try {
+      await navigator.share(shareData);
+      MC.success("Reel shared successfully.");
+      return;
+    } catch (err) {
+      if (err?.name === "AbortError") return;
+    }
+  }
+
+  copyTextToClipboard(shareUrl, "Reel link copied.");
+}
+window.shareReel = shareReel;
+
 function renderReelCard(reel, index) {
   return `
     <section class="reel-slide${index === 0 ? " is-active" : ""}" data-index="${index}" data-reel-id="${reel.id}">
@@ -7089,6 +7189,13 @@ function renderReelCard(reel, index) {
           onclick="toggleReelsMute(event)"
           aria-label="Toggle reel audio"
         ></button>
+        <button
+          class="reel-share-btn"
+          type="button"
+          onclick="shareReel('${searchJsArg(reel.id)}', event)"
+          aria-label="Share this reel"
+          title="Share reel"
+        >${getReelsShareIcon()}</button>
         <div class="reel-overlay">
           <div class="reel-uploader">
             <span class="reel-uploader-badge">
@@ -10067,16 +10174,7 @@ function setAdvancedSearchQuery(query, tab = "all") {
 }
 
 function openAdvancedSearchReel(reelId) {
-  gp("reels");
-  window.setTimeout(() => {
-    if (!reelsSession.length) buildReelsSession();
-    const index = reelsSession.findIndex((reel) => reel.id === reelId);
-    if (index >= 0) {
-      reelsActiveIndex = index;
-      scrollToReel(index, true);
-      playReel(index);
-    }
-  }, 160);
+  openReelById(reelId, { immediate: true });
 }
 
 function openAdvancedEventResult(index) {
@@ -10287,6 +10385,7 @@ async function init() {
     renderStories();
     renderWidgets();
     scheduleReelsWarmup();
+    handlePendingReelRoute();
     scheduleGoogleTranslate({
       languageCode: getCurrentLanguageCode(),
       force: getCurrentLanguageCode() !== "en",

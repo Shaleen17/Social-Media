@@ -11784,6 +11784,45 @@ video {
   stroke-linejoin: round;
 }
 
+.reel-share-btn {
+  position: absolute;
+  right: 24px;
+  bottom: 50px;
+  z-index: 4;
+  width: 44px;
+  height: 44px;
+  display: grid;
+  place-items: center;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 999px;
+  background: rgba(10, 8, 7, 0.48);
+  color: #fff;
+  cursor: pointer;
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  box-shadow: 0 14px 34px rgba(0, 0, 0, 0.26);
+  transition:
+    transform 0.18s ease,
+    background 0.18s ease,
+    border-color 0.18s ease;
+}
+
+.reel-share-btn:hover {
+  transform: translateY(-1px);
+  background: rgba(20, 15, 13, 0.72);
+  border-color: rgba(255, 255, 255, 0.28);
+}
+
+.reel-share-btn svg {
+  width: 20px;
+  height: 20px;
+  stroke: currentColor;
+  fill: none;
+  stroke-width: 2.1;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
 .reel-overlay {
   position: absolute;
   inset: auto 0 0;
@@ -12007,6 +12046,13 @@ body.nav-theme-switching .bnb {
     height: 38px;
   }
 
+  .reel-share-btn {
+    right: 18px;
+    bottom: 42px;
+    width: 42px;
+    height: 42px;
+  }
+
   .reel-overlay {
     min-height: 34%;
     padding: 0 18px 22px;
@@ -12125,6 +12171,11 @@ body.nav-theme-switching .bnb {
   .reel-mute-btn {
     top: max(18px, env(safe-area-inset-top, 0px) + 12px);
     right: 14px;
+  }
+
+  .reel-share-btn {
+    right: 14px;
+    bottom: calc(var(--bottomnav-h) + env(safe-area-inset-bottom, 0px) + 34px);
   }
 
   .reel-overlay {
