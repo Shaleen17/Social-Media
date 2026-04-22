@@ -1,4 +1,4 @@
-self.__TS_SW_VERSION__ = "20260422-story-additions-1";
+self.__TS_SW_VERSION__ = "20260422-reel-library-1";
 const TS_STATIC_CACHE = `ts-static-${self.__TS_SW_VERSION__}`;
 
 self.addEventListener("install", (event) => {

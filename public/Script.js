@@ -504,6 +504,14 @@ const REELS_LIBRARY = [
   { id: "reel-62", src: "https://videos-o57d.vercel.app/Reel62.mp4" },
   { id: "reel-63", src: "https://videos-o57d.vercel.app/Reel63.mp4" },
   { id: "reel-64", src: "https://videos-o57d.vercel.app/Reel64.mp4" },
+  { id: "reel-65", src: "https://videos-o57d.vercel.app/Reel65.mp4" },
+  { id: "reel-66", src: "https://videos-o57d.vercel.app/Reel66.mp4" },
+  { id: "reel-67", src: "https://videos-o57d.vercel.app/Reel67.mp4" },
+  { id: "reel-68", src: "https://videos-o57d.vercel.app/Reel68.mp4" },
+  { id: "reel-69", src: "https://videos-o57d.vercel.app/Reel69.mp4" },
+  { id: "reel-70", src: "https://videos-o57d.vercel.app/Reel70.mp4" },
+  { id: "reel-71", src: "https://videos-o57d.vercel.app/Reel71.mp4" },
+  { id: "reel-72", src: "https://videos-o57d.vercel.app/Reel72.mp4" },
 ];
 const REELS_PREFERS_REDUCED_MOTION = !!(
   window.matchMedia &&
