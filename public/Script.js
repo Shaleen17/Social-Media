@@ -875,7 +875,9 @@ const SEED_VID_STORIES = [
     name: "Radharaman",
     avatar: "images/sants/Radharaman.jpg",
     items: [
-      { id: "vs_rr1", type: "video", src: "https://videos-o57d.vercel.app/StoryR1.mp4", cap: "" }
+      { id: "vs_rr1", type: "video", src: "https://videos-o57d.vercel.app/StoryR1.mp4", cap: "" },
+      { id: "vs_rr2", type: "video", src: "https://videos-o57d.vercel.app/StoryR2.mp4", cap: "" },
+      { id: "vs_rr3", type: "video", src: "https://videos-o57d.vercel.app/StoryR3.mp4", cap: "" }
     ]
   },
   {
@@ -884,7 +886,9 @@ const SEED_VID_STORIES = [
     avatar: "images/sants/hitaambrish.jpg",
     items: [
       { id: "vs_ha1", type: "video", src: "https://videos-o57d.vercel.app/StoryH1.mp4", cap: "" },
-      { id: "vs_ha2", type: "video", src: "https://videos-o57d.vercel.app/StoryH2.mp4", cap: "" }
+      { id: "vs_ha2", type: "video", src: "https://videos-o57d.vercel.app/StoryH2.mp4", cap: "" },
+      { id: "vs_ha3", type: "video", src: "https://videos-o57d.vercel.app/StoryH3.mp4", cap: "" },
+      { id: "vs_ha4", type: "video", src: "https://videos-o57d.vercel.app/StoryH4.mp4", cap: "" }
     ]
   }
 ];
@@ -1411,7 +1415,7 @@ function esc(s) {
    SEED DATA — version controlled
    Change VERSION number every time you update seed data
    ============================================================ */
-const SEED_VERSION = "v7"; // ← change to force reseed with locked canonical Tirth Tube stories
+const SEED_VERSION = "v8"; // ← change to force reseed with locked canonical Tirth Tube stories
 
 function seedData() {
   const saved = Store.g("seedVersion");

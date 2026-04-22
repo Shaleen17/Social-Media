@@ -317,7 +317,7 @@
 
   let _chatPushSetupPromise = null;
   let _pendingOpenChatId = consumeOpenChatParam();
-  const APP_ASSET_VERSION = "20260420-password-reset-3-app-cache-1";
+  const APP_ASSET_VERSION = "20260422-story-additions-1";
   let _appSwPromise = null;
   let _deferredInstallPrompt = null;
   let _installPromptBound = false;
