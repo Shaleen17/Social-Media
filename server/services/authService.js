@@ -45,6 +45,9 @@ const {
 const { enrollUserInEmailCampaign } = require("./emailCampaignService");
 
 const googleClient = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
+const DEFAULT_APPWRITE_ENDPOINT = "https://nyc.cloud.appwrite.io/v1";
+const DEFAULT_APPWRITE_PROJECT_ID = "69ea1b4e000d4e4e2b20";
+const APPWRITE_GOOGLE_SIGNUP_INTENT_PURPOSE = "appwrite_google_signup";
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const SIGNUP_RATE_WINDOW_MS = 15 * 60 * 1000;
@@ -1109,6 +1112,257 @@ async function loginWithGoogle({
   };
 }
 
+function getAppwriteConfig() {
+  const endpoint = String(
+    process.env.APPWRITE_ENDPOINT || DEFAULT_APPWRITE_ENDPOINT
+  ).replace(/\/+$/, "");
+  const projectId =
+    process.env.APPWRITE_PROJECT_ID || DEFAULT_APPWRITE_PROJECT_ID;
+
+  if (!endpoint || !projectId) {
+    throw new AppError("Appwrite Google Sign-In is not configured.", 500);
+  }
+
+  return { endpoint, projectId };
+}
+
+function createAppwriteGoogleSignupIntent() {
+  return {
+    intentToken: jwt.sign(
+      {
+        purpose: APPWRITE_GOOGLE_SIGNUP_INTENT_PURPOSE,
+        mode: "signup",
+      },
+      process.env.JWT_SECRET,
+      { expiresIn: "10m" }
+    ),
+    expiresInSeconds: 600,
+  };
+}
+
+function verifyAppwriteGoogleSignupIntent(intentToken) {
+  if (!intentToken) {
+    throw new AppError("Google signup intent is missing. Please start from Sign up with Google.", 400);
+  }
+
+  try {
+    const decoded = jwt.verify(intentToken, process.env.JWT_SECRET);
+    if (
+      decoded?.purpose !== APPWRITE_GOOGLE_SIGNUP_INTENT_PURPOSE ||
+      decoded?.mode !== "signup"
+    ) {
+      throw new Error("Invalid Google signup intent");
+    }
+    return decoded;
+  } catch {
+    throw new AppError("Google signup session expired. Please try Sign up with Google again.", 401);
+  }
+}
+
+async function getAppwriteAccount(jwtToken) {
+  if (!jwtToken) {
+    throw new AppError("Appwrite session token is required.", 400);
+  }
+
+  const { endpoint, projectId } = getAppwriteConfig();
+  const response = await fetch(`${endpoint}/account`, {
+    headers: {
+      "X-Appwrite-Project": projectId,
+      "X-Appwrite-JWT": jwtToken,
+    },
+  });
+
+  let payload = null;
+  try {
+    payload = await response.json();
+  } catch {
+    payload = null;
+  }
+
+  if (!response.ok) {
+    throw new AppError(
+      payload?.message || "Unable to verify the Appwrite Google session.",
+      response.status || 401
+    );
+  }
+
+  if (!payload?.$id || !payload?.email) {
+    throw new AppError("Appwrite did not return a valid user account.", 401);
+  }
+
+  return payload;
+}
+
+async function loginWithAppwriteGoogle({
+  jwt: appwriteJwt,
+  referralCode,
+  authMode,
+  signupIntent,
+  marketingConsent,
+  timezone,
+}) {
+  const account = await getAppwriteAccount(appwriteJwt);
+  const normalizedEmail = normalizeEmail(account.email);
+
+  if (!normalizedEmail || !EMAIL_RE.test(normalizedEmail)) {
+    throw new AppError("Appwrite account email is invalid.", 401);
+  }
+
+  const normalizedReferralCode = sanitizeReferralCode(referralCode);
+  const referrer = normalizedReferralCode
+    ? await resolveReferrer(normalizedReferralCode)
+    : null;
+  const wantsMarketing = toBoolean(marketingConsent);
+  const accountName = account.name || normalizedEmail.split("@")[0];
+  const appwriteAvatar =
+    account.prefs?.picture ||
+    account.prefs?.avatar ||
+    account.prefs?.photoURL ||
+    null;
+  const safeAuthMode = authMode === "signup" ? "signup" : "login";
+
+  // ── Strict separation: Google authenticates, backend authorizes ──
+  // Signup: create account if none exists, reject if already registered.
+  // Signin: allow only if account already exists, reject if unregistered.
+  let user;
+
+  if (safeAuthMode === "signup") {
+    // ── SIGN-UP FLOW ──
+    verifyAppwriteGoogleSignupIntent(signupIntent);
+
+    user = await User.findOne({
+      $or: [{ email: normalizedEmail }, { appwriteId: account.$id }],
+    }).select("+password");
+
+    if (user && user.emailVerified) {
+      throw new AppError(
+        "An account with this Google email already exists. Please sign in with Google instead.",
+        409,
+        { requiresSignin: true }
+      );
+    }
+
+    if (!user) {
+      const handle = await ensureUniqueHandle(accountName || normalizedEmail);
+      user = await User.create({
+        name: accountName,
+        handle,
+        email: normalizedEmail,
+        password: crypto.randomBytes(24).toString("hex"),
+        authProvider: "appwrite",
+        appwriteId: account.$id,
+        appwriteSignupCompleted: true,
+        appwriteSignupCompletedAt: new Date(),
+        avatar: appwriteAvatar,
+        emailVerified: account.emailVerification !== false,
+        referralCode: await generateUniqueReferralCode(handle || normalizedEmail),
+        referredBy: referrer ? referrer._id : null,
+        marketing: {
+          emailConsent: wantsMarketing,
+          emailConsentAt: wantsMarketing ? new Date() : null,
+          emailConsentSource: wantsMarketing ? "appwrite_google_signup" : null,
+          emailUnsubscribedAt: null,
+          timezone: sanitizeTimezone(timezone),
+        },
+      });
+    } else {
+      // Unverified partial user exists — complete registration via Google
+      user.authProvider = "appwrite";
+      user.appwriteId = account.$id;
+      user.appwriteSignupCompleted = true;
+      user.appwriteSignupCompletedAt = new Date();
+      user.emailVerified = true;
+      if (appwriteAvatar && !user.avatar) user.avatar = appwriteAvatar;
+      user.referralCode =
+        user.referralCode ||
+        (await generateUniqueReferralCode(user.handle || user.name || normalizedEmail));
+      if (referrer && !user.referredBy && String(referrer._id) !== String(user._id)) {
+        user.referredBy = referrer._id;
+      }
+      if (wantsMarketing) {
+        user.marketing = {
+          ...(user.marketing?.toObject ? user.marketing.toObject() : user.marketing || {}),
+          emailConsent: true,
+          emailConsentAt: user.marketing?.emailConsentAt || new Date(),
+          emailConsentSource: "appwrite_google_signup",
+          emailUnsubscribedAt: null,
+          timezone: sanitizeTimezone(timezone),
+        };
+      }
+      await user.save({ validateBeforeSave: false });
+    }
+  } else {
+    // ── SIGN-IN FLOW ──
+    // Search by appwriteId (returning Google user) OR verified email (local user linking Google)
+    user = await User.findOne({
+      $or: [
+        { appwriteId: account.$id },
+        { email: normalizedEmail, emailVerified: true },
+      ],
+    }).select("+password");
+
+    if (!user) {
+      throw new AppError(
+        "No account found with this Google email. Please sign up with Google first.",
+        404,
+        { requiresSignup: true }
+      );
+    }
+
+    // Link Google identity for future direct lookups
+    user.appwriteId = user.appwriteId || account.$id;
+    if (!user.appwriteSignupCompleted) {
+      user.appwriteSignupCompleted = true;
+      user.appwriteSignupCompletedAt = user.appwriteSignupCompletedAt || new Date();
+    }
+    user.emailVerified = true;
+    user.referralCode =
+      user.referralCode ||
+      (await generateUniqueReferralCode(user.handle || user.name || normalizedEmail));
+    if (referrer && !user.referredBy && String(referrer._id) !== String(user._id)) {
+      user.referredBy = referrer._id;
+    }
+    if (appwriteAvatar && !user.avatar) {
+      user.avatar = appwriteAvatar;
+    }
+    if (wantsMarketing) {
+      user.marketing = {
+        ...(user.marketing?.toObject ? user.marketing.toObject() : user.marketing || {}),
+        emailConsent: true,
+        emailConsentAt: user.marketing?.emailConsentAt || new Date(),
+        emailConsentSource: "appwrite_google_signin",
+        emailUnsubscribedAt: null,
+        timezone: sanitizeTimezone(timezone),
+      };
+    }
+    await user.save({ validateBeforeSave: false });
+  }
+
+  await PendingSignup.deleteOne({ email: normalizedEmail }).catch(() => {});
+  if (referrer) {
+    await attachReferralRelationship(user, referrer.referralCode);
+  }
+  if (wantsMarketing) {
+    try {
+      await enrollUserInEmailCampaign(user, {
+        marketingConsent: true,
+        consentAt: user.marketing?.emailConsentAt || new Date(),
+        source: "appwrite_google_signup",
+        timezone,
+      });
+    } catch (error) {
+      console.error("[EmailCampaign] Appwrite Google enrollment failed:", error.message);
+    }
+  }
+
+  const safeUser = await User.findById(user._id);
+  await ensureUserReferralCode(safeUser);
+  return {
+    user: safeUser.toJSON(),
+    token: signAuthToken(user._id),
+  };
+}
+
 function createGoogleAuthUrl(req, returnTo) {
   if (!process.env.GOOGLE_CLIENT_ID || !process.env.GOOGLE_CLIENT_SECRET) {
     throw new AppError("Google Sign-In is not configured on the server.", 500);
@@ -1198,7 +1452,9 @@ module.exports = {
   resendSignupOtp,
   requestPasswordReset,
   resetPasswordWithOtp,
+  createAppwriteGoogleSignupIntent,
   loginWithGoogle,
+  loginWithAppwriteGoogle,
   createGoogleAuthUrl,
   exchangeGoogleCode,
   buildGoogleSuccessRedirect,

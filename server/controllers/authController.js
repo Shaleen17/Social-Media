@@ -6,7 +6,9 @@ const {
   resendSignupOtp,
   requestPasswordReset,
   resetPasswordWithOtp,
+  createAppwriteGoogleSignupIntent,
   loginWithGoogle,
+  loginWithAppwriteGoogle,
   createGoogleAuthUrl,
   exchangeGoogleCode,
   buildGoogleSuccessRedirect,
@@ -73,6 +75,15 @@ const googleAuth = asyncHandler(async (req, res) => {
   res.json(result);
 });
 
+const appwriteGoogleAuth = asyncHandler(async (req, res) => {
+  const result = await loginWithAppwriteGoogle(req.body);
+  res.json(result);
+});
+
+const appwriteGoogleIntent = asyncHandler(async (req, res) => {
+  res.json(createAppwriteGoogleSignupIntent());
+});
+
 const googleStart = asyncHandler(async (req, res) => {
   const url = createGoogleAuthUrl(req, req.query.returnTo || req.query.clientUrl);
   res.redirect(url);
@@ -123,6 +134,8 @@ module.exports = {
   forgotPassword,
   resetPassword,
   googleAuth,
+  appwriteGoogleIntent,
+  appwriteGoogleAuth,
   googleStart,
   googleCallback,
 };

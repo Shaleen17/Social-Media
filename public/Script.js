@@ -2217,33 +2217,14 @@ function logout() {
   MC.info("Signed out. Jai Shri Ram 🙏");
 }
 
-function doGoogleLogin() {
-  const loaderToken = startAppTopLoader({ initialProgress: 0.22 });
-  const backendBase =
-    typeof window.getBackendBaseUrl === "function"
-      ? window.getBackendBaseUrl()
-      : typeof CONFIG !== "undefined" && CONFIG && CONFIG.BACKEND_URL
-        ? String(CONFIG.BACKEND_URL).replace(/\/+$/, "")
-        : "";
-  const returnTo = new URL(getInviteBaseUrl());
-  const referralCode = getActiveReferralCode();
-  if (referralCode) {
-    returnTo.searchParams.set("ref", referralCode);
+function doGoogleLogin(mode = "login") {
+  const authMode = mode === "signup" ? "signup" : "login";
+  if (typeof window.startAppwriteGoogleAuth === "function") {
+    window.startAppwriteGoogleAuth(authMode);
+    return;
   }
-  if (document.getElementById("suMarketingConsent")?.checked) {
-    returnTo.searchParams.set("marketing", "1");
-    returnTo.searchParams.set(
-      "tz",
-      Intl.DateTimeFormat().resolvedOptions().timeZone || "Asia/Kolkata"
-    );
-  }
-  window.setTimeout(() => {
-    stopAppTopLoader(loaderToken, { delay: 0, minVisible: 120 });
-  }, 1400);
-  window.location.href =
-    backendBase +
-    "/api/auth/google/start?returnTo=" +
-    encodeURIComponent(returnTo.toString());
+
+  MC?.error("Google Sign-In is still loading. Please refresh and try again.");
 }
 
 /* ── NAVIGATION ── */

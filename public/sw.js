@@ -1,4 +1,4 @@
-self.__TS_SW_VERSION__ = "20260422-webrtc-socket-signaling-1";
+self.__TS_SW_VERSION__ = "20260423-secure-google-intent-1";
 const TS_STATIC_CACHE = `ts-static-${self.__TS_SW_VERSION__}`;
 
 self.addEventListener("install", (event) => {

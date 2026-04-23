@@ -317,7 +317,7 @@
 
   let _chatPushSetupPromise = null;
   let _pendingOpenChatId = consumeOpenChatParam();
-  const APP_ASSET_VERSION = "20260422-webrtc-socket-signaling-1";
+  const APP_ASSET_VERSION = "20260423-secure-google-intent-1";
   let _appSwPromise = null;
   let _deferredInstallPrompt = null;
   let _installPromptBound = false;
@@ -1313,26 +1313,18 @@
     }
   };
 
-  window.doGoogleLogin = function () {
-    const loaderToken =
-      typeof window.startAppTopLoader === "function"
-        ? window.startAppTopLoader({ initialProgress: 0.22 })
-        : "";
-    const backendBase =
-      typeof window.getBackendBaseUrl === "function"
-        ? window.getBackendBaseUrl()
-        : typeof CONFIG !== "undefined" && CONFIG && CONFIG.BACKEND_URL
-          ? String(CONFIG.BACKEND_URL).replace(/\/+$/, "")
-          : "";
-    if (loaderToken && typeof window.stopAppTopLoader === "function") {
-      window.setTimeout(() => {
-        window.stopAppTopLoader(loaderToken, { delay: 0, minVisible: 120 });
-      }, 1400);
+  function normalizeGoogleAuthMode(mode) {
+    return mode === "signup" ? "signup" : "login";
+  }
+
+  window.doGoogleLogin = function (mode = "login") {
+    const authMode = normalizeGoogleAuthMode(mode);
+    if (typeof window.startAppwriteGoogleAuth === "function") {
+      window.startAppwriteGoogleAuth(authMode);
+      return;
     }
-    window.location.href =
-      backendBase +
-      "/api/auth/google/start?returnTo=" +
-      encodeURIComponent(getInviteAwareReturnToUrl());
+
+    MC?.error("Google Sign-In is still loading. Please refresh and try again.");
   };
 
   // =============================================
@@ -3396,6 +3388,25 @@
         if (e.key === "Enter") doSignup();
       });
 
+      const appwriteRedirect =
+        typeof window.consumePendingAppwriteAuth === "function"
+          ? await window.consumePendingAppwriteAuth()
+          : null;
+      if (appwriteRedirect?.token) {
+        API.setToken(appwriteRedirect.token);
+      } else if (appwriteRedirect?.authError) {
+        // Google auth failed — show the error and guide user to the right form
+        MC.error(appwriteRedirect.authError);
+        const details = appwriteRedirect.authDetails || {};
+        if (details.requiresSignup) {
+          openOvl("authOvl");
+          if (typeof authToggle === "function") authToggle("signup");
+        } else if (details.requiresSignin) {
+          openOvl("authOvl");
+          if (typeof authToggle === "function") authToggle("login");
+        }
+      }
+
       const authRedirect = consumeAuthRedirectHash();
       if (authRedirect?.authToken) {
         API.setToken(authRedirect.authToken);
@@ -3452,7 +3463,17 @@
         }
       }
 
-      if (authRedirect?.authError) {
+      if (appwriteRedirect?.authError) {
+        MC.error(appwriteRedirect.authError);
+      } else if (
+        appwriteRedirect?.token &&
+        appwriteRedirect.authSource === "appwrite-google"
+      ) {
+        if (typeof window.clearPendingReferralCode === "function") {
+          window.clearPendingReferralCode();
+        }
+        MC.success("Google Sign-In completed successfully.");
+      } else if (authRedirect?.authError) {
         MC.error(authRedirect.authError);
       } else if (
         authRedirect?.authToken &&

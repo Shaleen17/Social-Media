@@ -21,7 +21,7 @@ const userSchema = new mongoose.Schema(
     password: { type: String, minlength: 6, select: false },
     authProvider: {
       type: String,
-      enum: ["local", "google"],
+      enum: ["local", "google", "appwrite"],
       default: "local",
     },
     googleId: {
@@ -29,6 +29,17 @@ const userSchema = new mongoose.Schema(
       sparse: true,
       index: true,
     },
+    appwriteId: {
+      type: String,
+      sparse: true,
+      index: true,
+    },
+    appwriteSignupCompleted: {
+      type: Boolean,
+      default: false,
+      index: true,
+    },
+    appwriteSignupCompletedAt: { type: Date, default: null },
     bio: { type: String, default: "" },
     location: { type: String, default: "" },
     website: { type: String, default: "" },

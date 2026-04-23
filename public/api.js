@@ -251,6 +251,30 @@ const API = (() => {
       return data;
     },
 
+    async appwriteGoogleAuth(
+      jwt,
+      referralCode = "",
+      authMode = "login",
+      signupIntent = "",
+      marketingConsent = false,
+      timezone = ""
+    ) {
+      const data = await request("/auth/appwrite/google", {
+        method: "POST",
+        body: JSON.stringify({
+          jwt,
+          referralCode,
+          authMode,
+          signupIntent,
+          marketingConsent,
+          timezone,
+        }),
+      });
+      setToken(data.token);
+      setUser(data.user);
+      return data;
+    },
+
     async getMe() {
       const data = await request("/auth/me");
       setUser(data.user);

@@ -8,6 +8,8 @@ const {
   forgotPassword,
   resetPassword,
   googleAuth,
+  appwriteGoogleIntent,
+  appwriteGoogleAuth,
   googleStart,
   googleCallback,
 } = require("../controllers/authController");
@@ -22,6 +24,8 @@ router.post("/forgot-password", forgotPassword);
 router.post("/reset-password", resetPassword);
 router.post("/login", login);
 router.post("/google", googleAuth);
+router.post("/appwrite/google-intent", appwriteGoogleIntent);
+router.post("/appwrite/google", appwriteGoogleAuth);
 router.get("/google/start", googleStart);
 router.get("/google/callback", googleCallback);
 router.get("/me", auth, me);
