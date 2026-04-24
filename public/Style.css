@@ -7000,6 +7000,22 @@ video {
   margin-top: 10px;
 }
 
+.about-support-card {
+  display: grid;
+  gap: 14px;
+}
+
+.about-support-payment {
+  display: flex;
+  justify-content: flex-start;
+  align-items: center;
+  min-height: 56px;
+}
+
+.about-support-payment form {
+  margin: 0;
+}
+
 @media (max-width: 900px) {
   .about-grid {
     grid-template-columns: 1fr;
@@ -7048,6 +7064,10 @@ video {
   .about-card,
   .about-founder-panel {
     padding: 18px;
+  }
+
+  .about-support-payment {
+    justify-content: center;
   }
 
   .about-founder-photo {
