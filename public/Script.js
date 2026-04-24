@@ -525,6 +525,115 @@ let reelsLastSignature = "";
 let reelsObserver = null;
 let reelsListenersBound = false;
 let pendingSharedReelId = getInitialSharedReelId();
+const AUTHENTIC_BRAND_ALLOWED_CATEGORIES = [
+  {
+    title: "Ayurveda and wellness",
+    detail: "Sattvic health, natural care, and mindful living products.",
+  },
+  {
+    title: "Sattvic food and conscious consumption",
+    detail: "Food brands centered on purity, integrity, and responsible ingredients.",
+  },
+  {
+    title: "Ethical fashion and handloom",
+    detail: "Culture-rooted textiles, craftsmanship, and respectful production.",
+  },
+  {
+    title: "Religious artefacts and puja essentials",
+    detail: "Authentic devotional products that support worship and tradition.",
+  },
+  {
+    title: "Devotional media and cultural storytelling",
+    detail: "Studios and creators that preserve cultural meaning through respectful storytelling.",
+  },
+  {
+    title: "Spiritual tourism and pilgrim services",
+    detail: "Services that help devotees travel, learn, and connect with sacred spaces.",
+  },
+  {
+    title: "Vetted Vastu, astrology, and devotional education",
+    detail: "Guidance-led businesses that preserve meaning and avoid exploitation.",
+  },
+];
+const AUTHENTIC_BRAND_BANNED_CATEGORIES = [
+  {
+    title: "Alcohol",
+    detail: "Substances that conflict with a sattvic and dharmic environment.",
+  },
+  {
+    title: "Meat products",
+    detail: "Products that do not align with the platform's sattvic standard.",
+  },
+  {
+    title: "Gambling and betting",
+    detail: "Extractive attention loops and speculative behavior are not allowed.",
+  },
+  {
+    title: "Dating apps",
+    detail: "The platform is not built for manipulative engagement industries.",
+  },
+  {
+    title: "Predatory financial loans",
+    detail: "High-harm lending and exploitative finance are rejected.",
+  },
+];
+const AUTHENTIC_BRAND_PARTNERS = [
+  {
+    id: "kanchipuram-karalakshmi-silks",
+    brandName: "Kanchipuram Karalakshmi Silks",
+    imageName: "Kanchipuram Karalakshmi Silks",
+    image: "images/brand/Kanchipuram%20Karalakshmi%20Silks.webp",
+    video: "https://videos-o57d.vercel.app/Kanchipuram_Karalakshmi_Silks.mp4",
+    website: "https://kanchivml.com/",
+    category: "Ethical fashion and handloom",
+    tagline: "Handwoven traditions preserved for generations.",
+    overlay: "Handwoven traditions preserved for generations...",
+    description:
+      "A heritage silk house where craftsmanship, ritual memory, and cultural pride remain central to every piece.",
+    likes: 18000,
+    dislikes: 124,
+  },
+  {
+    id: "rosier-food",
+    brandName: "Rosier Food",
+    imageName: "Rosier Food",
+    image: "images/brand/Rosier%20Food.png",
+    video: "https://videos-o57d.vercel.app/Rosier_Food.mp4",
+    website: "https://www.rosierfoods.com/",
+    category: "Sattvic food and conscious consumption",
+    tagline: "Pure sattvic food made with integrity.",
+    overlay: "Pure sattvic food - made with integrity...",
+    description:
+      "Thoughtful food storytelling centered on purity, ingredient trust, and conscious nourishment.",
+    likes: 12600,
+    dislikes: 88,
+  },
+  {
+    id: "kleem-production",
+    brandName: "Kleem Production",
+    imageName: "Kleem Production",
+    image: "images/brand/Kleem%20Production.jfif",
+    video: "https://videos-o57d.vercel.app/Kleem_Productions.mp4",
+    website: "https://www.kleemproductions.com/",
+    category: "Devotional media and cultural storytelling",
+    tagline: "Culture-led production that carries devotion forward.",
+    overlay: "Culture-led production that carries devotion forward...",
+    description:
+      "Visual storytelling rooted in Indian culture, created to preserve meaning instead of diluting it.",
+    likes: 9400,
+    dislikes: 61,
+  },
+];
+const AUTHENTIC_BRAND_FORM_KEY = "authenticBrandFormDraft";
+const AUTHENTIC_BRAND_REACTION_KEY = "authenticBrandPartnerReactions";
+const AUTHENTIC_BRAND_OTHER_CATEGORY_VALUE = "__other__";
+let authenticBrandsStaticRendered = false;
+let authenticBrandDraftTimer = null;
+let partnerReelsActiveIndex = 0;
+let partnerReelsMuted = false;
+let partnerReelsObserver = null;
+let partnerReelsListenersBound = false;
+let pendingSharedAuthenticBrandId = getInitialSharedAuthenticBrandId();
 
 /* ── SEED DATA ── */
 const SEED_USERS = [
@@ -1542,6 +1651,7 @@ function goBackVideoDetail() {
 }
 function closeOvl(id) {
   if (id === "videoDetailOvl") stopVideoDetailPlayback();
+  if (id === "partnerReelsOvl") pausePartnerReels();
   const el = document.getElementById(id);
   if (el) el.classList.remove("show");
   if (id === "moreOvl") syncMoreNavState();
@@ -2243,6 +2353,7 @@ const PAGE_IDS = [
   "profile",
   "chats",
   "about",
+  "authenticBrands",
   "language",
   "helpSupport",
   "settingsPrivacy",
@@ -2272,6 +2383,7 @@ const MORE_NAV_PAGES = [
   "bookmarks",
   "inviteFriends",
   "about",
+  "authenticBrands",
   "language",
   "helpSupport",
   "settingsPrivacy",
@@ -3765,6 +3877,7 @@ function applyLanguagePreference(options = {}) {
 
 function refreshMorePreferencePages() {
   if (curPage === "inviteFriends") renderInviteFriendsPage({ skipRefresh: true });
+  if (curPage === "authenticBrands") renderAuthenticBrandsPage();
   if (curPage === "language") renderLanguagePage();
   if (curPage === "helpSupport") renderHelpSupportPage();
   if (curPage === "settingsPrivacy") renderSettingsPrivacyPage();
@@ -4030,6 +4143,993 @@ function openAccountHelp() {
   }
   openOvl("authOvl");
 }
+
+function normalizeAuthenticBrandId(brandId) {
+  return String(brandId || "")
+    .trim()
+    .replace(/[^\w-]/g, "");
+}
+
+function getAuthenticBrandById(brandId) {
+  const cleanId = normalizeAuthenticBrandId(brandId);
+  return AUTHENTIC_BRAND_PARTNERS.find((brand) => brand.id === cleanId) || null;
+}
+
+function getInitialSharedAuthenticBrandId() {
+  try {
+    const params = new URLSearchParams(window.location.search);
+    return normalizeAuthenticBrandId(
+      params.get("partner") || params.get("brandPartner") || "",
+    );
+  } catch {
+    return "";
+  }
+}
+
+function buildAuthenticBrandShareUrl(brandId) {
+  const url = new URL(window.location.href);
+  url.hash = "";
+  url.search = "";
+  url.searchParams.set("partner", normalizeAuthenticBrandId(brandId));
+  return url.toString();
+}
+
+function findAuthenticBrandIndexById(brandId) {
+  const cleanId = normalizeAuthenticBrandId(brandId);
+  if (!cleanId) return -1;
+  return AUTHENTIC_BRAND_PARTNERS.findIndex((brand) => brand.id === cleanId);
+}
+
+function formatCompactCount(value) {
+  const num = Number(value) || 0;
+  if (num >= 1000000) return `${Math.round(num / 100000) / 10}M`;
+  if (num >= 1000) return `${Math.round(num / 100) / 10}K`;
+  return String(num);
+}
+
+function renderAuthenticBrandCategoryList(targetId, items, tone = "allowed") {
+  const host = document.getElementById(targetId);
+  if (!host) return;
+  host.innerHTML = items
+    .map((item) => {
+      const badge = tone === "banned" ? "Rejected category" : "Accepted category";
+      return `
+        <div class="authentic-brand-category-item authentic-brand-category-item-${tone}">
+          <span class="authentic-brand-category-mark" aria-hidden="true"></span>
+          <div class="authentic-brand-category-copy">
+            <span class="authentic-brand-category-item-tag">${badge}</span>
+            <strong>${esc(item.title)}</strong>
+            <p>${esc(item.detail)}</p>
+          </div>
+        </div>
+      `;
+    })
+    .join("");
+}
+
+function renderAuthenticBrandCategoryOptions() {
+  const select = document.getElementById("authBrandCategory");
+  if (!select) return;
+  const currentValue = select.value;
+  select.innerHTML =
+    '<option value="">Select an allowed category</option>' +
+    AUTHENTIC_BRAND_ALLOWED_CATEGORIES.map((item) => {
+      return `<option value="${item.title}">${item.title}</option>`;
+    }).join("") +
+    `<option value="${AUTHENTIC_BRAND_OTHER_CATEGORY_VALUE}">Other</option>`;
+  if (currentValue) select.value = currentValue;
+}
+
+function isAllowedAuthenticBrandCategory(value) {
+  return AUTHENTIC_BRAND_ALLOWED_CATEGORIES.some((item) => item.title === value);
+}
+
+function syncAuthenticBrandCustomCategoryField(focusInput = false) {
+  const select = document.getElementById("authBrandCategory");
+  const wrap = document.getElementById("authBrandCategoryOtherWrap");
+  const input = document.getElementById("authBrandCategoryOther");
+  if (!select || !wrap || !input) return;
+
+  const isOther = select.value === AUTHENTIC_BRAND_OTHER_CATEGORY_VALUE;
+  wrap.hidden = !isOther;
+  input.disabled = !isOther;
+  input.required = isOther;
+
+  if (!isOther) {
+    input.setCustomValidity("");
+    return;
+  }
+
+  if (focusInput) {
+    window.setTimeout(() => {
+      try {
+        input.focus();
+        input.select();
+      } catch { }
+    }, 0);
+  }
+}
+
+function renderAuthenticBrandsPreviewGrid() {
+  const host = document.getElementById("authenticBrandPreviewGrid");
+  if (!host) return;
+  host.innerHTML = AUTHENTIC_BRAND_PARTNERS.map((brand, index) => {
+    return `
+      <article class="authentic-brand-preview-card" id="authenticBrandCard-${brand.id}">
+        <div class="authentic-brand-preview-media">
+          <img src="${brand.image}" alt="${esc(brand.brandName)}" loading="lazy" decoding="async" fetchpriority="low" />
+          <span class="authentic-brand-verified-pill">Verified by Dharma Standards</span>
+        </div>
+        <div class="authentic-brand-preview-body">
+          <div class="authentic-brand-preview-top">
+            <span class="authentic-brand-preview-category">${esc(brand.category)}</span>
+            <span class="authentic-brand-preview-index">${String(index + 1).padStart(2, "0")}</span>
+          </div>
+          <h3>${esc(brand.brandName)}</h3>
+          <p class="authentic-brand-preview-tagline">${esc(brand.tagline)}</p>
+          <p class="authentic-brand-preview-description">${esc(brand.description)}</p>
+          <button class="btn btn-p btn-sm" type="button" onclick="openPartnerReels(${index})">
+            Watch partner reel
+          </button>
+        </div>
+      </article>
+    `;
+  }).join("");
+}
+
+function getAuthenticBrandFormData() {
+  const form = document.getElementById("authenticBrandForm");
+  if (!form) return null;
+  const categorySelection = (form.category?.value || "").trim();
+  const categoryOther = (form.categoryOther?.value || "").trim();
+  return {
+    brandName: (form.brandName?.value || "").trim(),
+    categorySelection,
+    categoryOther,
+    category:
+      categorySelection === AUTHENTIC_BRAND_OTHER_CATEGORY_VALUE
+        ? categoryOther
+        : categorySelection,
+    website: (form.website?.value || "").trim(),
+    email: (form.email?.value || "").trim(),
+    contactName: (form.contactName?.value || "").trim(),
+    phone: (form.phone?.value || "").trim(),
+    culturalAlignment: (form.culturalAlignment?.value || "").trim(),
+    ethicalProduction: (form.ethicalProduction?.value || "").trim(),
+    platformFit: (form.platformFit?.value || "").trim(),
+  };
+}
+
+function applyAuthenticBrandFormData(data = {}, overwrite = false) {
+  const categorySelect = document.getElementById("authBrandCategory");
+  const categoryOtherInput = document.getElementById("authBrandCategoryOther");
+  const categoryValue = String(data.category || "").trim();
+  const categorySelection = String(data.categorySelection || "").trim();
+  const shouldUseOther =
+    categorySelection === AUTHENTIC_BRAND_OTHER_CATEGORY_VALUE ||
+    (!!categoryValue && !isAllowedAuthenticBrandCategory(categoryValue));
+
+  if (categorySelect) {
+    const nextCategory = shouldUseOther ? AUTHENTIC_BRAND_OTHER_CATEGORY_VALUE : categoryValue;
+    if (overwrite || !String(categorySelect.value || "").trim()) {
+      categorySelect.value = nextCategory;
+    }
+  }
+
+  if (categoryOtherInput) {
+    const nextOtherValue = shouldUseOther
+      ? String(data.categoryOther || categoryValue || "").trim()
+      : String(data.categoryOther || "").trim();
+    if (overwrite || !String(categoryOtherInput.value || "").trim()) {
+      categoryOtherInput.value = nextOtherValue;
+    }
+  }
+
+  const fieldMap = {
+    brandName: "authBrandName",
+    website: "authBrandWebsite",
+    email: "authBrandEmail",
+    contactName: "authBrandContactName",
+    phone: "authBrandPhone",
+    culturalAlignment: "authBrandCulture",
+    ethicalProduction: "authBrandEthics",
+    platformFit: "authBrandWhy",
+  };
+
+  Object.entries(fieldMap).forEach(([key, id]) => {
+    const field = document.getElementById(id);
+    if (!field) return;
+    const value = String(data[key] || "");
+    if (!overwrite && String(field.value || "").trim()) return;
+    field.value = value;
+  });
+
+  syncAuthenticBrandCustomCategoryField();
+}
+
+function persistAuthenticBrandDraft() {
+  if (authenticBrandDraftTimer) {
+    clearTimeout(authenticBrandDraftTimer);
+  }
+  authenticBrandDraftTimer = window.setTimeout(() => {
+    authenticBrandDraftTimer = null;
+    commitAuthenticBrandDraft();
+  }, 180);
+}
+
+function commitAuthenticBrandDraft() {
+  const data = getAuthenticBrandFormData();
+  if (!data) return;
+  const hasValue = Object.values(data).some((value) => String(value || "").trim());
+  if (!hasValue) {
+    Store.d(AUTHENTIC_BRAND_FORM_KEY);
+    return;
+  }
+  Store.s(AUTHENTIC_BRAND_FORM_KEY, data);
+}
+
+function flushAuthenticBrandDraft() {
+  if (authenticBrandDraftTimer) {
+    clearTimeout(authenticBrandDraftTimer);
+    authenticBrandDraftTimer = null;
+  }
+  commitAuthenticBrandDraft();
+}
+window.addEventListener("pagehide", flushAuthenticBrandDraft);
+
+function hydrateAuthenticBrandForm(overwrite = false) {
+  renderAuthenticBrandCategoryOptions();
+  const draft = Store.g(AUTHENTIC_BRAND_FORM_KEY, {}) || {};
+  const defaults = {
+    contactName: CU?.name || "",
+    email: CU?.email || "",
+  };
+  applyAuthenticBrandFormData({ ...defaults, ...draft }, overwrite);
+}
+
+function scrollToAuthenticBrandForm() {
+  const revealForm = () => {
+    const section = document.getElementById("authenticBrandApplication");
+    if (!section) return;
+    section.scrollIntoView({
+      behavior: REELS_PREFERS_REDUCED_MOTION ? "auto" : "smooth",
+      block: "start",
+    });
+  };
+
+  if (curPage !== "authenticBrands") {
+    gp("authenticBrands");
+    window.setTimeout(revealForm, 180);
+    return;
+  }
+
+  revealForm();
+}
+
+function buildAuthenticBrandApplicationPayload(data) {
+  const preferredLanguage =
+    typeof getCurrentLanguageCode === "function"
+      ? getCurrentLanguageCode()
+      : "en";
+  const theme =
+    typeof getCurrentThemeLabel === "function"
+      ? getCurrentThemeLabel()
+      : (document.documentElement.hasAttribute("data-dark")
+        ? "Dark theme"
+        : "Light theme");
+  const detail = [
+    `Brand name: ${data.brandName}`,
+    `Category: ${data.category}`,
+    `Website or Instagram: ${data.website}`,
+    `Contact person: ${data.contactName}`,
+    `Contact email: ${data.email}`,
+    `Phone or WhatsApp: ${data.phone || "Not provided"}`,
+    "",
+    "Cultural alignment:",
+    data.culturalAlignment,
+    "",
+    "Ethical production:",
+    data.ethicalProduction,
+    "",
+    "Why Tirth Sutra:",
+    data.platformFit,
+  ].join("\n");
+
+  return {
+    kind: "feedback",
+    subject: `Authentic Brand Verification - ${data.brandName}`,
+    body: ["New authentic brand verification request", "", detail].join("\n"),
+    category: "Authentic Brand Verification",
+    detail,
+    currentPage: "Authentic Brands",
+    preferredLanguage,
+    theme,
+    accountPrivacy: CU?.privateAccount ? "Private account" : "Public account",
+    notificationSummary: "Not provided",
+    userLabel: data.contactName || CU?.name || data.brandName,
+  };
+}
+
+function openAuthenticBrandMailto(payload) {
+  if (!payload) return;
+  window.location.href =
+    `mailto:${MORE_SUPPORT_EMAIL}?subject=${encodeURIComponent(payload.subject || "Authentic Brand Verification")}&body=${encodeURIComponent(payload.detail || payload.body || "")}`;
+}
+
+async function submitAuthenticBrandApplication(event) {
+  if (event) event.preventDefault();
+  flushAuthenticBrandDraft();
+  const form = document.getElementById("authenticBrandForm");
+  const data = getAuthenticBrandFormData();
+  if (!form || !data) return;
+
+  const requiredFields = [
+    data.brandName,
+    data.category,
+    data.website,
+    data.email,
+    data.contactName,
+    data.culturalAlignment,
+    data.ethicalProduction,
+    data.platformFit,
+  ];
+  if (requiredFields.some((value) => !String(value || "").trim())) {
+    MC.warn("Please complete all required brand verification fields.");
+    return;
+  }
+
+  const payload = buildAuthenticBrandApplicationPayload(data);
+  const submitBtn = form.querySelector('button[type="submit"]');
+  const originalText = submitBtn ? submitBtn.textContent : "";
+
+  if (submitBtn) {
+    submitBtn.disabled = true;
+    submitBtn.textContent = "Submitting...";
+  }
+
+  try {
+    if (!window.API || typeof API.submitSupportReport !== "function") {
+      throw new Error("Brand verification submission is not available right now.");
+    }
+
+    await API.submitSupportReport(payload);
+    form.reset();
+    Store.d(AUTHENTIC_BRAND_FORM_KEY);
+    hydrateAuthenticBrandForm(true);
+    MC.success("Your verification application has been sent. Our team will review it manually.");
+  } catch (err) {
+    openAuthenticBrandMailto(payload);
+    copyTextToClipboard(payload.detail, "Application details copied.");
+    MC.warn(
+      err?.message ||
+      "Live submission is unavailable right now. We opened your email app with the filled request.",
+    );
+  } finally {
+    if (submitBtn) {
+      submitBtn.disabled = false;
+      submitBtn.textContent = originalText || "Apply for Verification";
+    }
+  }
+}
+
+function highlightAuthenticBrandCard(brandId) {
+  const card = document.getElementById(
+    `authenticBrandCard-${normalizeAuthenticBrandId(brandId)}`,
+  );
+  if (!card) return;
+  card.classList.remove("is-focused");
+  card.scrollIntoView({
+    behavior: REELS_PREFERS_REDUCED_MOTION ? "auto" : "smooth",
+    block: "center",
+  });
+  requestAnimationFrame(() => {
+    card.classList.add("is-focused");
+  });
+  window.setTimeout(() => {
+    card.classList.remove("is-focused");
+  }, 1700);
+}
+
+function learnMorePartnerBrand(brandId, event) {
+  if (event) {
+    event.preventDefault();
+    event.stopPropagation();
+  }
+  const brand = getAuthenticBrandById(brandId);
+  if (brand?.website) {
+    const popup = window.open(brand.website, "_blank", "noopener,noreferrer");
+    if (popup) popup.opener = null;
+    else MC.info("Please allow popups to open the partner website in a new tab.");
+    return;
+  }
+  closePartnerReelsOverlay();
+  window.setTimeout(() => {
+    highlightAuthenticBrandCard(brandId);
+  }, 160);
+}
+
+function renderAuthenticBrandsPage() {
+  if (!authenticBrandsStaticRendered) {
+    renderAuthenticBrandCategoryList(
+      "authenticBrandBannedList",
+      AUTHENTIC_BRAND_BANNED_CATEGORIES,
+      "banned",
+    );
+    renderAuthenticBrandsPreviewGrid();
+    authenticBrandsStaticRendered = true;
+  }
+  hydrateAuthenticBrandForm();
+}
+
+function isPartnerReelsOpen() {
+  return !!document.getElementById("partnerReelsOvl")?.classList.contains("show");
+}
+
+function getPartnerReelsFeed() {
+  return document.getElementById("partnerReelsFeed");
+}
+
+function getPartnerReelSlide(index) {
+  return getPartnerReelsFeed()?.querySelector(
+    `.partner-reel-slide[data-index="${index}"]`,
+  ) || null;
+}
+
+function getPartnerReelVideo(index) {
+  return getPartnerReelSlide(index)?.querySelector(".partner-reel-video") || null;
+}
+
+function hydratePartnerReelVideo(index) {
+  const video = getPartnerReelVideo(index);
+  if (!video || video.dataset.loaded === "1") return video;
+  const src = video.dataset.src;
+  if (!src) return video;
+  video.src = src;
+  video.preload = "metadata";
+  video.dataset.loaded = "1";
+  try {
+    video.load();
+  } catch { }
+  return video;
+}
+
+function primePartnerReelVideos(centerIndex) {
+  [centerIndex - 1, centerIndex, centerIndex + 1].forEach((index) => {
+    if (index < 0 || index >= AUTHENTIC_BRAND_PARTNERS.length) return;
+    hydratePartnerReelVideo(index);
+  });
+}
+
+function getPartnerReelPlayIcon(isPaused = true) {
+  return isPaused
+    ? `<svg viewBox="0 0 24 24"><polygon points="8 6 18 12 8 18 8 6"></polygon></svg>`
+    : `<svg viewBox="0 0 24 24"><rect x="7" y="6" width="3.5" height="12"></rect><rect x="13.5" y="6" width="3.5" height="12"></rect></svg>`;
+}
+
+function getPartnerReelMuteIcon() {
+  return partnerReelsMuted
+    ? `<svg viewBox="0 0 24 24"><polygon points="11 5 6 9 3 9 3 15 6 15 11 19 11 5"></polygon><line x1="16" y1="9" x2="21" y2="14"></line><line x1="21" y1="9" x2="16" y2="14"></line></svg>`
+    : `<svg viewBox="0 0 24 24"><polygon points="11 5 6 9 3 9 3 15 6 15 11 19 11 5"></polygon><path d="M15 9a5 5 0 0 1 0 6"></path><path d="M18.5 6.5a9 9 0 0 1 0 11"></path></svg>`;
+}
+
+function getPartnerReelFullscreenIcon() {
+  return `<svg viewBox="0 0 24 24"><polyline points="15 3 21 3 21 9"></polyline><polyline points="9 21 3 21 3 15"></polyline><line x1="21" y1="3" x2="14" y2="10"></line><line x1="3" y1="21" x2="10" y2="14"></line></svg>`;
+}
+
+function getPartnerReelLikeIcon() {
+  return `<svg viewBox="0 0 24 24"><path d="M14 9V5a3 3 0 0 0-3-3l-1 5-4 5v8h11.5a2.5 2.5 0 0 0 2.45-2l1-6A2.5 2.5 0 0 0 18.48 9H14z"></path><path d="M7 12H4a1 1 0 0 0-1 1v6a1 1 0 0 0 1 1h3"></path></svg>`;
+}
+
+function getPartnerReelDislikeIcon() {
+  return `<svg viewBox="0 0 24 24"><path d="M10 15v4a3 3 0 0 0 3 3l1-5 4-5V4H6.5a2.5 2.5 0 0 0-2.45 2l-1 6A2.5 2.5 0 0 0 5.52 15H10z"></path><path d="M17 12h3a1 1 0 0 1 1 1v6a1 1 0 0 1-1 1h-3"></path></svg>`;
+}
+
+function getPartnerReelMoreIcon() {
+  return `<svg viewBox="0 0 24 24"><circle cx="12" cy="5" r="1.8" fill="currentColor" stroke="none"></circle><circle cx="12" cy="12" r="1.8" fill="currentColor" stroke="none"></circle><circle cx="12" cy="19" r="1.8" fill="currentColor" stroke="none"></circle></svg>`;
+}
+
+function getAuthenticBrandReactionState(brandId) {
+  const brand = getAuthenticBrandById(brandId);
+  const store = Store.g(AUTHENTIC_BRAND_REACTION_KEY, {}) || {};
+  const saved = store[normalizeAuthenticBrandId(brandId)] || {};
+  return {
+    likes: Number.isFinite(saved.likes) ? saved.likes : (brand?.likes || 0),
+    dislikes: Number.isFinite(saved.dislikes)
+      ? saved.dislikes
+      : (brand?.dislikes || 0),
+    choice:
+      saved.choice === "like" || saved.choice === "dislike"
+        ? saved.choice
+        : null,
+  };
+}
+
+function saveAuthenticBrandReactionState(brandId, nextState) {
+  const cleanId = normalizeAuthenticBrandId(brandId);
+  if (!cleanId) return;
+  const store = Store.g(AUTHENTIC_BRAND_REACTION_KEY, {}) || {};
+  store[cleanId] = nextState;
+  Store.s(AUTHENTIC_BRAND_REACTION_KEY, store);
+}
+
+function updateAuthenticBrandReactionUi(brandId) {
+  const cleanId = normalizeAuthenticBrandId(brandId);
+  if (!cleanId) return;
+  const state = getAuthenticBrandReactionState(cleanId);
+  document
+    .querySelectorAll(`.partner-reel-slide[data-brand-id="${cleanId}"]`)
+    .forEach((slide) => {
+      const likeBtn = slide.querySelector('[data-brand-action="like"]');
+      const dislikeBtn = slide.querySelector('[data-brand-action="dislike"]');
+      const likeValue = slide.querySelector(".partner-reel-like-value");
+      if (likeBtn) likeBtn.classList.toggle("is-active", state.choice === "like");
+      if (dislikeBtn) dislikeBtn.classList.toggle("is-active", state.choice === "dislike");
+      if (likeValue) likeValue.textContent = formatCompactCount(state.likes);
+    });
+}
+
+function toggleAuthenticBrandReaction(brandId, action, event) {
+  if (event) {
+    event.preventDefault();
+    event.stopPropagation();
+  }
+  const cleanId = normalizeAuthenticBrandId(brandId);
+  if (!cleanId) return;
+  const state = getAuthenticBrandReactionState(cleanId);
+  const nextState = { ...state };
+
+  if (state.choice === action) {
+    if (action === "like" && nextState.likes > 0) nextState.likes -= 1;
+    if (action === "dislike" && nextState.dislikes > 0) nextState.dislikes -= 1;
+    nextState.choice = null;
+  } else {
+    if (state.choice === "like" && nextState.likes > 0) nextState.likes -= 1;
+    if (state.choice === "dislike" && nextState.dislikes > 0) nextState.dislikes -= 1;
+    if (action === "like") nextState.likes += 1;
+    if (action === "dislike") nextState.dislikes += 1;
+    nextState.choice = action;
+  }
+
+  saveAuthenticBrandReactionState(cleanId, nextState);
+  updateAuthenticBrandReactionUi(cleanId);
+}
+
+async function shareAuthenticBrand(brandId, event) {
+  if (event) {
+    event.preventDefault();
+    event.stopPropagation();
+  }
+  const brand = getAuthenticBrandById(brandId);
+  if (!brand) return;
+
+  const shareUrl = buildAuthenticBrandShareUrl(brand.id);
+  const shareData = {
+    title: brand.brandName,
+    text: `${brand.brandName} - ${brand.tagline} Verified by Dharma Standards on Tirth Sutra.`,
+    url: shareUrl,
+  };
+
+  if (navigator.share) {
+    try {
+      await navigator.share(shareData);
+      MC.success("Partner reel shared successfully.");
+      return;
+    } catch (err) {
+      if (err?.name === "AbortError") return;
+    }
+  }
+
+  copyTextToClipboard(`${shareData.text}\n\n${shareUrl}`, `${brand.brandName} link copied.`);
+}
+
+function updatePartnerReelsNavButtons() {
+  const prev = document.getElementById("partnerReelsPrevBtn");
+  const next = document.getElementById("partnerReelsNextBtn");
+  if (prev) prev.disabled = partnerReelsActiveIndex <= 0;
+  if (next) next.disabled = partnerReelsActiveIndex >= AUTHENTIC_BRAND_PARTNERS.length - 1;
+}
+
+function renderPartnerReels() {
+  const feed = getPartnerReelsFeed();
+  if (!feed) return;
+
+  feed.innerHTML = AUTHENTIC_BRAND_PARTNERS.map((brand, index) => {
+    const reaction = getAuthenticBrandReactionState(brand.id);
+    return `
+      <section class="partner-reel-slide${index === partnerReelsActiveIndex ? " is-active" : ""}" data-index="${index}" data-brand-id="${brand.id}">
+        <article class="partner-reel-stage">
+          <div
+            class="partner-reel-frame"
+            tabindex="0"
+            role="button"
+            aria-label="Toggle brand reel playback"
+            onclick="togglePartnerReelPlayback(event)"
+            onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();togglePartnerReelPlayback(event);}"
+          >
+            <div class="partner-reel-progress" aria-hidden="true">
+              <span class="partner-reel-progress-fill"></span>
+            </div>
+
+            <div class="partner-reel-top-controls">
+              <div class="partner-reel-branding" aria-label="Tirth Sutra">
+                <span class="partner-reel-branding-logo">
+                  <img src="Brand_Logo.jpg" alt="Tirth Sutra logo" />
+                </span>
+                <span class="partner-reel-branding-text">Tirth Sutra</span>
+              </div>
+            </div>
+
+            <video
+              class="partner-reel-video"
+              data-src="${brand.video}"
+              poster="${brand.image}"
+              loop
+              playsinline
+              webkit-playsinline
+              preload="none"
+              onloadedmetadata="updatePartnerReelProgressFromEvent(event)"
+              ontimeupdate="updatePartnerReelProgressFromEvent(event)"
+            ></video>
+
+            <div class="partner-reel-story-copy">
+              <div class="partner-reel-storyline">${esc(brand.overlay)}</div>
+            </div>
+          </div>
+
+          <div class="partner-reel-side-actions">
+            <button
+              class="partner-reel-action${reaction.choice === "like" ? " is-active" : ""}"
+              data-brand-id="${brand.id}"
+              data-brand-action="like"
+              type="button"
+              onclick="toggleAuthenticBrandReaction('${brand.id}', 'like', event)"
+            >
+              <span class="partner-reel-action-icon">${getPartnerReelLikeIcon()}</span>
+              <span class="partner-reel-action-copy">
+                <strong class="partner-reel-like-value">${formatCompactCount(reaction.likes)}</strong>
+                <small>Like</small>
+              </span>
+            </button>
+
+            <button
+              class="partner-reel-action${reaction.choice === "dislike" ? " is-active" : ""}"
+              data-brand-id="${brand.id}"
+              data-brand-action="dislike"
+              type="button"
+              onclick="toggleAuthenticBrandReaction('${brand.id}', 'dislike', event)"
+            >
+              <span class="partner-reel-action-icon">${getPartnerReelDislikeIcon()}</span>
+              <span class="partner-reel-action-copy">
+                <strong>Dislike</strong>
+              </span>
+            </button>
+
+            <button
+              class="partner-reel-action"
+              type="button"
+              onclick="shareAuthenticBrand('${brand.id}', event)"
+            >
+              <span class="partner-reel-action-icon">${getReelsShareIcon()}</span>
+              <span class="partner-reel-action-copy">
+                <strong>Share</strong>
+              </span>
+            </button>
+
+            <button
+              class="partner-reel-brand-shortcut"
+              type="button"
+              onclick="learnMorePartnerBrand('${brand.id}', event)"
+              aria-label="Open ${esc(brand.brandName)}"
+            >
+              <img src="${brand.image}" alt="${esc(brand.brandName)}" />
+            </button>
+          </div>
+
+          <div class="partner-reel-card">
+            <div class="partner-reel-card-badge">Verified by Dharma Standards</div>
+            <div class="partner-reel-card-top">
+              <div class="partner-reel-card-avatar">
+                <img src="${brand.image}" alt="${esc(brand.brandName)}" />
+              </div>
+              <div class="partner-reel-card-copy">
+                <strong>${esc(brand.imageName)}</strong>
+                <span>Sponsored</span>
+              </div>
+            </div>
+            <div class="partner-reel-card-meta">${esc(brand.tagline)}</div>
+            <button
+              class="btn partner-reel-learn-btn"
+              type="button"
+              onclick="learnMorePartnerBrand('${brand.id}', event)"
+            >
+              Learn More
+            </button>
+          </div>
+        </article>
+      </section>
+    `;
+  }).join("");
+
+  primePartnerReelVideos(partnerReelsActiveIndex);
+  updatePartnerReelsNavButtons();
+  bindPartnerReelsObserver();
+  bindPartnerReelsGlobalListeners();
+  AUTHENTIC_BRAND_PARTNERS.forEach((brand) => updateAuthenticBrandReactionUi(brand.id));
+}
+
+function playPartnerReel(index) {
+  const slide = getPartnerReelSlide(index);
+  const video = hydratePartnerReelVideo(index) || getPartnerReelVideo(index);
+  if (!slide || !video) return;
+  primePartnerReelVideos(index);
+  video.defaultMuted = false;
+  video.muted = false;
+
+  const startPlayback = () => {
+    if (!isPartnerReelsOpen() || partnerReelsActiveIndex !== index) return;
+    video.play().then(() => {
+      slide.classList.remove("is-paused");
+    }).catch(() => {
+      slide.classList.add("is-paused");
+    });
+  };
+
+  if (video.readyState >= 2) startPlayback();
+  else video.addEventListener("loadeddata", startPlayback, { once: true });
+}
+
+function pausePartnerReels() {
+  document.querySelectorAll("#partnerReelsFeed .partner-reel-video").forEach((video) => {
+    try {
+      video.pause();
+    } catch { }
+  });
+}
+
+function activatePartnerReel(index, options = {}) {
+  if (index < 0 || index >= AUTHENTIC_BRAND_PARTNERS.length) return;
+  partnerReelsActiveIndex = index;
+  primePartnerReelVideos(index);
+  document.querySelectorAll("#partnerReelsFeed .partner-reel-slide").forEach((slide, slideIndex) => {
+    const isActive = slideIndex === index;
+    slide.classList.toggle("is-active", isActive);
+    if (!isActive) slide.classList.remove("is-paused");
+    const video = slide.querySelector(".partner-reel-video");
+    if (video && !isActive) {
+      try {
+        video.pause();
+      } catch { }
+    }
+  });
+  updatePartnerReelsNavButtons();
+  if (options.autoplay !== false) playPartnerReel(index);
+}
+
+function findNearestPartnerReelIndex() {
+  const feed = getPartnerReelsFeed();
+  if (!feed) return 0;
+  const centerLine = feed.scrollTop + feed.clientHeight / 2;
+  let nearest = 0;
+  let bestDistance = Number.POSITIVE_INFINITY;
+  feed.querySelectorAll(".partner-reel-slide").forEach((slide, index) => {
+    const slideCenter = slide.offsetTop + slide.offsetHeight / 2;
+    const distance = Math.abs(centerLine - slideCenter);
+    if (distance < bestDistance) {
+      nearest = index;
+      bestDistance = distance;
+    }
+  });
+  return nearest;
+}
+
+function bindPartnerReelsObserver() {
+  const feed = getPartnerReelsFeed();
+  if (!feed) return;
+  if (partnerReelsObserver) partnerReelsObserver.disconnect();
+
+  if (!("IntersectionObserver" in window)) {
+    feed.onscroll = () => {
+      clearTimeout(feed.__partnerReelTimer);
+      feed.__partnerReelTimer = setTimeout(() => {
+        activatePartnerReel(findNearestPartnerReelIndex());
+      }, 60);
+    };
+    return;
+  }
+
+  feed.onscroll = null;
+  partnerReelsObserver = new IntersectionObserver(
+    (entries) => {
+      let bestEntry = null;
+      entries.forEach((entry) => {
+        if (!entry.isIntersecting) return;
+        if (!bestEntry || entry.intersectionRatio > bestEntry.intersectionRatio) {
+          bestEntry = entry;
+        }
+      });
+      if (!bestEntry || bestEntry.intersectionRatio < 0.6) return;
+      activatePartnerReel(Number(bestEntry.target.dataset.index || 0));
+    },
+    {
+      root: feed,
+      threshold: [0.35, 0.6, 0.85],
+    },
+  );
+
+  feed.querySelectorAll(".partner-reel-slide").forEach((slide) => {
+    partnerReelsObserver.observe(slide);
+  });
+}
+
+function scrollToPartnerReel(index, immediate = false) {
+  const feed = getPartnerReelsFeed();
+  const slide = getPartnerReelSlide(index);
+  if (!feed || !slide) return;
+  activatePartnerReel(index, { autoplay: true });
+  feed.scrollTo({
+    top: slide.offsetTop,
+    behavior: immediate || REELS_PREFERS_REDUCED_MOTION ? "auto" : "smooth",
+  });
+}
+
+function stepPartnerReels(direction) {
+  const nextIndex = partnerReelsActiveIndex + direction;
+  if (nextIndex < 0 || nextIndex >= AUTHENTIC_BRAND_PARTNERS.length) return;
+  scrollToPartnerReel(nextIndex);
+}
+
+function togglePartnerReelPlayback(event, fromControl = false) {
+  if (fromControl && event) {
+    event.preventDefault();
+    event.stopPropagation();
+  }
+  const slide =
+    event?.currentTarget?.closest(".partner-reel-slide") ||
+    event?.target?.closest(".partner-reel-slide");
+  if (!slide) return;
+  const index = Number(slide.dataset.index || 0);
+  if (index !== partnerReelsActiveIndex) {
+    scrollToPartnerReel(index);
+    return;
+  }
+  const video = slide.querySelector(".partner-reel-video");
+  if (!video) return;
+  if (video.paused) {
+    playPartnerReel(index);
+    return;
+  }
+  try {
+    video.pause();
+  } catch { }
+  slide.classList.add("is-paused");
+}
+
+function updatePartnerReelProgressFromEvent(event) {
+  const video = event.currentTarget;
+  const slide = video.closest(".partner-reel-slide");
+  const fill = slide?.querySelector(".partner-reel-progress-fill");
+  if (!fill) return;
+  const progress = video.duration ? video.currentTime / video.duration : 0;
+  fill.style.transform = `scaleX(${Math.max(0, Math.min(progress, 1))})`;
+}
+
+function togglePartnerReelsMute(event) {
+  if (event) {
+    event.preventDefault();
+    event.stopPropagation();
+  }
+  partnerReelsMuted = !partnerReelsMuted;
+  document.querySelectorAll("#partnerReelsFeed .partner-reel-video").forEach((video) => {
+    video.muted = partnerReelsMuted;
+  });
+}
+
+function togglePartnerReelFullscreen(event) {
+  if (event) {
+    event.preventDefault();
+    event.stopPropagation();
+  }
+  const frame =
+    event?.currentTarget?.closest(".partner-reel-frame") ||
+    event?.target?.closest(".partner-reel-frame");
+  if (!frame) return;
+
+  if (document.fullscreenElement) {
+    document.exitFullscreen().catch(() => { });
+    return;
+  }
+
+  const request =
+    frame.requestFullscreen ||
+    frame.webkitRequestFullscreen ||
+    frame.msRequestFullscreen;
+  if (!request) {
+    MC.info("Fullscreen is not available right now.");
+    return;
+  }
+
+  Promise.resolve(request.call(frame)).catch(() => {
+    MC.info("Fullscreen is not available right now.");
+  });
+}
+
+function bindPartnerReelsGlobalListeners() {
+  if (partnerReelsListenersBound) return;
+  partnerReelsListenersBound = true;
+
+  document.addEventListener("visibilitychange", () => {
+    if (!isPartnerReelsOpen()) return;
+    if (document.hidden) {
+      pausePartnerReels();
+      return;
+    }
+    playPartnerReel(partnerReelsActiveIndex);
+  });
+
+  document.addEventListener("keydown", (event) => {
+    if (!isPartnerReelsOpen()) return;
+    const activeTag = document.activeElement?.tagName;
+    if (activeTag === "INPUT" || activeTag === "TEXTAREA" || activeTag === "SELECT") {
+      return;
+    }
+    if (event.key === "ArrowDown" || event.key === "PageDown") {
+      event.preventDefault();
+      stepPartnerReels(1);
+    } else if (event.key === "ArrowUp" || event.key === "PageUp") {
+      event.preventDefault();
+      stepPartnerReels(-1);
+    } else if (event.key === " " || event.key === "Spacebar") {
+      event.preventDefault();
+      const frame = getPartnerReelSlide(partnerReelsActiveIndex)?.querySelector(".partner-reel-frame");
+      if (frame) togglePartnerReelPlayback({ currentTarget: frame, target: frame });
+    }
+  });
+
+  window.addEventListener("resize", () => {
+    if (!isPartnerReelsOpen()) return;
+    scrollToPartnerReel(partnerReelsActiveIndex, true);
+  });
+}
+
+function openPartnerReels(index = 0) {
+  const safeIndex = Math.max(
+    0,
+    Math.min(Number(index) || 0, AUTHENTIC_BRAND_PARTNERS.length - 1),
+  );
+  partnerReelsMuted = false;
+
+  if (curPage !== "authenticBrands") {
+    gp("authenticBrands");
+    window.setTimeout(() => {
+      openPartnerReels(safeIndex);
+    }, 180);
+    return;
+  }
+
+  partnerReelsActiveIndex = safeIndex;
+  renderPartnerReels();
+  openOvl("partnerReelsOvl");
+  scrollToPartnerReel(safeIndex, true);
+}
+
+function closePartnerReelsOverlay() {
+  pausePartnerReels();
+  closeOvl("partnerReelsOvl");
+}
+
+function handlePendingAuthenticBrandRoute() {
+  const brandId = pendingSharedAuthenticBrandId || getInitialSharedAuthenticBrandId();
+  if (!brandId) return false;
+  const index = findAuthenticBrandIndexById(brandId);
+  if (index < 0) return false;
+  pendingSharedAuthenticBrandId = "";
+  gp("authenticBrands");
+  window.setTimeout(() => {
+    openPartnerReels(index);
+  }, 180);
+  return true;
+}
+window.handlePendingAuthenticBrandRoute = handlePendingAuthenticBrandRoute;
 
 function updateBlockedUserSearch(query) {
   blockedUserSearchQuery = (query || "").trim();
@@ -4881,6 +5981,7 @@ const ANALYTICS_PAGE_TITLES = {
   chats: "Chats",
   messages: "Messages",
   about: "About",
+  authenticBrands: "Authentic Brands",
   language: "Language",
   helpSupport: "Help & Support",
   settingsPrivacy: "Settings & Privacy",
@@ -4978,6 +6079,7 @@ function gp(page) {
       profile: () => renderProfile(CU ? CU.id : curProfId),
       chats: () => renderChatsPage(),
       about: () => {},
+      authenticBrands: () => renderAuthenticBrandsPage(),
       language: () => renderLanguagePage(),
       helpSupport: () => renderHelpSupportPage(),
       settingsPrivacy: () => renderSettingsPrivacyPage(),
@@ -4985,7 +6087,7 @@ function gp(page) {
     const isWidePage =
       page === "chats" ||
       isReelsPage ||
-      ["about", "inviteFriends", "language", "helpSupport", "settingsPrivacy"].includes(page);
+      ["about", "authenticBrands", "inviteFriends", "language", "helpSupport", "settingsPrivacy"].includes(page);
     document.body.classList.toggle("reels-mode", isReelsPage);
     //* pgChats needs flex not block */
     const cp = document.getElementById("pgChats");
@@ -10366,7 +11468,9 @@ async function init() {
     renderStories();
     renderWidgets();
     scheduleReelsWarmup();
-    handlePendingReelRoute();
+    if (!handlePendingReelRoute()) {
+      handlePendingAuthenticBrandRoute();
+    }
     scheduleGoogleTranslate({
       languageCode: getCurrentLanguageCode(),
       force: getCurrentLanguageCode() !== "en",
@@ -10545,6 +11649,7 @@ window.addEventListener("DOMContentLoaded", init);
       mandirCommunity: () => { if (currentMandirSlug) loadMandirPosts(currentMandirSlug); },
       video: () => renderVideoPage(),
       reels: () => renderReelsPage(),
+      authenticBrands: () => renderAuthenticBrandsPage(),
       search: () => doSearch(""),
       notifs: () => renderNotifs(),
       messages: () => renderConvs(),

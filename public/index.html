@@ -631,6 +631,19 @@
                 <polyline points="9 18 15 12 9 6"></polyline>
               </svg>
             </button>
+            <button class="more-menu-item more-menu-item-rich" type="button" onclick="moreGo('authenticBrands')">
+              <svg viewBox="0 0 24 24">
+                <path d="M12 3l7 3v6c0 5.1-3.3 8.6-7 10-3.7-1.4-7-4.9-7-10V6l7-3z"></path>
+                <path d="M9.4 12.2l1.5 1.5 3.7-3.8"></path>
+              </svg>
+              <div class="more-menu-copy">
+                <span>Authentic Brands</span>
+                <small>Verified partners rooted in culture and ethics.</small>
+              </div>
+              <svg class="more-menu-chevron" viewBox="0 0 24 24">
+                <polyline points="9 18 15 12 9 6"></polyline>
+              </svg>
+            </button>
             <button class="more-menu-item more-menu-item-rich" type="button" onclick="moreGo('inviteFriends')">
               <svg viewBox="0 0 24 24">
                 <circle cx="18" cy="5" r="3"></circle>
@@ -3470,6 +3483,440 @@
             </div>
           </div>
 
+          <!-- AUTHENTIC BRANDS PAGE -->
+          <div class="page hide" id="pgAuthenticBrands">
+            <div class="fhdr authentic-brands-header">
+              <div class="fhdr-row">
+                <div class="about-page-heading">
+                  <button
+                    class="sb about-back-btn"
+                    type="button"
+                    onclick="goBackFromMorePage()"
+                    aria-label="Back"
+                  >
+                    <svg viewBox="0 0 24 24">
+                      <polyline points="15 18 9 12 15 6" />
+                    </svg>
+                  </button>
+                  <div>
+                    <span class="fhdr-title">Authentic Brands</span>
+                    <div class="about-page-subtitle">
+                      Trust-first brand verification for Tirth Sutra
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div class="authentic-brands-page-shell">
+              <section class="authentic-brands-hero">
+                <div class="authentic-brands-hero-copy">
+                  <span class="about-eyebrow">Authentic Brands Only</span>
+                  <h1>A Marketplace You Can Trust - Rooted in Dharma</h1>
+                  <p>
+                    Not every brand belongs here. We curate and verify only
+                    those companies that align with Sattvic living, cultural
+                    integrity, and ethical practices.
+                  </p>
+                  <div class="authentic-brands-quote">
+                    In a world of manipulation, we built a platform of trust.
+                  </div>
+                  <div class="authentic-brands-trustline">
+                    <span>Verified</span>
+                    <span>Culture-rooted</span>
+                    <span>Ethical</span>
+                    <span>Non-exploitative</span>
+                  </div>
+                  <div class="authentic-brands-hero-actions">
+                    <button
+                      class="btn btn-p"
+                      type="button"
+                      onclick="scrollToAuthenticBrandForm()"
+                    >
+                      Apply for Verification
+                    </button>
+                    <button
+                      class="btn authentic-brands-secondary-btn"
+                      type="button"
+                      onclick="openPartnerReels()"
+                    >
+                      Our Partners
+                    </button>
+                  </div>
+                </div>
+
+                <aside class="authentic-brands-hero-proof">
+                  <div class="authentic-brands-proof-label">
+                    Trust Layer for Commerce
+                  </div>
+                  <h2>A social network that elevates, not distracts</h2>
+                  <p>
+                    This platform is not open advertising. It is a curated
+                    Sattvic economy where every brand is screened for product
+                    safety, ethical business practices, and cultural alignment.
+                  </p>
+                  <div class="authentic-brands-proof-points">
+                    <div>No harmful products</div>
+                    <div>No exploitative business models</div>
+                    <div>No cultural dilution</div>
+                  </div>
+                  <div class="authentic-brands-proof-foot">
+                    This creates a high-trust ecosystem for users and a
+                    high-intent audience for brands.
+                  </div>
+                </aside>
+              </section>
+
+              <section class="authentic-brands-section">
+                <article class="authentic-brand-category-card authentic-brand-category-card-banned authentic-brand-category-card-single authentic-brand-category-card-policy">
+                  <div class="authentic-brand-category-shell">
+                    <div class="authentic-brand-category-head">
+                      <span class="authentic-brands-section-kicker">Protection first</span>
+                      <h3>Not accepted on Tirth Sutra</h3>
+                      <p>
+                        These categories are blocked to protect users, preserve
+                        cultural trust, and keep the platform free from harmful
+                        or exploitative campaigns.
+                      </p>
+                    </div>
+                    <div class="authentic-brand-policy-note">
+                      <span class="authentic-brand-policy-pill">Manual review guardrails</span>
+                      <span class="authentic-brand-policy-copy">
+                        Every campaign request is checked against these
+                        rejection rules before it can go live.
+                      </span>
+                    </div>
+                  </div>
+                  <div
+                    class="authentic-brand-category-list"
+                    id="authenticBrandBannedList"
+                  ></div>
+                </article>
+              </section>
+
+              <section class="authentic-brands-process-grid">
+                <article class="authentic-brands-process-card">
+                  <span class="authentic-brands-section-kicker">For brands</span>
+                  <h2>Become an Authentic Partner</h2>
+                  <p>
+                    If your brand is rooted in Indian culture, ethical in
+                    production, spiritually aligned, and serving society
+                    positively, you can apply to join this platform.
+                  </p>
+                  <div class="authentic-brands-qualifier-row">
+                    <span>Indian culture rooted</span>
+                    <span>Ethical production</span>
+                    <span>Spiritually aligned</span>
+                    <span>Positive social value</span>
+                  </div>
+                  <button
+                    class="btn btn-p"
+                    type="button"
+                    onclick="scrollToAuthenticBrandForm()"
+                  >
+                    Become an Authentic Partner
+                  </button>
+                  <div class="authentic-brands-fineprint">
+                    We manually verify every brand before allowing
+                    advertisements.
+                  </div>
+                </article>
+
+                <article class="authentic-brands-process-card">
+                  <span class="authentic-brands-section-kicker">Verification process</span>
+                  <h2>How it works</h2>
+                  <div class="authentic-brand-steps">
+                    <div class="authentic-brand-step">
+                      <strong>1</strong>
+                      <div>
+                        <span>Submit your brand details</span>
+                        <p>
+                          Share your company story, category, product intent,
+                          and why your brand belongs in a trust-first network.
+                        </p>
+                      </div>
+                    </div>
+                    <div class="authentic-brand-step">
+                      <strong>2</strong>
+                      <div>
+                        <span>Authenticity and ethics review</span>
+                        <p>
+                          Our team checks your product quality, sourcing, and
+                          business behavior.
+                        </p>
+                      </div>
+                    </div>
+                    <div class="authentic-brand-step">
+                      <strong>3</strong>
+                      <div>
+                        <span>Cultural alignment check</span>
+                        <p>
+                          We verify whether your messaging, positioning, and
+                          impact respect Indian culture and dharmic values.
+                        </p>
+                      </div>
+                    </div>
+                    <div class="authentic-brand-step">
+                      <strong>4</strong>
+                      <div>
+                        <span>Approval and onboarding</span>
+                        <p>
+                          Verified brands are onboarded into a premium,
+                          high-trust discovery experience.
+                        </p>
+                      </div>
+                    </div>
+                    <div class="authentic-brand-step">
+                      <strong>5</strong>
+                      <div>
+                        <span>Reach a high-intent audience</span>
+                        <p>
+                          Start showing your brand to users who already value
+                          authenticity, quality, and culture.
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                </article>
+              </section>
+
+              <section class="authentic-brands-users">
+                <div class="authentic-brands-user-copy">
+                  <span class="authentic-brands-section-kicker">For users</span>
+                  <h2>Explore Our Trusted Brands</h2>
+                  <p>
+                    No noise. No scams. No manipulation. Only authentic,
+                    verified companies presented through immersive reel
+                    storytelling.
+                  </p>
+                </div>
+                <div class="authentic-brands-user-actions">
+                  <button
+                    class="btn btn-p"
+                    type="button"
+                    onclick="openPartnerReels()"
+                  >
+                    Our Partners
+                  </button>
+                  <span>
+                    Swipe on mobile, use arrows on desktop, and open every
+                    verified brand in a premium reel experience.
+                  </span>
+                </div>
+              </section>
+
+              <section class="authentic-brands-section">
+                <div class="authentic-brands-section-intro">
+                  <span class="authentic-brands-section-kicker">Verified partners</span>
+                  <h2>Brands already aligned with this vision</h2>
+                  <p>
+                    Every brand card below connects to the reel-style partner
+                    experience and carries the same trust standard badge.
+                  </p>
+                </div>
+                <div
+                  class="authentic-brands-preview-grid"
+                  id="authenticBrandPreviewGrid"
+                ></div>
+              </section>
+
+              <section
+                class="authentic-brands-application"
+                id="authenticBrandApplication"
+              >
+                <div class="authentic-brands-application-sidebar">
+                  <div class="authentic-brands-application-copy">
+                    <span class="authentic-brands-section-kicker">Brand verification form</span>
+                    <h2>Apply to reach a high-intent, high-trust audience</h2>
+                    <p>
+                      Fill this form if your company is authentic,
+                      culture-rooted, and aligned with ethical production. Our
+                      team reviews every application before approving any
+                      campaign.
+                    </p>
+                    <div class="authentic-brands-application-note">
+                      A real application is sent to the Tirth Sutra support
+                      inbox when you submit this form.
+                    </div>
+                  </div>
+
+                  <div class="authentic-brands-application-highlights">
+                    <div class="authentic-brands-application-highlight">
+                      <strong>What we review</strong>
+                      <span>Authenticity, ethical production, and cultural alignment.</span>
+                    </div>
+                    <div class="authentic-brands-application-highlight">
+                      <strong>Why brands apply here</strong>
+                      <span>Access a premium audience that values trust before attention.</span>
+                    </div>
+                    <div class="authentic-brands-application-highlight">
+                      <strong>What happens next</strong>
+                      <span>Approved brands are onboarded into a curated reel-led discovery flow.</span>
+                    </div>
+                  </div>
+
+                  <div class="authentic-brands-application-trust">
+                    <strong>Verified by Dharma Standards</strong>
+                    <p>
+                      We screen messaging, product category, sourcing intent,
+                      and social impact before any advertisement is approved.
+                    </p>
+                  </div>
+                </div>
+
+                <div class="authentic-brands-form-panel">
+                  <form
+                    class="authentic-brands-form"
+                    id="authenticBrandForm"
+                    onsubmit="submitAuthenticBrandApplication(event)"
+                    oninput="persistAuthenticBrandDraft()"
+                  >
+                    <div class="authentic-brands-form-block">
+                      <div class="authentic-brands-form-block-head">
+                        <strong>Basic brand details</strong>
+                        <span>Share your business identity and primary contact information.</span>
+                      </div>
+
+                      <div class="authentic-brands-form-grid">
+                        <label class="authentic-brands-form-field">
+                          <span>Brand name</span>
+                          <input
+                            type="text"
+                            id="authBrandName"
+                            name="brandName"
+                            placeholder="Your brand name"
+                            required
+                          />
+                        </label>
+
+                        <label class="authentic-brands-form-field">
+                          <span>Category</span>
+                          <select
+                            id="authBrandCategory"
+                            name="category"
+                            required
+                            onchange="syncAuthenticBrandCustomCategoryField(true)"
+                          >
+                            <option value="">Select an allowed category</option>
+                          </select>
+                        </label>
+
+                        <label
+                          class="authentic-brands-form-field authentic-brands-form-field-wide"
+                          id="authBrandCategoryOtherWrap"
+                          hidden
+                        >
+                          <span>Other category</span>
+                          <input
+                            type="text"
+                            id="authBrandCategoryOther"
+                            name="categoryOther"
+                            placeholder="Write your category"
+                            maxlength="100"
+                            disabled
+                          />
+                        </label>
+
+                        <label class="authentic-brands-form-field">
+                          <span>Website or Instagram</span>
+                          <input
+                            type="url"
+                            id="authBrandWebsite"
+                            name="website"
+                            placeholder="https://yourbrand.com"
+                            required
+                          />
+                        </label>
+
+                        <label class="authentic-brands-form-field">
+                          <span>Contact email</span>
+                          <input
+                            type="email"
+                            id="authBrandEmail"
+                            name="email"
+                            placeholder="founder@brand.com"
+                            required
+                          />
+                        </label>
+
+                        <label class="authentic-brands-form-field">
+                          <span>Founder or contact person</span>
+                          <input
+                            type="text"
+                            id="authBrandContactName"
+                            name="contactName"
+                            placeholder="Full name"
+                            required
+                          />
+                        </label>
+
+                        <label class="authentic-brands-form-field">
+                          <span>Phone or WhatsApp</span>
+                          <input
+                            type="tel"
+                            id="authBrandPhone"
+                            name="phone"
+                            placeholder="+91"
+                          />
+                        </label>
+                      </div>
+                    </div>
+
+                    <div class="authentic-brands-form-block">
+                      <div class="authentic-brands-form-block-head">
+                        <strong>Alignment review</strong>
+                        <span>Help us understand your values, story, and fit for this network.</span>
+                      </div>
+
+                      <label class="authentic-brands-form-field authentic-brands-form-field-wide">
+                        <span>What makes your brand culturally rooted?</span>
+                        <textarea
+                          id="authBrandCulture"
+                          name="culturalAlignment"
+                          rows="4"
+                          placeholder="Share your story, tradition, lineage, craft, or cultural intent."
+                          required
+                        ></textarea>
+                      </label>
+
+                      <label class="authentic-brands-form-field authentic-brands-form-field-wide">
+                        <span>How do you ensure ethical production and non-exploitative practice?</span>
+                        <textarea
+                          id="authBrandEthics"
+                          name="ethicalProduction"
+                          rows="4"
+                          placeholder="Tell us about sourcing, labor, ingredients, safety, and production ethics."
+                          required
+                        ></textarea>
+                      </label>
+
+                      <label class="authentic-brands-form-field authentic-brands-form-field-wide">
+                        <span>Why do you want to advertise on Tirth Sutra?</span>
+                        <textarea
+                          id="authBrandWhy"
+                          name="platformFit"
+                          rows="4"
+                          placeholder="Explain why your brand belongs in a high-trust dharmic audience."
+                          required
+                        ></textarea>
+                      </label>
+                    </div>
+
+                    <div class="authentic-brands-form-actions">
+                      <button class="btn btn-p" type="submit">
+                        Apply for Verification
+                      </button>
+                      <div class="authentic-brands-form-help">
+                        We review authenticity, ethics, cultural alignment, and
+                        product quality before onboarding.
+                      </div>
+                    </div>
+                  </form>
+                </div>
+              </section>
+            </div>
+          </div>
+
           <!-- INVITE FRIENDS PAGE -->
           <div class="page hide" id="pgInviteFriends"></div>
 
@@ -3680,6 +4127,52 @@
           <button class="call-btn btn-end" id="callEndBtn">
             <svg viewBox="0 0 24 24" fill="none"><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2" stroke="currentColor" stroke-width="2"/><path d="M15 2H9c-1.1 0-2 .9-2 2v2h10V4c0-1.1-.9-2-2-2z" stroke="currentColor" stroke-width="2"/><line x1="8" y1="12" x2="16" y2="12" stroke="currentColor" stroke-width="2"/></svg>
           </button>
+        </div>
+      </div>
+    </div>
+
+    <div class="ovl" id="partnerReelsOvl">
+      <div class="modal partner-reels-modal" role="dialog" aria-label="Trusted brand partner reels">
+        <button
+          class="partner-reels-dismiss"
+          type="button"
+          onclick="closePartnerReelsOverlay()"
+          aria-label="Close trusted brand reels"
+        >
+          <svg viewBox="0 0 24 24">
+            <line x1="18" y1="6" x2="6" y2="18"></line>
+            <line x1="6" y1="6" x2="18" y2="18"></line>
+          </svg>
+        </button>
+
+        <div class="partner-reels-shell">
+          <div class="partner-reels-ambient" aria-hidden="true"></div>
+          <div class="partner-reels-feed" id="partnerReelsFeed"></div>
+
+          <div class="partner-reels-desktop-nav" aria-label="Partner reel navigation">
+            <button
+              class="partner-reels-nav-btn"
+              id="partnerReelsPrevBtn"
+              type="button"
+              onclick="stepPartnerReels(-1)"
+              aria-label="Previous partner reel"
+            >
+              <svg viewBox="0 0 24 24">
+                <polyline points="18 15 12 9 6 15"></polyline>
+              </svg>
+            </button>
+            <button
+              class="partner-reels-nav-btn"
+              id="partnerReelsNextBtn"
+              type="button"
+              onclick="stepPartnerReels(1)"
+              aria-label="Next partner reel"
+            >
+              <svg viewBox="0 0 24 24">
+                <polyline points="6 9 12 15 18 9"></polyline>
+              </svg>
+            </button>
+          </div>
         </div>
       </div>
     </div>
