@@ -1012,6 +1012,7 @@ async function loginWithGoogle({
   marketingConsent,
   timezone,
   consentSource,
+  authMode,
 }) {
   const profile = await getGoogleProfile({ token, tokenType });
   const {
@@ -1032,34 +1033,94 @@ async function loginWithGoogle({
   const referrer = normalizedReferralCode
     ? await resolveReferrer(normalizedReferralCode)
     : null;
-  let user = await User.findOne({
-    $or: [{ email: normalizedEmail }, { googleId: sub }],
-  }).select("+password");
+  const safeAuthMode = normalizeGoogleAuthMode(authMode);
+  const linkedUser = await User.findOne({ googleId: sub }).select("+password");
+  const emailUser = await User.findOne({ email: normalizedEmail }).select("+password");
 
-  if (!user) {
-    const handle = await ensureUniqueHandle(name || normalizedEmail.split("@")[0]);
-    user = await User.create({
-      name: name || normalizedEmail.split("@")[0],
-      handle,
-      email: normalizedEmail,
-      password: crypto.randomBytes(24).toString("hex"),
-      authProvider: "google",
-      googleId: sub,
-      avatar: picture || null,
-      emailVerified: true,
-      referralCode: await generateUniqueReferralCode(handle || normalizedEmail),
-      referredBy: referrer ? referrer._id : null,
-      marketing: {
-        emailConsent: wantsMarketing,
-        emailConsentAt: wantsMarketing ? new Date() : null,
-        emailConsentSource: wantsMarketing ? consentSource || "google_signup" : null,
-        emailUnsubscribedAt: null,
-        timezone: sanitizeTimezone(timezone),
-      },
-    });
+  if (linkedUser && emailUser && !isSameUserRecord(linkedUser, emailUser)) {
+    throw new AppError(
+      "This Google account is already linked to another user. Please contact support.",
+      409
+    );
+  }
+
+  let user = linkedUser || emailUser;
+
+  if (safeAuthMode === "signup") {
+    if (linkedUser) {
+      throw new AppError(
+        "This Google account is already linked. Please sign in with Google instead.",
+        409,
+        { requiresSignin: true }
+      );
+    }
+
+    if (!user) {
+      const handle = await ensureUniqueHandle(name || normalizedEmail.split("@")[0]);
+      user = await User.create({
+        name: name || normalizedEmail.split("@")[0],
+        handle,
+        email: normalizedEmail,
+        password: crypto.randomBytes(24).toString("hex"),
+        authProvider: "google",
+        googleId: sub,
+        avatar: picture || null,
+        emailVerified: true,
+        referralCode: await generateUniqueReferralCode(handle || normalizedEmail),
+        referredBy: referrer ? referrer._id : null,
+        marketing: {
+          emailConsent: wantsMarketing,
+          emailConsentAt: wantsMarketing ? new Date() : null,
+          emailConsentSource: wantsMarketing ? consentSource || "google_signup" : null,
+          emailUnsubscribedAt: null,
+          timezone: sanitizeTimezone(timezone),
+        },
+      });
+    } else {
+      if (user.googleId && user.googleId !== sub) {
+        throw new AppError(
+          "This email is already linked to a different Google account.",
+          409
+        );
+      }
+
+      user.googleId = sub;
+      user.emailVerified = true;
+      user.referralCode =
+        user.referralCode ||
+        (await generateUniqueReferralCode(user.handle || user.name || normalizedEmail));
+      if (
+        referrer &&
+        !user.referredBy &&
+        String(referrer._id) !== String(user._id)
+      ) {
+        user.referredBy = referrer._id;
+      }
+      if (picture && !user.avatar) {
+        user.avatar = picture;
+      }
+      if (wantsMarketing) {
+        user.marketing = {
+          ...(user.marketing?.toObject ? user.marketing.toObject() : user.marketing || {}),
+          emailConsent: true,
+          emailConsentAt: user.marketing?.emailConsentAt || new Date(),
+          emailConsentSource: consentSource || "google_signup",
+          emailUnsubscribedAt: null,
+          timezone: sanitizeTimezone(timezone),
+        };
+      }
+      await user.save({ validateBeforeSave: false });
+    }
   } else {
-    user.authProvider = user.authProvider || "google";
-    user.googleId = user.googleId || sub;
+    if (!linkedUser) {
+      throw new AppError(
+        "No account found with this Google email. Please sign up with Google first.",
+        404,
+        { requiresSignup: true }
+      );
+    }
+
+    user = linkedUser;
     user.emailVerified = true;
     user.referralCode =
       user.referralCode ||
@@ -1079,7 +1140,7 @@ async function loginWithGoogle({
         ...(user.marketing?.toObject ? user.marketing.toObject() : user.marketing || {}),
         emailConsent: true,
         emailConsentAt: user.marketing?.emailConsentAt || new Date(),
-        emailConsentSource: consentSource || "google_signup",
+        emailConsentSource: consentSource || "google_signin",
         emailUnsubscribedAt: null,
         timezone: sanitizeTimezone(timezone),
       };
@@ -1159,6 +1220,14 @@ function verifyAppwriteGoogleSignupIntent(intentToken) {
   }
 }
 
+function normalizeGoogleAuthMode(mode) {
+  return mode === "signup" ? "signup" : "login";
+}
+
+function isSameUserRecord(left, right) {
+  return !!left && !!right && String(left._id) === String(right._id);
+}
+
 async function getAppwriteAccount(jwtToken) {
   if (!jwtToken) {
     throw new AppError("Appwrite session token is required.", 400);
@@ -1219,24 +1288,29 @@ async function loginWithAppwriteGoogle({
     account.prefs?.avatar ||
     account.prefs?.photoURL ||
     null;
-  const safeAuthMode = authMode === "signup" ? "signup" : "login";
+  const safeAuthMode = normalizeGoogleAuthMode(authMode);
+  const linkedUser = await User.findOne({ appwriteId: account.$id }).select("+password");
+  const emailUser = await User.findOne({ email: normalizedEmail }).select("+password");
+
+  if (linkedUser && emailUser && !isSameUserRecord(linkedUser, emailUser)) {
+    throw new AppError(
+      "This Google account is already linked to another user. Please contact support.",
+      409
+    );
+  }
 
   // ── Strict separation: Google authenticates, backend authorizes ──
   // Signup: create account if none exists, reject if already registered.
   // Signin: allow only if account already exists, reject if unregistered.
-  let user;
+  let user = linkedUser || emailUser;
 
   if (safeAuthMode === "signup") {
     // ── SIGN-UP FLOW ──
     verifyAppwriteGoogleSignupIntent(signupIntent);
 
-    user = await User.findOne({
-      $or: [{ email: normalizedEmail }, { appwriteId: account.$id }],
-    }).select("+password");
-
-    if (user && user.emailVerified) {
+    if (linkedUser?.appwriteSignupCompleted) {
       throw new AppError(
-        "An account with this Google email already exists. Please sign in with Google instead.",
+        "This Google account is already linked. Please sign in with Google instead.",
         409,
         { requiresSignin: true }
       );
@@ -1267,10 +1341,17 @@ async function loginWithAppwriteGoogle({
       });
     } else {
       // Unverified partial user exists — complete registration via Google
-      user.authProvider = "appwrite";
+      if (user.appwriteId && user.appwriteId !== account.$id) {
+        throw new AppError(
+          "This email is already linked to a different Google account.",
+          409
+        );
+      }
+
       user.appwriteId = account.$id;
       user.appwriteSignupCompleted = true;
-      user.appwriteSignupCompletedAt = new Date();
+      user.appwriteSignupCompletedAt =
+        user.appwriteSignupCompletedAt || new Date();
       user.emailVerified = true;
       if (appwriteAvatar && !user.avatar) user.avatar = appwriteAvatar;
       user.referralCode =
@@ -1293,15 +1374,7 @@ async function loginWithAppwriteGoogle({
     }
   } else {
     // ── SIGN-IN FLOW ──
-    // Search by appwriteId (returning Google user) OR verified email (local user linking Google)
-    user = await User.findOne({
-      $or: [
-        { appwriteId: account.$id },
-        { email: normalizedEmail, emailVerified: true },
-      ],
-    }).select("+password");
-
-    if (!user) {
+    if (!linkedUser || !linkedUser.appwriteSignupCompleted) {
       throw new AppError(
         "No account found with this Google email. Please sign up with Google first.",
         404,
@@ -1309,12 +1382,7 @@ async function loginWithAppwriteGoogle({
       );
     }
 
-    // Link Google identity for future direct lookups
-    user.appwriteId = user.appwriteId || account.$id;
-    if (!user.appwriteSignupCompleted) {
-      user.appwriteSignupCompleted = true;
-      user.appwriteSignupCompletedAt = user.appwriteSignupCompletedAt || new Date();
-    }
+    user = linkedUser;
     user.emailVerified = true;
     user.referralCode =
       user.referralCode ||
@@ -1347,7 +1415,10 @@ async function loginWithAppwriteGoogle({
       await enrollUserInEmailCampaign(user, {
         marketingConsent: true,
         consentAt: user.marketing?.emailConsentAt || new Date(),
-        source: "appwrite_google_signup",
+        source:
+          safeAuthMode === "signup"
+            ? "appwrite_google_signup"
+            : "appwrite_google_signin",
         timezone,
       });
     } catch (error) {
@@ -1375,7 +1446,10 @@ function createGoogleAuthUrl(req, returnTo) {
   );
 
   const safeReturnTo = resolveClientUrl(req, returnTo);
-  const state = signOAuthState({ returnTo: safeReturnTo });
+  const state = signOAuthState({
+    returnTo: safeReturnTo,
+    mode: normalizeGoogleAuthMode(req.query.mode),
+  });
 
   return client.generateAuthUrl({
     access_type: "online",
@@ -1413,7 +1487,11 @@ async function exchangeGoogleCode(req, { code, state }) {
     referralCode: parsedReturnTo?.searchParams?.get("ref"),
     marketingConsent: parsedReturnTo?.searchParams?.get("marketing") === "1",
     timezone: parsedReturnTo?.searchParams?.get("tz"),
-    consentSource: "google_signup",
+    consentSource:
+      normalizeGoogleAuthMode(decodedState.mode) === "signup"
+        ? "google_signup"
+        : "google_signin",
+    authMode: normalizeGoogleAuthMode(decodedState.mode),
   });
 
   return {
