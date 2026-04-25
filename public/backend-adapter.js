@@ -237,6 +237,10 @@
       language: () => renderLanguagePage(),
       helpSupport: () => renderHelpSupportPage(),
       settingsPrivacy: () => renderSettingsPrivacyPage(),
+      founderControl: () =>
+        typeof window.renderFounderControlPage === "function"
+          ? window.renderFounderControlPage()
+          : null,
     };
 
     const render = refreshMap[curPage] || refreshMap.home;

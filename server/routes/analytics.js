@@ -1,47 +1,14 @@
 const express = require("express");
-const AnalyticsEvent = require("../models/AnalyticsEvent");
 const AppError = require("../utils/appError");
 const { optionalAuth } = require("../middleware/auth");
+const {
+  ALLOWED_ANALYTICS_TYPES,
+  recordAnalyticsEvent,
+} = require("../services/analyticsService");
 const { assertRateLimit } = require("../utils/requestLimiter");
 const { cleanString } = require("../utils/validation");
 
 const router = express.Router();
-const ALLOWED_TYPES = new Set([
-  "page_view",
-  "interaction",
-  "error",
-  "performance",
-  "consent",
-]);
-
-function sanitizeMeta(value, depth = 0) {
-  if (depth > 3) return undefined;
-  if (value == null) return value;
-  if (typeof value === "string") {
-    return cleanString(value, {
-      field: "Analytics meta",
-      max: 500,
-      preserveNewlines: false,
-    });
-  }
-  if (typeof value === "number" || typeof value === "boolean") {
-    return value;
-  }
-  if (Array.isArray(value)) {
-    return value.slice(0, 20).map((item) => sanitizeMeta(item, depth + 1));
-  }
-  if (typeof value === "object") {
-    return Object.entries(value)
-      .slice(0, 24)
-      .reduce((acc, [key, entry]) => {
-        const safeKey = cleanString(key, { field: "Analytics meta key", max: 80 });
-        if (!safeKey) return acc;
-        acc[safeKey] = sanitizeMeta(entry, depth + 1);
-        return acc;
-      }, {});
-  }
-  return undefined;
-}
 
 router.post("/events", optionalAuth, async (req, res, next) => {
   try {
@@ -55,7 +22,7 @@ router.post("/events", optionalAuth, async (req, res, next) => {
       max: 120,
       required: true,
     });
-    if (!ALLOWED_TYPES.has(type)) {
+    if (!ALLOWED_ANALYTICS_TYPES.has(type)) {
       throw new AppError("Unsupported analytics event type", 400);
     }
 
@@ -67,21 +34,16 @@ router.post("/events", optionalAuth, async (req, res, next) => {
       message: "Too many analytics events. Please slow down.",
     });
 
-    await AnalyticsEvent.create({
+    await recordAnalyticsEvent({
+      req,
       type,
       name,
-      page: cleanString(req.body?.page, { field: "Analytics page", max: 80 }),
-      path: cleanString(req.body?.path, { field: "Analytics path", max: 180 }),
-      sessionId: cleanString(req.body?.sessionId, {
-        field: "Analytics session id",
-        max: 120,
-      }),
-      anonymousId: cleanString(req.body?.anonymousId, {
-        field: "Analytics anonymous id",
-        max: 120,
-      }),
+      page: req.body?.page,
+      path: req.body?.path,
+      sessionId: req.body?.sessionId,
+      anonymousId: req.body?.anonymousId,
       user: req.user?._id || null,
-      meta: sanitizeMeta(req.body?.meta || {}),
+      meta: req.body?.meta || {},
     });
 
     res.status(202).json({ accepted: true });

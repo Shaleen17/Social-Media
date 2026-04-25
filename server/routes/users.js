@@ -13,6 +13,7 @@ const EmailCampaignSubscription = require("../models/EmailCampaignSubscription")
 const EmailCampaignDelivery = require("../models/EmailCampaignDelivery");
 const { auth, optionalAuth } = require("../middleware/auth");
 const { createRankedNotification } = require("../services/notificationService");
+const { recordAnalyticsEventSafe } = require("../services/analyticsService");
 const {
   assertObjectId,
   cleanHttpUrl,
@@ -552,6 +553,18 @@ router.put("/:id([0-9a-fA-F]{24})/follow", validateObjectIdParam("id"), auth, as
 
     await me.save();
     await targetUser.save();
+    await recordAnalyticsEventSafe({
+      req,
+      type: "interaction",
+      name: isFollowing ? "user_unfollowed" : "user_followed",
+      page: "profile",
+      path: `/users/${targetId}`,
+      user: req.user._id,
+      meta: {
+        targetUserId: targetId,
+        targetHandle: targetUser.handle || "",
+      },
+    });
 
     res.json({
       following: !isFollowing,

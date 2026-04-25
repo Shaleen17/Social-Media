@@ -1,5 +1,5 @@
 (function initEnhancementBootstrap(global) {
-  const VERSION = "20260425-foundation-security-1";
+  const VERSION = "20260425-founder-control-room-1";
   const SCRIPT_ID = "ts-noncritical-enhancements";
   let started = false;
 

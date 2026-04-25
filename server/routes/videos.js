@@ -1,6 +1,7 @@
 const express = require("express");
 const Video = require("../models/Video");
 const { auth, optionalAuth } = require("../middleware/auth");
+const { recordAnalyticsEventSafe } = require("../services/analyticsService");
 const {
   buildSearchText,
   moderateTextContent,
@@ -212,6 +213,22 @@ router.post("/", auth, async (req, res, next) => {
       },
     });
 
+    await recordAnalyticsEventSafe({
+      req,
+      type: "interaction",
+      name: "video_uploaded",
+      page: "video",
+      path: `/videos/${video._id}`,
+      user: req.user._id,
+      meta: {
+        videoId: video._id.toString(),
+        title: video.title,
+        category: video.category,
+        moderationStatus: video.moderation?.status || "approved",
+        hashtags: (video.hashtags || []).slice(0, 8),
+      },
+    });
+
     res.status(201).json({
       id: video._id,
       uid: req.user._id,
@@ -252,6 +269,18 @@ router.put("/:id/like", validateObjectIdParam("id"), auth, async (req, res, next
     }
 
     await video.save();
+    await recordAnalyticsEventSafe({
+      req,
+      type: "interaction",
+      name: existingLike > -1 ? "video_unliked" : "video_liked",
+      page: "video",
+      path: `/videos/${video._id}`,
+      user: req.user._id,
+      meta: {
+        videoId: video._id.toString(),
+        ownerId: video.user.toString(),
+      },
+    });
     res.json({
       likes: video.likes.map((l) => l.toString()),
       dislikes: video.dislikes.map((d) => d.toString()),
@@ -305,6 +334,19 @@ router.put("/:id/comment", validateObjectIdParam("id"), auth, async (req, res, n
 
     video.comments.push({ user: req.user._id, text });
     await video.save();
+    await recordAnalyticsEventSafe({
+      req,
+      type: "interaction",
+      name: "video_commented",
+      page: "video",
+      path: `/videos/${video._id}`,
+      user: req.user._id,
+      meta: {
+        videoId: video._id.toString(),
+        ownerId: video.user.toString(),
+        preview: text.slice(0, 140),
+      },
+    });
 
     const comment = video.comments[video.comments.length - 1];
     res.json({
@@ -425,6 +467,20 @@ router.post("/live", auth, async (req, res, next) => {
       liveViewers: safeViewers,
       liveStarted: "Just now",
       category: "Spiritual",
+    });
+
+    await recordAnalyticsEventSafe({
+      req,
+      type: "interaction",
+      name: "live_stream_started",
+      page: "video",
+      path: `/videos/${video._id}`,
+      user: req.user._id,
+      meta: {
+        videoId: video._id.toString(),
+        title: safeTitle,
+        viewers: safeViewers,
+      },
     });
 
     res.status(201).json({ id: video._id });

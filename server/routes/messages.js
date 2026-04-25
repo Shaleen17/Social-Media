@@ -3,6 +3,7 @@ const Conversation = require("../models/Message");
 const User = require("../models/User");
 const { auth } = require("../middleware/auth");
 const { createRankedNotification } = require("../services/notificationService");
+const { recordAnalyticsEventSafe } = require("../services/analyticsService");
 const { moderateTextContent } = require("../utils/contentFeatures");
 const { sendPushToUsers } = require("../utils/push");
 const {
@@ -404,6 +405,24 @@ async function persistAndEmitMessage(req, conv, senderUser, options) {
     },
   });
 
+  await recordAnalyticsEventSafe({
+    req,
+    type: "interaction",
+    name: "chat_message_sent",
+    page: "chats",
+    path: `/messages/${conv._id}`,
+    user: senderUser._id,
+    meta: {
+      convId: conv._id.toString(),
+      isGroup: !!conv.isGroup,
+      recipientCount: recipientIds.length,
+      preview: preview.slice(0, 140),
+      forwarded,
+      hasAttachments: attachments.length > 0,
+      moderationStatus: moderation.status,
+    },
+  });
+
   return mapMessage(
     {
       ...newMessage.toObject(),
@@ -560,6 +579,20 @@ router.post("/group", auth, async (req, res, next) => {
       isGroup: true,
       groupName: name,
       messages: [],
+    });
+
+    await recordAnalyticsEventSafe({
+      req,
+      type: "interaction",
+      name: "group_created",
+      page: "chats",
+      path: `/messages/${conv._id}`,
+      user: req.user._id,
+      meta: {
+        convId: conv._id.toString(),
+        name,
+        participantCount: participants.length + 1,
+      },
     });
 
     res.status(201).json({ id: conv._id });
@@ -727,6 +760,21 @@ router.post("/new/:userId", validateObjectIdParam("userId"), auth, async (req, r
       participants: [req.user._id, targetId],
       messages: [],
       isGroup: false,
+    });
+
+    const target = await User.findById(targetId).select("handle").lean();
+    await recordAnalyticsEventSafe({
+      req,
+      type: "interaction",
+      name: "conversation_started",
+      page: "chats",
+      path: `/messages/${conv._id}`,
+      user: req.user._id,
+      meta: {
+        convId: conv._id.toString(),
+        targetUserId: targetId,
+        targetHandle: target?.handle || "",
+      },
     });
 
     res.status(201).json({ id: conv._id, existing: false });

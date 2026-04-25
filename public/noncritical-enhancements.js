@@ -1,9 +1,19 @@
 (function initNonCriticalEnhancements(global) {
   const CONSENT_KEY = "ts_cookieConsent_v1";
+  const CONSENT_PROMPT_KEY = "ts_cookieConsentPrompt_v1";
   const SESSION_KEY = "ts_analyticsSessionId";
   const ANON_KEY = "ts_analyticsAnonymousId";
   const COOKIE_BANNER_ID = "tsCookieConsent";
   const PRIVACY_MODAL_ID = "tsPrivacyModal";
+  const COOKIE_BANNER_DELAY_MS = 60 * 1000;
+  const HEARTBEAT_MS = 30 * 1000;
+  let cookieConsentTimerId = 0;
+  let heartbeatTimerId = 0;
+  let trackedPage = "home";
+  let pageEnteredAt = Date.now();
+  let maxScrollDepth = 0;
+  let lastTrackedSearch = { query: "", at: 0 };
+  const trackedVideos = new WeakSet();
   const SUPPORTED_LANGUAGES = {
     en: "english",
     hi: "hindi",
@@ -29,6 +39,12 @@
     }
   }
 
+  function compactText(value, maxLength = 120) {
+    const text = String(value || "").replace(/\s+/g, " ").trim();
+    if (text.length <= maxLength) return text;
+    return `${text.slice(0, Math.max(0, maxLength - 3)).trim()}...`;
+  }
+
   function getConsentState() {
     try {
       return JSON.parse(localStorage.getItem(CONSENT_KEY) || "null");
@@ -48,6 +64,74 @@
     return value;
   }
 
+  function getConsentPromptState() {
+    try {
+      return JSON.parse(localStorage.getItem(CONSENT_PROMPT_KEY) || "null");
+    } catch {
+      return null;
+    }
+  }
+
+  function markConsentPromptSeen(reason = "auto_prompted") {
+    const current = getConsentPromptState() || {};
+    const next = {
+      seenAt: current.seenAt || new Date().toISOString(),
+      reason,
+    };
+    try {
+      localStorage.setItem(CONSENT_PROMPT_KEY, JSON.stringify(next));
+    } catch {}
+    return next;
+  }
+
+  function hasSeenConsentPrompt() {
+    return !!getConsentPromptState()?.seenAt;
+  }
+
+  function clearCookieConsentTimer() {
+    if (!cookieConsentTimerId) return;
+    global.clearTimeout(cookieConsentTimerId);
+    cookieConsentTimerId = 0;
+  }
+
+  function getCurrentPageName() {
+    return global.curPage || document.body?.dataset?.page || trackedPage || "home";
+  }
+
+  function getResolvedTimezone() {
+    try {
+      return Intl.DateTimeFormat().resolvedOptions().timeZone || "";
+    } catch {
+      return "";
+    }
+  }
+
+  function enrichTrackMeta(meta) {
+    const nextMeta = meta && typeof meta === "object" ? { ...meta } : {};
+    const nextContext =
+      nextMeta.context && typeof nextMeta.context === "object"
+        ? { ...nextMeta.context }
+        : {};
+    const now = new Date();
+    if (!Number.isFinite(nextMeta.localHour)) {
+      nextMeta.localHour = now.getHours();
+    }
+    if (!Number.isFinite(nextMeta.weekday)) {
+      nextMeta.weekday = now.getDay();
+    }
+    if (!nextMeta.timezone) {
+      nextMeta.timezone = getResolvedTimezone();
+    }
+    nextMeta.context = {
+      locale: navigator.language || "",
+      timezone: nextMeta.timezone || nextContext.timezone || "",
+      referrer: nextContext.referrer || document.referrer || "",
+      screen: nextContext.screen || `${global.innerWidth || 0}x${global.innerHeight || 0}`,
+      ...nextContext,
+    };
+    return nextMeta;
+  }
+
   function safeTrack(type, name, meta) {
     if (!global.API || typeof global.API.trackEvent !== "function") return;
     const consent = getConsentState();
@@ -60,12 +144,139 @@
       return;
     }
 
+    const enrichedMeta = enrichTrackMeta(meta);
+
     global.API.trackEvent(type, name, {
       sessionId: ensureStoredId(SESSION_KEY, "sess"),
       anonymousId: ensureStoredId(ANON_KEY, "anon"),
-      page: global.curPage || document.body?.dataset?.page || "home",
-      ...meta,
+      page: enrichedMeta.page || getCurrentPageName(),
+      ...enrichedMeta,
     }).catch(() => {});
+  }
+
+  function computeScrollDepth() {
+    const viewport = Math.max(global.innerHeight || 0, 1);
+    const scrollHeight = Math.max(
+      document.documentElement?.scrollHeight || 0,
+      document.body?.scrollHeight || 0,
+      viewport
+    );
+    if (scrollHeight <= viewport) return 100;
+    const scrollTop =
+      global.scrollY ||
+      document.documentElement?.scrollTop ||
+      document.body?.scrollTop ||
+      0;
+    return Math.max(
+      0,
+      Math.min(100, Math.round(((scrollTop + viewport) / scrollHeight) * 100))
+    );
+  }
+
+  function updateScrollDepth() {
+    maxScrollDepth = Math.max(maxScrollDepth, computeScrollDepth());
+  }
+
+  function resetTrackedPage(page) {
+    trackedPage = page || getCurrentPageName();
+    pageEnteredAt = Date.now();
+    maxScrollDepth = computeScrollDepth();
+  }
+
+  function flushPageDuration(reason, extra = {}) {
+    const page = trackedPage || getCurrentPageName();
+    const durationMs = Math.max(0, Date.now() - pageEnteredAt);
+    if (!page || durationMs < 1000) return;
+    const payload = {
+      page,
+      durationMs,
+      reason,
+      maxScrollDepth: Math.max(maxScrollDepth, computeScrollDepth()),
+      ...extra,
+    };
+    safeTrack("interaction", "page_duration", payload);
+    if (reason === "hidden" || reason === "pagehide" || reason === "logout") {
+      safeTrack(
+        "interaction",
+        reason === "pagehide" ? "session_exit" : "session_hidden",
+        payload
+      );
+    }
+  }
+
+  function startHeartbeatLoop() {
+    if (heartbeatTimerId) {
+      global.clearInterval(heartbeatTimerId);
+    }
+    heartbeatTimerId = global.setInterval(() => {
+      if (document.visibilityState !== "visible") return;
+      updateScrollDepth();
+      safeTrack("interaction", "session_heartbeat", {
+        page: trackedPage || getCurrentPageName(),
+        durationMs: Math.max(0, Date.now() - pageEnteredAt),
+        maxScrollDepth,
+      });
+    }, HEARTBEAT_MS);
+  }
+
+  function installLifecycleTracking() {
+    resetTrackedPage(getCurrentPageName());
+    safeTrack("interaction", "session_started", {
+      page: trackedPage,
+      entryPage: trackedPage,
+    });
+    startHeartbeatLoop();
+
+    if (typeof global.gp === "function" && !global.gp.__tsFounderTelemetry) {
+      const originalGp = global.gp;
+      const wrappedGp = function wrappedGp(page) {
+        const fromPage = trackedPage || getCurrentPageName();
+        if (page && fromPage && fromPage !== page) {
+          flushPageDuration("navigation", {
+            fromPage,
+            toPage: page,
+          });
+          safeTrack("interaction", "page_transition", {
+            page: fromPage,
+            fromPage,
+            toPage: page,
+          });
+        }
+        const result = originalGp.apply(this, arguments);
+        resetTrackedPage(page || getCurrentPageName());
+        return result;
+      };
+      wrappedGp.__tsFounderTelemetry = true;
+      global.gp = wrappedGp;
+    }
+
+    document.addEventListener(
+      "visibilitychange",
+      () => {
+        if (document.visibilityState === "hidden") {
+          flushPageDuration("hidden");
+          return;
+        }
+        resetTrackedPage(getCurrentPageName());
+      },
+      { passive: true }
+    );
+
+    global.addEventListener(
+      "pagehide",
+      () => {
+        flushPageDuration("pagehide");
+      },
+      { passive: true }
+    );
+
+    global.addEventListener(
+      "scroll",
+      () => {
+        updateScrollDepth();
+      },
+      { passive: true }
+    );
   }
 
   function guessAltText(img) {
@@ -138,11 +349,89 @@
     }
   }
 
+  function getVideoAnalyticsInfo(video) {
+    const source =
+      video.currentSrc ||
+      video.getAttribute("src") ||
+      video.querySelector("source")?.getAttribute("src") ||
+      "";
+    const closestVideoNode = video.closest("[data-video-id]");
+    const videoId =
+      video.dataset.videoId ||
+      closestVideoNode?.getAttribute("data-video-id") ||
+      compactText(source.split("/").pop()?.split("?")[0] || "video", 80);
+    const videoTitle =
+      video.dataset.videoTitle ||
+      closestVideoNode?.getAttribute("data-video-title") ||
+      compactText(
+        video.getAttribute("aria-label") ||
+          video.closest("figure")?.querySelector("figcaption")?.textContent ||
+          "",
+        110
+      );
+    return {
+      videoId,
+      videoTitle,
+      source,
+    };
+  }
+
+  function attachVideoTracking(video) {
+    if (!(video instanceof HTMLVideoElement) || trackedVideos.has(video)) return;
+    trackedVideos.add(video);
+
+    const state = {
+      started: false,
+      completed: false,
+      milestones: new Set(),
+    };
+
+    video.addEventListener("play", () => {
+      if (state.started) return;
+      state.started = true;
+      const info = getVideoAnalyticsInfo(video);
+      safeTrack("interaction", "video_started", {
+        page: getCurrentPageName(),
+        ...info,
+        durationSeconds: Number.isFinite(video.duration) ? Math.round(video.duration) : 0,
+      });
+    });
+
+    video.addEventListener("timeupdate", () => {
+      if (!Number.isFinite(video.duration) || video.duration <= 0) return;
+      const progress = Math.round((video.currentTime / video.duration) * 100);
+      [25, 50, 75].forEach((milestone) => {
+        if (progress < milestone || state.milestones.has(milestone)) return;
+        state.milestones.add(milestone);
+        const info = getVideoAnalyticsInfo(video);
+        safeTrack("interaction", "video_progress", {
+          page: getCurrentPageName(),
+          ...info,
+          milestone,
+          currentTimeSeconds: Math.round(video.currentTime),
+          durationSeconds: Math.round(video.duration),
+        });
+      });
+    });
+
+    video.addEventListener("ended", () => {
+      if (state.completed) return;
+      state.completed = true;
+      const info = getVideoAnalyticsInfo(video);
+      safeTrack("interaction", "video_completed", {
+        page: getCurrentPageName(),
+        ...info,
+        durationSeconds: Number.isFinite(video.duration) ? Math.round(video.duration) : 0,
+      });
+    });
+  }
+
   function upgradeVideo(video) {
     if (!(video instanceof HTMLVideoElement)) return;
     if (!video.hasAttribute("preload")) {
       video.setAttribute("preload", "metadata");
     }
+    attachVideoTracking(video);
   }
 
   function enhanceMedia(root = document) {
@@ -259,16 +548,28 @@
   }
 
   function applyConsentChoice(mode) {
+    clearCookieConsentTimer();
+    markConsentPromptSeen(`selected_${mode}`);
     const state = setConsentState(mode);
     document.getElementById(COOKIE_BANNER_ID)?.remove();
+    appendPrivacyControlsRefresh();
     safeTrack("consent", "cookie_preferences_updated", {
       mode: state.mode,
       updatedAt: state.updatedAt,
     });
   }
 
+  function dismissCookieConsent(reason = "dismissed") {
+    clearCookieConsentTimer();
+    markConsentPromptSeen(reason);
+    document.getElementById(COOKIE_BANNER_ID)?.remove();
+    appendPrivacyControlsRefresh();
+  }
+
   function mountCookieConsent() {
-    if (getConsentState() || document.getElementById(COOKIE_BANNER_ID)) return;
+    clearCookieConsentTimer();
+    if (getConsentState() || hasSeenConsentPrompt() || document.getElementById(COOKIE_BANNER_ID)) return;
+    markConsentPromptSeen("auto_prompted");
     const banner = document.createElement("aside");
     banner.id = COOKIE_BANNER_ID;
     banner.className = "cookie-consent-banner";
@@ -276,7 +577,10 @@
     banner.setAttribute("aria-live", "polite");
     banner.innerHTML = `
       <div class="cookie-consent-copy">
-        <strong>Cookie choices</strong>
+        <div class="cookie-consent-head">
+          <strong>Cookie choices</strong>
+          <button class="cookie-consent-close" type="button" aria-label="Dismiss cookie choices">&times;</button>
+        </div>
         <p>We use essential storage for sign-in safety, offline support, and chat reliability. Optional analytics helps us improve performance and accessibility.</p>
       </div>
       <div class="cookie-consent-actions">
@@ -295,7 +599,21 @@
         applyConsentChoice(action);
       });
     });
+    banner.querySelector(".cookie-consent-close")?.addEventListener("click", () => {
+      dismissCookieConsent("dismissed");
+    });
     document.body.appendChild(banner);
+  }
+
+  function scheduleCookieConsent() {
+    clearCookieConsentTimer();
+    if (getConsentState() || hasSeenConsentPrompt() || document.getElementById(COOKIE_BANNER_ID)) {
+      return;
+    }
+    cookieConsentTimerId = global.setTimeout(() => {
+      cookieConsentTimerId = 0;
+      mountCookieConsent();
+    }, COOKIE_BANNER_DELAY_MS);
   }
 
   function downloadJsonFile(fileName, payload) {
@@ -447,6 +765,48 @@
     });
   }
 
+  function installSearchTracking() {
+    if (typeof global.doSearch !== "function" || global.doSearch.__tsEnhanced) return;
+    const originalSearch = global.doSearch;
+    const wrappedSearch = function wrappedSearch(query) {
+      const text = String(query || "").trim();
+      if (text.length >= 2) {
+        const now = Date.now();
+        if (
+          text.toLowerCase() !== lastTrackedSearch.query ||
+          now - lastTrackedSearch.at > 8000
+        ) {
+          lastTrackedSearch = {
+            query: text.toLowerCase(),
+            at: now,
+          };
+          safeTrack("interaction", "search_used", {
+            page: "search",
+            query: compactText(text, 80),
+            queryLength: text.length,
+          });
+        }
+      }
+      return originalSearch.apply(this, arguments);
+    };
+    wrappedSearch.__tsEnhanced = true;
+    global.doSearch = wrappedSearch;
+  }
+
+  function installLogoutTracking() {
+    if (typeof global.logout !== "function" || global.logout.__tsEnhanced) return;
+    const originalLogout = global.logout;
+    const wrappedLogout = function wrappedLogout() {
+      flushPageDuration("logout");
+      safeTrack("interaction", "auth_logout", {
+        page: getCurrentPageName(),
+      });
+      return originalLogout.apply(this, arguments);
+    };
+    wrappedLogout.__tsEnhanced = true;
+    global.logout = wrappedLogout;
+  }
+
   function installErrorTracking() {
     global.addEventListener("error", (event) => {
       safeTrack("error", "client_error", {
@@ -465,6 +825,16 @@
   }
 
   function installPerformanceTracking() {
+    const navigationEntry = performance.getEntriesByType?.("navigation")?.[0];
+    if (navigationEntry) {
+      safeTrack("performance", "page_load_time", {
+        value: Math.round(navigationEntry.loadEventEnd || navigationEntry.duration || 0),
+        domContentLoadedMs: Math.round(
+          navigationEntry.domContentLoadedEventEnd || 0
+        ),
+        responseMs: Math.round(navigationEntry.responseEnd || 0),
+      });
+    }
     if (typeof PerformanceObserver === "undefined") return;
     try {
       const observer = new PerformanceObserver((entryList) => {
@@ -510,11 +880,14 @@
     ensureToastAccessibility();
     enhanceTabs();
     syncTabStates();
-    mountCookieConsent();
+    scheduleCookieConsent();
     enhanceSettingsPrivacyPage();
     appendPrivacyControls();
     autoDetectLanguage();
+    installLifecycleTracking();
     installPageTracking();
+    installSearchTracking();
+    installLogoutTracking();
     installErrorTracking();
     installPerformanceTracking();
     observeDom();

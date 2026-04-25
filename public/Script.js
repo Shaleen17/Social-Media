@@ -2361,6 +2361,7 @@ const PAGE_IDS = [
   "language",
   "helpSupport",
   "settingsPrivacy",
+  "founderControl",
 ];
 function resetProfileTabs(defaultTab = "posts") {
   const tabLabel = defaultTab === "likes" ? "pranams" : defaultTab;
@@ -6090,6 +6091,7 @@ const ANALYTICS_PAGE_TITLES = {
   language: "Language",
   helpSupport: "Help & Support",
   settingsPrivacy: "Settings & Privacy",
+  founderControl: "Founder Control",
 };
 
 window.__tsLastTrackedPage = window.__tsLastTrackedPage || "home";
@@ -6188,11 +6190,23 @@ function gp(page) {
       language: () => renderLanguagePage(),
       helpSupport: () => renderHelpSupportPage(),
       settingsPrivacy: () => renderSettingsPrivacyPage(),
+      founderControl: () =>
+        typeof renderFounderControlPage === "function"
+          ? renderFounderControlPage()
+          : null,
     };
     const isWidePage =
       page === "chats" ||
       isReelsPage ||
-      ["about", "authenticBrands", "inviteFriends", "language", "helpSupport", "settingsPrivacy"].includes(page);
+      [
+        "about",
+        "authenticBrands",
+        "inviteFriends",
+        "language",
+        "helpSupport",
+        "settingsPrivacy",
+        "founderControl",
+      ].includes(page);
     document.body.classList.toggle("reels-mode", isReelsPage);
     //* pgChats needs flex not block */
     const cp = document.getElementById("pgChats");

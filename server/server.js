@@ -73,6 +73,7 @@ const emailCampaignRoutes = require("./routes/emailCampaign");
 const adminRoutes = require("./routes/admin");
 const searchRoutes = require("./routes/search");
 const analyticsRoutes = require("./routes/analytics");
+const founderRoutes = require("./routes/founder");
 const { startEmailCampaignWorker } = require("./services/emailCampaignService");
 
 const app = express();
@@ -199,6 +200,7 @@ app.use("/api/email-campaign", emailCampaignRoutes);
 app.use("/api/admin", adminRoutes);
 app.use("/api/search", searchRoutes);
 app.use("/api/analytics", analyticsRoutes);
+app.use("/api/founder", founderRoutes);
 
 // Health check
 app.get("/api/health", (req, res) => {

@@ -2,6 +2,7 @@ const express = require("express");
 const Post = require("../models/Post");
 const { auth, optionalAuth } = require("../middleware/auth");
 const { createRankedNotification } = require("../services/notificationService");
+const { recordAnalyticsEventSafe } = require("../services/analyticsService");
 const {
   buildSearchText,
   moderateTextContent,
@@ -147,6 +148,23 @@ router.post("/", auth, async (req, res, next) => {
     const populated = await Post.findById(post._id)
       .populate("user", "name handle avatar verified");
 
+    await recordAnalyticsEventSafe({
+      req,
+      type: "interaction",
+      name: "post_created",
+      page: "profile",
+      path: `/posts/${post._id}`,
+      user: req.user._id,
+      meta: {
+        postId: post._id.toString(),
+        preview: safeText ? safeText.slice(0, 140) : "",
+        hasImage: !!safeImage,
+        hasVideoEmbed: !!safeYtId,
+        moderationStatus: postData.moderation?.status || "approved",
+        hashtags: (postData.hashtags || []).slice(0, 8),
+      },
+    });
+
     res.status(201).json(transformPost(populated.toJSON()));
   } catch (err) {
     next(err);
@@ -185,6 +203,18 @@ router.put("/:id/like", validateObjectIdParam("id"), auth, async (req, res, next
     }
 
     await post.save();
+    await recordAnalyticsEventSafe({
+      req,
+      type: "interaction",
+      name: idx > -1 ? "post_unliked" : "post_liked",
+      page: "home",
+      path: `/posts/${post._id}`,
+      user: req.user._id,
+      meta: {
+        postId: post._id.toString(),
+        ownerId: post.user.toString(),
+      },
+    });
     res.json({
       likes: post.likes.map((l) => l.toString()),
       liked: post.likes.includes(req.user._id),
@@ -209,6 +239,19 @@ router.put("/:id/comment", validateObjectIdParam("id"), auth, async (req, res, n
     const comment = { user: req.user._id, text };
     post.comments.push(comment);
     await post.save();
+    await recordAnalyticsEventSafe({
+      req,
+      type: "interaction",
+      name: "post_commented",
+      page: "home",
+      path: `/posts/${post._id}`,
+      user: req.user._id,
+      meta: {
+        postId: post._id.toString(),
+        ownerId: post.user.toString(),
+        preview: text.slice(0, 140),
+      },
+    });
 
     // Create notification
     if (post.user.toString() !== req.user._id.toString()) {
@@ -271,6 +314,18 @@ router.put("/:id/repost", validateObjectIdParam("id"), auth, async (req, res, ne
     }
 
     await post.save();
+    await recordAnalyticsEventSafe({
+      req,
+      type: "interaction",
+      name: idx > -1 ? "post_unreposted" : "post_reposted",
+      page: "home",
+      path: `/posts/${post._id}`,
+      user: req.user._id,
+      meta: {
+        postId: post._id.toString(),
+        ownerId: post.user.toString(),
+      },
+    });
     res.json({
       reposts: post.reposts.map((r) => r.toString()),
       reposted: post.reposts.includes(req.user._id),

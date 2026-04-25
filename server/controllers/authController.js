@@ -20,7 +20,22 @@ const {
   buildGoogleErrorRedirect,
   getReturnToFromState,
 } = require("../services/authService");
+const { recordAnalyticsEventSafe } = require("../services/analyticsService");
 const { ensureUserReferralCode } = require("../utils/referrals");
+
+async function trackAuthEvent(req, name, user, meta = {}) {
+  await recordAnalyticsEventSafe({
+    req,
+    type: "interaction",
+    name,
+    page: "auth",
+    path: req.originalUrl || "/api/auth",
+    sessionId: req.body?.sessionId || "",
+    anonymousId: req.body?.anonymousId || "",
+    user: user?._id || user || null,
+    meta,
+  });
+}
 
 const signup = asyncHandler(async (req, res) => {
   const result = await signupLocalUser(req.body, {
@@ -37,6 +52,10 @@ const login = asyncHandler(async (req, res) => {
     userAgent: req.get("user-agent"),
   });
   setAuthCookies(req, res, result.token);
+  await trackAuthEvent(req, "auth_login", result.user, {
+    provider: "local",
+    authSource: "password",
+  });
   res.json(result);
 });
 
@@ -52,6 +71,9 @@ const verifySignupOtpCode = asyncHandler(async (req, res) => {
     userAgent: req.get("user-agent"),
   });
   setAuthCookies(req, res, result.token);
+  await trackAuthEvent(req, "auth_signup_verified", result.user, {
+    provider: result.user?.authProvider || "local",
+  });
   res.json({ success: true, user: result.user, token: result.token });
 });
 
@@ -87,6 +109,10 @@ const googleAuth = asyncHandler(async (req, res) => {
     userAgent: req.get("user-agent"),
   });
   setAuthCookies(req, res, result.token);
+  await trackAuthEvent(req, "auth_login", result.user, {
+    provider: "google",
+    authSource: req.body?.tokenType || "google",
+  });
   res.json(result);
 });
 
@@ -96,6 +122,10 @@ const appwriteGoogleAuth = asyncHandler(async (req, res) => {
     userAgent: req.get("user-agent"),
   });
   setAuthCookies(req, res, result.token);
+  await trackAuthEvent(req, "auth_login", result.user, {
+    provider: req.body?.provider || "appwrite",
+    authSource: "appwrite",
+  });
   res.json(result);
 });
 
@@ -141,6 +171,10 @@ async function googleCallback(req, res) {
       state: req.query.state,
     });
     setAuthCookies(req, res, result.token);
+    await trackAuthEvent(req, "auth_login", result.user, {
+      provider: "google",
+      authSource: "oauth_callback",
+    });
 
     return res.redirect(
       buildGoogleSuccessRedirect(req, result.returnTo, result.token)
