@@ -24,12 +24,29 @@
     return String(user?.id || user?._id || "").trim();
   }
 
+  function getCurrentProfileHandle() {
+    return String(document.getElementById("prHdl")?.textContent || "")
+      .trim()
+      .toLowerCase()
+      .replace(/^@/, "");
+  }
+
+  function hasFounderProfileContext(prActions = document.getElementById("prActions")) {
+    const handle = getCurrentProfileHandle();
+    return (
+      isOwnProfileActionArea(prActions) &&
+      !!handle &&
+      FOUNDER_OWNER_HANDLES.includes(handle)
+    );
+  }
+
   function isFounderOwner(user = getCurrentUser()) {
     const email = String(user?.email || "").trim().toLowerCase();
     const handle = String(user?.handle || "").trim().toLowerCase().replace(/^@/, "");
     return (
       (!!email && FOUNDER_OWNER_EMAILS.includes(email)) ||
-      (!!handle && FOUNDER_OWNER_HANDLES.includes(handle))
+      (!!handle && FOUNDER_OWNER_HANDLES.includes(handle)) ||
+      hasFounderProfileContext()
     );
   }
 
@@ -386,6 +403,17 @@
     pollTimerId = 0;
   }
 
+  function isViewingOwnProfile() {
+    const userId = getCurrentUserId();
+    if (!userId) return false;
+    // Check via founder-control's own currentProfileId
+    if (userId === String(currentProfileId || "").trim()) return true;
+    // Fallback: check via global curProfId (set by renderProfile in Script.js)
+    if (typeof global.curProfId !== "undefined" &&
+        userId === String(global.curProfId || "").trim()) return true;
+    return false;
+  }
+
   function ensureFounderButton() {
     const prActions = document.getElementById("prActions");
     if (!prActions) return;
@@ -393,8 +421,7 @@
     const shouldShow =
       isFounderOwner() &&
       (
-        (!!getCurrentUserId() &&
-          getCurrentUserId() === String(currentProfileId || "").trim()) ||
+        isViewingOwnProfile() ||
         isOwnProfileActionArea(prActions)
       );
 

@@ -95,6 +95,23 @@ let curProfId = null,
   curChat = null,
   activeRP = null,
   activeSH = null;
+function bridgeLiveAppState(name, read, write) {
+  try {
+    Object.defineProperty(window, name, {
+      configurable: true,
+      enumerable: false,
+      get: read,
+      set: write,
+    });
+  } catch {}
+}
+// Founder and add-on scripts need live access to the same session/profile state.
+bridgeLiveAppState("CU", () => CU, (value) => {
+  CU = value;
+});
+bridgeLiveAppState("curProfId", () => curProfId, (value) => {
+  curProfId = value;
+});
 let svIdx = 0,
   svTimer = null,
   compImg = null;
