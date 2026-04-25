@@ -39,3 +39,4 @@ tmp/
 *.tgz
 coverage/
 .nyc_output/
+server/backups/

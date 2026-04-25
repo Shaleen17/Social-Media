@@ -1,8 +1,9 @@
 const express = require("express");
 const Conversation = require("../models/Message");
-const Notification = require("../models/Notification");
 const User = require("../models/User");
 const { auth } = require("../middleware/auth");
+const { createRankedNotification } = require("../services/notificationService");
+const { moderateTextContent } = require("../utils/contentFeatures");
 const { sendPushToUsers } = require("../utils/push");
 const {
   assertObjectId,
@@ -118,6 +119,33 @@ function serializeAttachment(attachment) {
   };
 }
 
+async function getOnlineRecipientIds(socketState, recipientIds = []) {
+  if (!socketState?.isOnline || !recipientIds.length) return [];
+
+  const onlineRecipientIds = await Promise.all(
+    recipientIds.map(async (recipientId) => {
+      try {
+        return (await socketState.isOnline(recipientId)) ? recipientId : "";
+      } catch {
+        return "";
+      }
+    })
+  );
+
+  return onlineRecipientIds.filter(Boolean);
+}
+
+function sortMessagesByOrder(messages = []) {
+  return [...messages].sort((left, right) => {
+    const leftSeq = Number(left?.seq) || 0;
+    const rightSeq = Number(right?.seq) || 0;
+    if (leftSeq && rightSeq && leftSeq !== rightSeq) {
+      return leftSeq - rightSeq;
+    }
+    return new Date(left.createdAt).getTime() - new Date(right.createdAt).getTime();
+  });
+}
+
 function mapMessage(message, viewerId, participantIds) {
   const sender = message.sender || {};
   const senderId = toIdString(sender);
@@ -139,6 +167,8 @@ function mapMessage(message, viewerId, participantIds) {
   const deleted = !!message.deletedForEveryone;
   return {
     id: toIdString(message),
+    clientId: message.clientId || "",
+    seq: Number(message.seq) || 0,
     from: senderId,
     sender: sender._id
       ? {
@@ -183,9 +213,9 @@ function mapConversation(conv, viewerId) {
     lastSeen: participant.lastSeen || null,
   }));
 
-  const visibleMessages = (conv.messages || []).filter(
+  const visibleMessages = sortMessagesByOrder((conv.messages || []).filter(
     (message) => !hasId(message.deletedFor, viewer)
-  );
+  ));
   const lastVisible = visibleMessages[visibleMessages.length - 1] || null;
   const other = participants.find((participant) => participant._id !== viewer);
 
@@ -224,18 +254,58 @@ async function persistAndEmitMessage(req, conv, senderUser, options) {
   const attachments = sanitizeAttachments(options.attachments);
   const replyTo = sanitizeReply(options.replyTo);
   const forwarded = !!options.forwarded;
+  const clientId =
+    cleanString(options.clientId, {
+      field: "Message client id",
+      max: 80,
+    }) || "";
   const senderId = senderUser._id.toString();
   const participantIds = (conv.participants || []).map((participant) => participant.toString());
   const recipientIds = participantIds.filter((id) => id !== senderId);
   const socketState = req.app.get("socketState");
-  const deliveredTo = recipientIds.filter((id) => socketState?.isOnline(id));
+  const deliveredTo = await getOnlineRecipientIds(socketState, recipientIds);
+  const moderation = moderateTextContent([
+    text,
+    replyTo?.text || "",
+    ...attachments.map((attachment) => attachment.name || ""),
+  ]);
+
+  if (clientId) {
+    const existing = (conv.messages || []).find(
+      (message) =>
+        message.clientId === clientId &&
+        toIdString(message.sender) === senderId
+    );
+
+    if (existing) {
+      return mapMessage(
+        {
+          ...existing.toObject(),
+          sender: {
+            _id: senderUser._id,
+            name: senderUser.name,
+            handle: senderUser.handle,
+            avatar: senderUser.avatar,
+          },
+        },
+        senderId,
+        participantIds
+      );
+    }
+  }
+
+  conv.messageSequence = (Number(conv.messageSequence) || 0) + 1;
 
   const message = {
     sender: senderUser._id,
+    clientId,
+    seq: conv.messageSequence,
     text,
     attachments,
     replyTo,
     forwarded,
+    moderationStatus: moderation.status,
+    moderationFlags: moderation.flags,
     deliveredTo,
     readBy: [],
     deletedFor: [],
@@ -269,15 +339,18 @@ async function persistAndEmitMessage(req, conv, senderUser, options) {
   );
 
   if (recipientIds.length) {
-    await Notification.insertMany(
-      recipientIds.map((recipientId) => ({
-        recipient: recipientId,
-        sender: senderUser._id,
-        type: "message",
-        text: conv.isGroup
-          ? `${senderUser.name} sent a message in ${conv.groupName || "your group"}`
-          : "sent you a message",
-      }))
+    await Promise.all(
+      recipientIds.map((recipientId) =>
+        createRankedNotification({
+          recipient: recipientId,
+          sender: senderUser._id,
+          type: "message",
+          convId: conv._id.toString(),
+          text: conv.isGroup
+            ? `${senderUser.name} sent a message in ${conv.groupName || "your group"}`
+            : "sent you a message",
+        })
+      )
     );
   }
 
@@ -312,10 +385,12 @@ async function persistAndEmitMessage(req, conv, senderUser, options) {
         t: "Just now",
         unread: true,
       });
-    });
+      });
   }
 
-  await sendPushToUsers(recipientIds, {
+  const deliveredSet = new Set(deliveredTo);
+  const pushRecipientIds = recipientIds.filter((id) => !deliveredSet.has(id));
+  await sendPushToUsers(pushRecipientIds, {
     title: conv.isGroup ? conv.groupName || "New group message" : senderUser.name,
     body: preview.length > 120 ? preview.slice(0, 117) + "..." : preview,
     icon: senderUser.avatar || "/Brand_Logo.jpg",
@@ -427,9 +502,10 @@ router.get("/:convId", validateObjectIdParam("convId"), auth, async (req, res) =
     }
 
     const visibleMessages = conv.messages.filter((message) => !hasId(message.deletedFor, viewerId));
-    const end = Math.max(0, visibleMessages.length - (page - 1) * limit);
+    const orderedMessages = sortMessagesByOrder(visibleMessages);
+    const end = Math.max(0, orderedMessages.length - (page - 1) * limit);
     const start = Math.max(0, end - limit);
-    const pageMessages = visibleMessages.slice(start, end);
+    const pageMessages = orderedMessages.slice(start, end);
 
     res.json({
       id: conv._id.toString(),
@@ -447,7 +523,7 @@ router.get("/:convId", validateObjectIdParam("convId"), auth, async (req, res) =
       pagination: {
         page,
         limit,
-        total: visibleMessages.length,
+        total: orderedMessages.length,
         hasMore: start > 0,
       },
     });
@@ -498,6 +574,10 @@ router.post("/:convId", validateObjectIdParam("convId"), auth, async (req, res, 
     const attachments = sanitizeAttachments(req.body.attachments);
     const replyTo = sanitizeReply(req.body.replyTo);
     const forwarded = !!req.body.forwarded;
+    const clientId = cleanString(req.body.clientId, {
+      field: "Message client id",
+      max: 80,
+    });
 
     if (!text && !attachments.length) {
       return res.status(400).json({ error: "Message text or attachment required" });
@@ -514,6 +594,7 @@ router.post("/:convId", validateObjectIdParam("convId"), auth, async (req, res, 
       attachments,
       replyTo,
       forwarded,
+      clientId,
     });
 
     res.json(payload);

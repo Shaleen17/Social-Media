@@ -1,9 +1,38 @@
 const mongoose = require("mongoose");
 const AppError = require("./appError");
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 function toPositiveInt(value, fallback) {
   const parsed = Number.parseInt(value, 10);
   return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+}
+
+function stripHtmlTags(value = "") {
+  return String(value || "")
+    .replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, " ")
+    .replace(/<style\b[^<]*(?:(?!<\/style>)<[^<]*)*<\/style>/gi, " ")
+    .replace(/<\/?[^>]+>/g, " ");
+}
+
+function normalizeWhitespace(value = "", options = {}) {
+  const preserveNewlines = !!options.preserveNewlines;
+  const normalized = String(value || "").replace(/\0/g, "");
+  if (!preserveNewlines) {
+    return normalized.replace(/\s+/g, " ").trim();
+  }
+
+  return normalized
+    .replace(/\r\n/g, "\n")
+    .replace(/\r/g, "\n")
+    .replace(/[^\S\n]+/g, " ")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
+
+function sanitizePlainText(value = "", options = {}) {
+  const allowHtml = !!options.allowHtml;
+  const raw = allowHtml ? String(value || "") : stripHtmlTags(value);
+  return normalizeWhitespace(raw, options);
 }
 
 function getPagination(query = {}, options = {}) {
@@ -23,13 +52,51 @@ function cleanString(value = "", options = {}) {
   const field = options.field || "Value";
   const max = options.max || 5000;
   const required = !!options.required;
-  const normalized = String(value ?? "").replace(/\0/g, "").trim();
+  const normalized = sanitizePlainText(value, options);
 
   if (required && !normalized) {
     throw new AppError(`${field} is required`, 400);
   }
   if (normalized.length > max) {
     throw new AppError(`${field} is too long`, 400, { max });
+  }
+  return normalized;
+}
+
+function cleanEmail(value = "", options = {}) {
+  const field = options.field || "Email";
+  const raw = cleanString(value, {
+    field,
+    max: options.max || 180,
+    required: !!options.required,
+  }).toLowerCase();
+
+  if (!raw) return "";
+  if (!EMAIL_RE.test(raw)) {
+    throw new AppError(`${field} must be a valid email address`, 400);
+  }
+  return raw;
+}
+
+function cleanHandle(value = "", options = {}) {
+  const field = options.field || "Handle";
+  const normalized = cleanString(value, {
+    field,
+    max: options.max || 40,
+    required: !!options.required,
+  })
+    .toLowerCase()
+    .replace(/^@+/, "")
+    .replace(/\s+/g, "")
+    .replace(/[^a-z0-9_]/g, "");
+
+  if (options.required && !normalized) {
+    throw new AppError(`${field} is required`, 400);
+  }
+  if (normalized && normalized.length < (options.min || 3)) {
+    throw new AppError(`${field} is too short`, 400, {
+      min: options.min || 3,
+    });
   }
   return normalized;
 }
@@ -113,10 +180,14 @@ function cleanStringArray(values, options = {}) {
 module.exports = {
   assertObjectId,
   cleanEnum,
+  cleanEmail,
+  cleanHandle,
   cleanHttpUrl,
   cleanMediaUrl,
   cleanString,
   cleanStringArray,
   getPagination,
+  sanitizePlainText,
+  stripHtmlTags,
   validateObjectIdParam,
 };

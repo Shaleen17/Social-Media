@@ -2,6 +2,10 @@ const express = require("express");
 const Video = require("../models/Video");
 const { auth, optionalAuth } = require("../middleware/auth");
 const {
+  buildSearchText,
+  moderateTextContent,
+} = require("../utils/contentFeatures");
+const {
   cleanEnum,
   cleanMediaUrl,
   cleanString,
@@ -67,6 +71,8 @@ function mapVideo(v) {
     })),
     views: v.views,
     dur: v.duration,
+    hashtags: v.hashtags || [],
+    moderation: v.moderation?.status || "approved",
     ts: new Date(v.createdAt).getTime(),
     live: v.isLive,
     viewers: v.liveViewers,
@@ -174,15 +180,36 @@ router.post("/", auth, async (req, res, next) => {
     if (!safeTitle || !safeSrc) {
       return res.status(400).json({ error: "Title and video source required" });
     }
+    const moderation = moderateTextContent([
+      safeTitle,
+      cleanString(description, { field: "Video description", max: 5000 }),
+    ]);
+    const safeDescription = cleanString(description, {
+      field: "Video description",
+      max: 5000,
+    });
 
     const video = await Video.create({
       user: req.user._id,
       title: safeTitle,
-      description: cleanString(description, { field: "Video description", max: 5000 }),
+      description: safeDescription,
       category: cleanEnum(category, ["Spiritual", "Pilgrimage", "Discourse", "Bhajan", "Aarti", "Meditation", "Katha", "Other"], "Spiritual"),
       src: safeSrc,
       thumbnail: safeThumbnail || null,
       duration: cleanString(duration, { field: "Video duration", max: 20 }) || "0:00",
+      hashtags: moderation.hashtags,
+      searchText: buildSearchText(safeTitle, safeDescription, moderation.hashtags.join(" ")),
+      moderation: {
+        status: moderation.status,
+        flags: moderation.flags,
+        score: moderation.score,
+        reviewedAt: moderation.reviewedAt,
+      },
+      processing: {
+        status: moderation.status === "needs_review" ? "needs_review" : "ready",
+        profile: "adaptive-ready",
+        optimizedAt: new Date(),
+      },
     });
 
     res.status(201).json({
@@ -198,6 +225,8 @@ router.post("/", auth, async (req, res, next) => {
       cmts: [],
       views: 0,
       dur: video.duration,
+      hashtags: video.hashtags || [],
+      moderation: video.moderation?.status || "approved",
       ts: Date.now(),
       live: false,
     });

@@ -8,6 +8,8 @@ const OTP_MAX_VERIFY_ATTEMPTS = 5;
 const OTP_MAX_SENDS_PER_SESSION = 5;
 const PENDING_SIGNUP_TTL_MS = 24 * 60 * 60 * 1000;
 const BCRYPT_HASH_RE = /^\$2[aby]\$\d{2}\$/;
+const TOKEN_ISSUER = process.env.JWT_ISSUER || "tirth-sutra";
+const TOKEN_AUDIENCE = process.env.JWT_AUDIENCE || "tirth-sutra-web";
 
 function hashTokenValue(value) {
   return crypto.createHash("sha256").update(String(value || "")).digest("hex");
@@ -54,9 +56,31 @@ function isBcryptHash(value) {
   return BCRYPT_HASH_RE.test(String(value || ""));
 }
 
-function signAuthToken(userId) {
-  return jwt.sign({ id: userId }, process.env.JWT_SECRET, {
-    expiresIn: "30d",
+function signAuthToken(userOrId) {
+  const userId =
+    typeof userOrId === "object" && userOrId
+      ? userOrId._id || userOrId.id
+      : userOrId;
+  const sessionVersion =
+    typeof userOrId === "object" && userOrId
+      ? Number(userOrId.sessionVersion) || 0
+      : 0;
+
+  return jwt.sign(
+    { id: userId, sv: sessionVersion },
+    process.env.JWT_SECRET,
+    {
+      expiresIn: process.env.AUTH_TOKEN_TTL || "30d",
+      issuer: TOKEN_ISSUER,
+      audience: TOKEN_AUDIENCE,
+    }
+  );
+}
+
+function verifyAuthToken(token) {
+  return jwt.verify(token, process.env.JWT_SECRET, {
+    issuer: TOKEN_ISSUER,
+    audience: TOKEN_AUDIENCE,
   });
 }
 
@@ -73,4 +97,5 @@ module.exports = {
   OTP_MAX_VERIFY_ATTEMPTS,
   OTP_MAX_SENDS_PER_SESSION,
   PENDING_SIGNUP_TTL_MS,
+  verifyAuthToken,
 };

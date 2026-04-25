@@ -24,6 +24,10 @@ const userSchema = new mongoose.Schema(
       enum: ["local", "google", "appwrite"],
       default: "local",
     },
+    oauthProvider: {
+      type: String,
+      default: null,
+    },
     googleId: {
       type: String,
       sparse: true,
@@ -58,6 +62,14 @@ const userSchema = new mongoose.Schema(
     following: [{ type: mongoose.Schema.Types.ObjectId, ref: "User" }],
     followedMandirs: [{ type: String, trim: true, lowercase: true }],
     followedSants: [{ type: String, trim: true, lowercase: true }],
+    privateAccount: { type: Boolean, default: false },
+    blockedUsers: [{ type: mongoose.Schema.Types.ObjectId, ref: "User" }],
+    notificationSettings: {
+      festivalReminders: { type: Boolean, default: true },
+      chatMessages: { type: Boolean, default: true },
+      communityHighlights: { type: Boolean, default: true },
+      donationUpdates: { type: Boolean, default: true },
+    },
     verified: { type: Boolean, default: false },
     emailVerified: { type: Boolean, default: false },
     marketing: {
@@ -76,7 +88,18 @@ const userSchema = new mongoose.Schema(
       default: 0,
     },
     passwordResetLastAttemptAt: { type: Date, select: false, default: null },
+    sessionVersion: { type: Number, default: 0 },
+    lastLoginAt: { type: Date, default: null },
+    lastLoginIp: { type: String, default: "" },
+    lastAuthAt: { type: Date, default: null },
     lastSeen: { type: Date, default: Date.now },
+    accountStatus: {
+      type: String,
+      enum: ["active", "deleted"],
+      default: "active",
+      index: true,
+    },
+    deletedAt: { type: Date, default: null },
     mandirId: { type: String, default: null },
     joined: { type: String, default: "" },
     referralCode: {
@@ -126,6 +149,7 @@ userSchema.index({ createdAt: -1 });
 userSchema.index({ lastSeen: -1 });
 userSchema.index({ followers: 1 });
 userSchema.index({ following: 1 });
+userSchema.index({ blockedUsers: 1 });
 userSchema.index({
   name: "text",
   handle: "text",
@@ -146,6 +170,9 @@ userSchema.set("toJSON", {
       ? ret.referredUsers.length
       : 0;
     delete ret.referredUsers;
+    ret.blockedUsers = Array.isArray(ret.blockedUsers)
+      ? ret.blockedUsers.map((item) => item?.toString?.() || item)
+      : [];
     ret.id = ret._id;
     return ret;
   },

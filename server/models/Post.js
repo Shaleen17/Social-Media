@@ -22,6 +22,18 @@ const postSchema = new mongoose.Schema(
     reposts: [{ type: mongoose.Schema.Types.ObjectId, ref: "User" }],
     bookmarks: [{ type: mongoose.Schema.Types.ObjectId, ref: "User" }],
     poll: { type: pollSchema, default: null },
+    hashtags: [{ type: String, lowercase: true, trim: true }],
+    searchText: { type: String, default: "" },
+    moderation: {
+      status: {
+        type: String,
+        enum: ["approved", "needs_review"],
+        default: "approved",
+      },
+      flags: [{ type: String }],
+      score: { type: Number, default: 0 },
+      reviewedAt: { type: Date, default: Date.now },
+    },
   },
   { timestamps: true }
 );
@@ -38,5 +50,7 @@ postSchema.index({ user: 1, createdAt: -1 });
 postSchema.index({ likes: 1 });
 postSchema.index({ bookmarks: 1, createdAt: -1 });
 postSchema.index({ "comments.user": 1 });
+postSchema.index({ hashtags: 1, createdAt: -1 });
+postSchema.index({ searchText: "text" });
 
 module.exports = mongoose.model("Post", postSchema);

@@ -10,6 +10,7 @@ const router = express.Router();
 router.get("/languages", async (req, res, next) => {
   try {
     const languages = await getSupportedLanguages();
+    res.setHeader("Cache-Control", "public, max-age=3600, stale-while-revalidate=86400");
     res.json({ languages });
   } catch (error) {
     next(error);

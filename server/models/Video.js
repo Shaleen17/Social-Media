@@ -43,6 +43,27 @@ const videoSchema = new mongoose.Schema(
     isLive: { type: Boolean, default: false },
     liveViewers: { type: Number, default: 0 },
     liveStarted: { type: String, default: null },
+    hashtags: [{ type: String, lowercase: true, trim: true }],
+    searchText: { type: String, default: "" },
+    moderation: {
+      status: {
+        type: String,
+        enum: ["approved", "needs_review"],
+        default: "approved",
+      },
+      flags: [{ type: String }],
+      score: { type: Number, default: 0 },
+      reviewedAt: { type: Date, default: Date.now },
+    },
+    processing: {
+      status: {
+        type: String,
+        enum: ["ready", "processing", "needs_review"],
+        default: "ready",
+      },
+      profile: { type: String, default: "standard" },
+      optimizedAt: { type: Date, default: Date.now },
+    },
   },
   { timestamps: true }
 );
@@ -60,5 +81,7 @@ videoSchema.index({ category: 1, createdAt: -1 });
 videoSchema.index({ isLive: 1, createdAt: -1 });
 videoSchema.index({ likes: 1 });
 videoSchema.index({ "comments.user": 1 });
+videoSchema.index({ hashtags: 1, createdAt: -1 });
+videoSchema.index({ searchText: "text" });
 
 module.exports = mongoose.model("Video", videoSchema);

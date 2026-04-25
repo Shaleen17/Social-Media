@@ -30,10 +30,18 @@ const replyToSchema = new mongoose.Schema(
 
 const messageSchema = new mongoose.Schema({
   sender: { type: mongoose.Schema.Types.ObjectId, ref: "User", required: true },
+  clientId: { type: String, default: "" },
+  seq: { type: Number, default: 0 },
   text: { type: String, default: "" },
   attachments: { type: [attachmentSchema], default: [] },
   replyTo: { type: replyToSchema, default: null },
   forwarded: { type: Boolean, default: false },
+  moderationStatus: {
+    type: String,
+    enum: ["approved", "needs_review"],
+    default: "approved",
+  },
+  moderationFlags: { type: [String], default: [] },
   deliveredTo: [{ type: mongoose.Schema.Types.ObjectId, ref: "User" }],
   readBy: [{ type: mongoose.Schema.Types.ObjectId, ref: "User" }],
   deletedFor: [{ type: mongoose.Schema.Types.ObjectId, ref: "User" }],
@@ -53,6 +61,7 @@ const conversationSchema = new mongoose.Schema(
     groupAvatar: { type: String, default: null },
     lastMessage: { type: String, default: "" },
     lastMessageAt: { type: Date, default: Date.now },
+    messageSequence: { type: Number, default: 0 },
   },
   { timestamps: true }
 );
@@ -67,5 +76,6 @@ conversationSchema.set("toJSON", {
 conversationSchema.index({ participants: 1, lastMessageAt: -1 });
 conversationSchema.index({ lastMessageAt: -1 });
 conversationSchema.index({ "messages.sender": 1 });
+conversationSchema.index({ participants: 1, "messages.clientId": 1 });
 
 module.exports = mongoose.model("Conversation", conversationSchema);

@@ -3,6 +3,7 @@ const multer = require("multer");
 const cloudinary = require("cloudinary").v2;
 const { auth } = require("../middleware/auth");
 const AppError = require("../utils/appError");
+const { moderateMediaAsset } = require("../utils/contentFeatures");
 const { cleanString } = require("../utils/validation");
 
 const router = express.Router();
@@ -118,6 +119,20 @@ router.post("/", auth, runSingleUpload, async (req, res, next) => {
       width: result.width,
       height: result.height,
       duration: result.duration || null,
+      moderation: moderateMediaAsset({
+        mimeType: req.file.mimetype,
+        name: req.file.originalname,
+        size: req.file.size,
+        duration: result.duration || null,
+      }),
+      processing:
+        type === "video"
+          ? {
+              status: "ready",
+              profile: "adaptive-ready",
+              optimizedAt: new Date().toISOString(),
+            }
+          : null,
     });
   } catch (err) {
     next(err);
@@ -152,6 +167,10 @@ router.post("/base64", auth, async (req, res, next) => {
     res.json({
       url: result.secure_url,
       publicId: result.public_id,
+      moderation: moderateMediaAsset({
+        mimeType: String(result.resource_type || "image"),
+        size: Buffer.byteLength(safeData, "utf8"),
+      }),
     });
   } catch (err) {
     next(err);

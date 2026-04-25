@@ -8,8 +8,10 @@ const cloudinary = require("cloudinary").v2;
 const mongoose = require("mongoose");
 const connectDB = require("./config/db");
 const setupSocket = require("./socket/chat");
+const { initializeRedisRealtime } = require("./services/redisRealtime");
 const AppError = require("./utils/appError");
 const securityHeaders = require("./middleware/securityHeaders");
+const { csrfCookieBootstrap, csrfProtection } = require("./middleware/csrf");
 const {
   apiLimiter,
   authLimiter,
@@ -69,6 +71,8 @@ const translationRoutes = require("./routes/translation");
 const supportRoutes = require("./routes/support");
 const emailCampaignRoutes = require("./routes/emailCampaign");
 const adminRoutes = require("./routes/admin");
+const searchRoutes = require("./routes/search");
+const analyticsRoutes = require("./routes/analytics");
 const { startEmailCampaignWorker } = require("./services/emailCampaignService");
 
 const app = express();
@@ -109,7 +113,13 @@ const io = new Server(server, {
 app.set("io", io);
 
 // Setup Socket.io handlers
-app.set("socketState", setupSocket(io));
+const socketState = setupSocket(io);
+app.set("socketState", socketState);
+initializeRedisRealtime(io, socketState).catch((error) =>
+  log("warn", "Redis realtime bootstrap failed", {
+    error: error.message,
+  })
+);
 
 // Configure Cloudinary
 cloudinary.config({
@@ -132,11 +142,14 @@ app.use(
       }
     },
     credentials: true,
+    exposedHeaders: ["x-csrf-token", "x-page", "x-limit", "x-has-more"],
   })
 );
 app.use("/api", apiLimiter);
 app.use(express.json({ limit: process.env.JSON_BODY_LIMIT || "10mb" }));
 app.use(express.urlencoded({ extended: true, limit: process.env.URLENCODED_BODY_LIMIT || "2mb" }));
+app.use(csrfCookieBootstrap);
+app.use(csrfProtection);
 
 // Serve static files from public/ directory
 app.use(
@@ -184,6 +197,8 @@ app.use("/api/translate", writeLimiter, translationRoutes);
 app.use("/api/support", writeLimiter, supportRoutes);
 app.use("/api/email-campaign", emailCampaignRoutes);
 app.use("/api/admin", adminRoutes);
+app.use("/api/search", searchRoutes);
+app.use("/api/analytics", analyticsRoutes);
 
 // Health check
 app.get("/api/health", (req, res) => {

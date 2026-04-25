@@ -1,9 +1,20 @@
 const express = require("express");
+const crypto = require("crypto");
 const User = require("../models/User");
 const Post = require("../models/Post");
+const Story = require("../models/Story");
+const Video = require("../models/Video");
+const Conversation = require("../models/Message");
 const Notification = require("../models/Notification");
+const PushSubscription = require("../models/PushSubscription");
+const Donation = require("../models/Donation");
+const PendingSignup = require("../models/PendingSignup");
+const EmailCampaignSubscription = require("../models/EmailCampaignSubscription");
+const EmailCampaignDelivery = require("../models/EmailCampaignDelivery");
 const { auth, optionalAuth } = require("../middleware/auth");
+const { createRankedNotification } = require("../services/notificationService");
 const {
+  assertObjectId,
   cleanHttpUrl,
   cleanMediaUrl,
   cleanString,
@@ -21,6 +32,37 @@ function normalizeStringList(values) {
       .map((value) => String(value || "").trim().toLowerCase())
       .filter(Boolean)
   )];
+}
+
+function normalizeObjectIdList(values, currentUserId = "") {
+  if (!Array.isArray(values)) return [];
+  const current = currentUserId ? currentUserId.toString() : "";
+  const seen = new Set();
+  const output = [];
+
+  values.slice(0, 200).forEach((value) => {
+    if (!value) return;
+    const id = value.toString();
+    if (!id || id === current || seen.has(id)) return;
+    assertObjectId(id, "user id");
+    seen.add(id);
+    output.push(id);
+  });
+
+  return output;
+}
+
+function sanitizeNotificationSettings(input = {}) {
+  const current = input && typeof input === "object" ? input : {};
+  const read = (key, fallback = true) =>
+    typeof current[key] === "boolean" ? current[key] : fallback;
+
+  return {
+    festivalReminders: read("festivalReminders", true),
+    chatMessages: read("chatMessages", true),
+    communityHighlights: read("communityHighlights", true),
+    donationUpdates: read("donationUpdates", true),
+  };
 }
 
 function escapeRegex(value = "") {
@@ -73,11 +115,12 @@ router.get("/search", optionalAuth, async (req, res, next) => {
     const { limit } = getPagination(req.query, { defaultLimit: 20, maxLimit: 50 });
 
     const users = await User.find({
+      accountStatus: "active",
       $or: USER_SEARCH_FIELDS.map((field) => ({
         [field]: { $regex: safeRegex, $options: "i" },
       })),
     })
-      .select(`name handle avatar bio location website verified followers ${PROFILE_EXTRA_SELECT}`)
+      .select(`name handle avatar bio location website verified followers privateAccount blockedUsers notificationSettings ${PROFILE_EXTRA_SELECT}`)
       .limit(limit)
       .lean();
 
@@ -91,6 +134,9 @@ router.get("/search", optionalAuth, async (req, res, next) => {
         location: u.location || "",
         website: u.website || "",
         ...pickProfileExtras(u),
+        privateAccount: !!u.privateAccount,
+        blockedUsers: (u.blockedUsers || []).map((item) => item.toString()),
+        notificationSettings: sanitizeNotificationSettings(u.notificationSettings),
         verified: u.verified,
         followersCount: (u.followers || []).length,
       }))
@@ -107,10 +153,10 @@ router.get("/all", optionalAuth, async (req, res, next) => {
       defaultLimit: 100,
       maxLimit: 100,
     });
-    const users = await User.find()
+    const users = await User.find({ accountStatus: "active" })
       .sort({ createdAt: -1 })
       .skip(skip)
-      .select(`name handle avatar bio verified followers following followedMandirs followedSants location website joined ${PROFILE_EXTRA_SELECT}`)
+      .select(`name handle avatar bio verified followers following followedMandirs followedSants location website joined privateAccount blockedUsers notificationSettings ${PROFILE_EXTRA_SELECT}`)
       .limit(limit)
       .lean();
 
@@ -132,6 +178,9 @@ router.get("/all", optionalAuth, async (req, res, next) => {
         following: (u.following || []).map((f) => f.toString()),
         followedMandirs: normalizeStringList(u.followedMandirs),
         followedSants: normalizeStringList(u.followedSants),
+        privateAccount: !!u.privateAccount,
+        blockedUsers: (u.blockedUsers || []).map((item) => item.toString()),
+        notificationSettings: sanitizeNotificationSettings(u.notificationSettings),
         joined: u.joined || "",
       }))
     );
@@ -141,7 +190,7 @@ router.get("/all", optionalAuth, async (req, res, next) => {
 });
 
 // GET /api/users/:id — get profile
-router.get("/:id", validateObjectIdParam("id"), optionalAuth, async (req, res, next) => {
+router.get("/:id([0-9a-fA-F]{24})", validateObjectIdParam("id"), optionalAuth, async (req, res, next) => {
   try {
     const user = await User.findById(req.params.id)
       .select("-password")
@@ -167,6 +216,9 @@ router.get("/:id", validateObjectIdParam("id"), optionalAuth, async (req, res, n
       following: (user.following || []).map((f) => f.toString()),
       followedMandirs: normalizeStringList(user.followedMandirs),
       followedSants: normalizeStringList(user.followedSants),
+      privateAccount: !!user.privateAccount,
+      blockedUsers: (user.blockedUsers || []).map((item) => item.toString()),
+      notificationSettings: sanitizeNotificationSettings(user.notificationSettings),
       postsCount,
     });
   } catch (err) {
@@ -175,7 +227,223 @@ router.get("/:id", validateObjectIdParam("id"), optionalAuth, async (req, res, n
 });
 
 // PUT /api/users/:id — update profile
-router.put("/:id", validateObjectIdParam("id"), auth, async (req, res, next) => {
+router.get("/account/export", auth, async (req, res, next) => {
+  try {
+    const userId = req.user._id;
+    const [
+      user,
+      posts,
+      videos,
+      stories,
+      notifications,
+      subscriptions,
+      donations,
+      emailSubscription,
+      emailDeliveries,
+      conversations,
+    ] = await Promise.all([
+      User.findById(userId).select("-password").lean(),
+      Post.find({ user: userId }).sort({ createdAt: -1 }).lean(),
+      Video.find({ user: userId }).sort({ createdAt: -1 }).lean(),
+      Story.find({ user: userId }).sort({ createdAt: -1 }).lean(),
+      Notification.find({
+        $or: [{ recipient: userId }, { sender: userId }],
+      })
+        .sort({ createdAt: -1 })
+        .lean(),
+      PushSubscription.find({ user: userId }).sort({ createdAt: -1 }).lean(),
+      Donation.find({ user: userId }).sort({ createdAt: -1 }).lean(),
+      EmailCampaignSubscription.findOne({ user: userId }).lean(),
+      EmailCampaignDelivery.find({ user: userId }).sort({ createdAt: -1 }).lean(),
+      Conversation.find({ participants: userId }).sort({ updatedAt: -1 }).lean(),
+    ]);
+
+    res.setHeader("Content-Type", "application/json; charset=utf-8");
+    res.setHeader(
+      "Content-Disposition",
+      `attachment; filename="tirth-sutra-data-export-${userId.toString()}.json"`
+    );
+    res.json({
+      exportedAt: new Date().toISOString(),
+      user,
+      posts,
+      videos,
+      stories,
+      notifications,
+      pushSubscriptions: subscriptions,
+      donations,
+      emailCampaign: {
+        subscription: emailSubscription,
+        deliveries: emailDeliveries,
+      },
+      conversations: (conversations || []).map((conversation) => ({
+        id: conversation._id,
+        isGroup: !!conversation.isGroup,
+        groupName: conversation.groupName || "",
+        participants: (conversation.participants || []).map((item) =>
+          item.toString()
+        ),
+        messages: (conversation.messages || [])
+          .filter((message) => message.sender?.toString() === userId.toString())
+          .map((message) => ({
+            id: message._id,
+            text: message.text || "",
+            clientId: message.clientId || "",
+            seq: Number(message.seq) || 0,
+            createdAt: message.createdAt,
+            deletedForEveryone: !!message.deletedForEveryone,
+            attachments: message.attachments || [],
+            replyTo: message.replyTo || null,
+          })),
+      })),
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.delete("/account", auth, async (req, res, next) => {
+  try {
+    const confirmation = cleanString(req.body?.confirmation, {
+      field: "Deletion confirmation",
+      max: 32,
+      required: true,
+    });
+    if (confirmation !== "DELETE") {
+      return res
+        .status(400)
+        .json({ error: 'Type "DELETE" in the confirmation field to continue.' });
+    }
+
+    const userId = req.user._id;
+    const deletedAt = new Date();
+
+    await Promise.all([
+      Post.deleteMany({ user: userId }),
+      Video.deleteMany({ user: userId }),
+      Story.deleteMany({ user: userId }),
+      PushSubscription.deleteMany({ user: userId }),
+      Notification.deleteMany({
+        $or: [{ recipient: userId }, { sender: userId }],
+      }),
+      PendingSignup.deleteMany({
+        $or: [{ email: req.user.email }, { referredBy: userId }],
+      }),
+      EmailCampaignDelivery.deleteMany({ user: userId }),
+      EmailCampaignSubscription.deleteMany({ user: userId }),
+      Donation.updateMany(
+        { user: userId },
+        {
+          $set: {
+            donorName: "Deleted User",
+            donorEmail: "",
+            donorContact: "",
+            user: null,
+          },
+        }
+      ),
+      User.updateMany(
+        {},
+        {
+          $pull: {
+            followers: userId,
+            following: userId,
+            blockedUsers: userId,
+          },
+        }
+      ),
+    ]);
+
+    const conversations = await Conversation.find({ "messages.sender": userId });
+    for (const conversation of conversations) {
+      let changed = false;
+      (conversation.messages || []).forEach((message) => {
+        if (message.sender?.toString() !== userId.toString()) return;
+        message.text = "";
+        message.attachments = [];
+        message.replyTo = null;
+        message.forwarded = false;
+        message.deletedForEveryone = true;
+        message.deletedAt = deletedAt;
+        message.deletedBy = userId;
+        changed = true;
+      });
+      if (changed) {
+        await conversation.save();
+      }
+    }
+
+    const user = await User.findById(userId).select("+password");
+    if (!user) {
+      return res.json({ success: true, deleted: true });
+    }
+
+    user.name = "Deleted User";
+    user.handle = `deleted_${userId.toString().slice(-8)}`;
+    user.email = `deleted+${userId.toString()}@example.invalid`;
+    user.password = crypto.randomBytes(24).toString("hex");
+    user.authProvider = "local";
+    user.oauthProvider = null;
+    user.googleId = null;
+    user.appwriteId = null;
+    user.appwriteSignupCompleted = false;
+    user.appwriteSignupCompletedAt = null;
+    user.bio = "";
+    user.location = "";
+    user.website = "";
+    user.spiritualName = "";
+    user.homeMandir = "";
+    user.favoriteDeity = "";
+    user.spiritualPath = "";
+    user.interests = "";
+    user.spokenLanguages = "";
+    user.seva = "";
+    user.yatraWishlist = "";
+    user.sankalp = "";
+    user.avatar = null;
+    user.banner = null;
+    user.followers = [];
+    user.following = [];
+    user.followedMandirs = [];
+    user.followedSants = [];
+    user.privateAccount = true;
+    user.blockedUsers = [];
+    user.notificationSettings = sanitizeNotificationSettings({
+      festivalReminders: false,
+      chatMessages: false,
+      communityHighlights: false,
+      donationUpdates: false,
+    });
+    user.verified = false;
+    user.emailVerified = false;
+    user.marketing = {
+      emailConsent: false,
+      emailConsentAt: null,
+      emailConsentSource: null,
+      emailUnsubscribedAt: deletedAt,
+      timezone: "Asia/Kolkata",
+    };
+    user.sessionVersion = (Number(user.sessionVersion) || 0) + 1;
+    user.accountStatus = "deleted";
+    user.deletedAt = deletedAt;
+    user.lastAuthAt = deletedAt;
+    user.lastSeen = deletedAt;
+    user.referredUsers = [];
+    user.referralCode = null;
+    user.referredBy = null;
+    await user.save();
+
+    res.json({
+      success: true,
+      deleted: true,
+      deletedAt: deletedAt.toISOString(),
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.put("/:id([0-9a-fA-F]{24})", validateObjectIdParam("id"), auth, async (req, res, next) => {
   try {
     if (req.user._id.toString() !== req.params.id) {
       return res.status(403).json({ error: "Not authorized" });
@@ -190,6 +458,9 @@ router.put("/:id", validateObjectIdParam("id"), auth, async (req, res, next) => 
       banner,
       followedMandirs,
       followedSants,
+      privateAccount,
+      blockedUsers,
+      notificationSettings,
     } = req.body;
     const updates = {};
     if (name !== undefined) {
@@ -213,6 +484,20 @@ router.put("/:id", validateObjectIdParam("id"), auth, async (req, res, next) => 
     if (followedSants !== undefined) {
       updates.followedSants = normalizeStringList(followedSants);
     }
+    if (privateAccount !== undefined) {
+      updates.privateAccount = !!privateAccount;
+    }
+    if (blockedUsers !== undefined) {
+      updates.blockedUsers = normalizeObjectIdList(
+        blockedUsers,
+        req.user._id.toString()
+      );
+    }
+    if (notificationSettings !== undefined) {
+      updates.notificationSettings = sanitizeNotificationSettings(
+        notificationSettings
+      );
+    }
 
     const user = await User.findByIdAndUpdate(req.params.id, updates, {
       new: true,
@@ -225,7 +510,7 @@ router.put("/:id", validateObjectIdParam("id"), auth, async (req, res, next) => 
 });
 
 // PUT /api/users/:id/follow — toggle follow
-router.put("/:id/follow", validateObjectIdParam("id"), auth, async (req, res, next) => {
+router.put("/:id([0-9a-fA-F]{24})/follow", validateObjectIdParam("id"), auth, async (req, res, next) => {
   try {
     const targetId = req.params.id;
     if (req.user._id.toString() === targetId) {
@@ -250,7 +535,7 @@ router.put("/:id/follow", validateObjectIdParam("id"), auth, async (req, res, ne
       targetUser.followers.push(req.user._id);
 
       // Create notification
-      await Notification.create({
+      await createRankedNotification({
         recipient: targetId,
         sender: req.user._id,
         type: "follow",
@@ -279,7 +564,7 @@ router.put("/:id/follow", validateObjectIdParam("id"), auth, async (req, res, ne
 });
 
 // GET /api/users/:id/followers — get followers list
-router.get("/:id/followers", validateObjectIdParam("id"), async (req, res, next) => {
+router.get("/:id([0-9a-fA-F]{24})/followers", validateObjectIdParam("id"), async (req, res, next) => {
   try {
     const { page, limit, skip } = getPagination(req.query, {
       defaultLimit: 50,
@@ -308,7 +593,7 @@ router.get("/:id/followers", validateObjectIdParam("id"), async (req, res, next)
 });
 
 // GET /api/users/:id/following — get following list
-router.get("/:id/following", validateObjectIdParam("id"), async (req, res, next) => {
+router.get("/:id([0-9a-fA-F]{24})/following", validateObjectIdParam("id"), async (req, res, next) => {
   try {
     const { page, limit, skip } = getPagination(req.query, {
       defaultLimit: 50,

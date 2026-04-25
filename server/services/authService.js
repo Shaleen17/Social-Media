@@ -57,6 +57,14 @@ const RESEND_RATE_WINDOW_MS = 15 * 60 * 1000;
 const PASSWORD_RESET_RATE_WINDOW_MS = 15 * 60 * 1000;
 const PASSWORD_RESET_SELECT_FIELDS =
   "+passwordResetOtpHash +passwordResetOtpExpiresAt +passwordResetOtpLastSentAt +passwordResetOtpAttemptCount +passwordResetLastAttemptAt";
+const OAUTH_PROVIDER_LABELS = {
+  google: "Google",
+  github: "GitHub",
+  discord: "Discord",
+  apple: "Apple",
+  facebook: "Facebook",
+  microsoft: "Microsoft",
+};
 
 function normalizeEmail(email = "") {
   return String(email).trim().toLowerCase();
@@ -82,6 +90,26 @@ function toBoolean(value) {
 function sanitizeTimezone(timezone = "") {
   const normalized = String(timezone || "").trim();
   return normalized && normalized.length <= 64 ? normalized : "Asia/Kolkata";
+}
+
+function normalizeOAuthProvider(provider = "") {
+  const normalized = String(provider || "").trim().toLowerCase();
+  return OAUTH_PROVIDER_LABELS[normalized] ? normalized : "google";
+}
+
+function getOAuthProviderLabel(provider = "") {
+  return OAUTH_PROVIDER_LABELS[normalizeOAuthProvider(provider)] || "OAuth";
+}
+
+async function markSuccessfulAuth(user, context = {}, provider = null) {
+  if (!user) return;
+  user.lastLoginAt = new Date();
+  user.lastLoginIp = normalizeIp(context.ip);
+  user.lastAuthAt = new Date();
+  if (provider !== undefined) {
+    user.oauthProvider = provider || null;
+  }
+  await user.save({ validateBeforeSave: false });
 }
 
 function getMarketingConsentPayload(payload = {}, context = {}) {
@@ -640,11 +668,12 @@ async function loginLocalUser(payload = {}, context = {}) {
     throw new AppError("Invalid email or password.", 401);
   }
 
+  await markSuccessfulAuth(user, context, null);
   const safeUser = await User.findById(user._id);
   await ensureUserReferralCode(safeUser);
   return {
     user: safeUser.toJSON(),
-    token: signAuthToken(user._id),
+    token: signAuthToken(user),
   };
 }
 
@@ -737,6 +766,7 @@ async function verifySignupOtp(payload = {}, context = {}) {
   }
 
   const user = await upsertVerifiedUserFromPendingSignup(pendingSignup);
+  await markSuccessfulAuth(user, context, null);
   await PendingSignup.deleteOne({ _id: pendingSignup._id });
 
   if (pendingSignup.marketingEmailConsent) {
@@ -758,7 +788,7 @@ async function verifySignupOtp(payload = {}, context = {}) {
   await ensureUserReferralCode(safeUser);
   return {
     user: safeUser.toJSON(),
-    token: signAuthToken(user._id),
+    token: signAuthToken(user),
   };
 }
 
@@ -965,6 +995,8 @@ async function resetPasswordWithOtp(payload = {}, context = {}) {
 
   clearPasswordResetState(user);
   user.password = password;
+  user.sessionVersion = (Number(user.sessionVersion) || 0) + 1;
+  user.lastAuthAt = new Date();
   await user.save();
 
   return {
@@ -1013,7 +1045,7 @@ async function loginWithGoogle({
   timezone,
   consentSource,
   authMode,
-}) {
+}, context = {}) {
   const profile = await getGoogleProfile({ token, tokenType });
   const {
     email,
@@ -1063,6 +1095,7 @@ async function loginWithGoogle({
         email: normalizedEmail,
         password: crypto.randomBytes(24).toString("hex"),
         authProvider: "google",
+        oauthProvider: "google",
         googleId: sub,
         avatar: picture || null,
         emailVerified: true,
@@ -1085,6 +1118,7 @@ async function loginWithGoogle({
       }
 
       user.googleId = sub;
+      user.oauthProvider = "google";
       user.emailVerified = true;
       user.referralCode =
         user.referralCode ||
@@ -1121,6 +1155,7 @@ async function loginWithGoogle({
     }
 
     user = linkedUser;
+    user.oauthProvider = "google";
     user.emailVerified = true;
     user.referralCode =
       user.referralCode ||
@@ -1165,11 +1200,12 @@ async function loginWithGoogle({
     }
   }
 
+  await markSuccessfulAuth(user, context, "google");
   const safeUser = await User.findById(user._id);
   await ensureUserReferralCode(safeUser);
   return {
     user: safeUser.toJSON(),
-    token: signAuthToken(user._id),
+    token: signAuthToken(user),
   };
 }
 
@@ -1187,12 +1223,14 @@ function getAppwriteConfig() {
   return { endpoint, projectId };
 }
 
-function createAppwriteGoogleSignupIntent() {
+function createAppwriteGoogleSignupIntent(provider = "google") {
+  const oauthProvider = normalizeOAuthProvider(provider);
   return {
     intentToken: jwt.sign(
       {
         purpose: APPWRITE_GOOGLE_SIGNUP_INTENT_PURPOSE,
         mode: "signup",
+        provider: oauthProvider,
       },
       process.env.JWT_SECRET,
       { expiresIn: "10m" }
@@ -1201,22 +1239,31 @@ function createAppwriteGoogleSignupIntent() {
   };
 }
 
-function verifyAppwriteGoogleSignupIntent(intentToken) {
+function verifyAppwriteGoogleSignupIntent(intentToken, provider = "google") {
+  const oauthProvider = normalizeOAuthProvider(provider);
+  const providerLabel = getOAuthProviderLabel(oauthProvider);
   if (!intentToken) {
-    throw new AppError("Google signup intent is missing. Please start from Sign up with Google.", 400);
+    throw new AppError(
+      `${providerLabel} signup intent is missing. Please start from Sign up with ${providerLabel}.`,
+      400
+    );
   }
 
   try {
     const decoded = jwt.verify(intentToken, process.env.JWT_SECRET);
     if (
       decoded?.purpose !== APPWRITE_GOOGLE_SIGNUP_INTENT_PURPOSE ||
-      decoded?.mode !== "signup"
+      decoded?.mode !== "signup" ||
+      normalizeOAuthProvider(decoded?.provider) !== oauthProvider
     ) {
-      throw new Error("Invalid Google signup intent");
+      throw new Error("Invalid OAuth signup intent");
     }
     return decoded;
   } catch {
-    throw new AppError("Google signup session expired. Please try Sign up with Google again.", 401);
+    throw new AppError(
+      `${providerLabel} signup session expired. Please try Sign up with ${providerLabel} again.`,
+      401
+    );
   }
 }
 
@@ -1250,7 +1297,7 @@ async function getAppwriteAccount(jwtToken) {
 
   if (!response.ok) {
     throw new AppError(
-      payload?.message || "Unable to verify the Appwrite Google session.",
+      payload?.message || "Unable to verify the Appwrite OAuth session.",
       response.status || 401
     );
   }
@@ -1269,9 +1316,13 @@ async function loginWithAppwriteGoogle({
   signupIntent,
   marketingConsent,
   timezone,
-}) {
+  provider = "google",
+}, context = {}) {
   const account = await getAppwriteAccount(appwriteJwt);
   const normalizedEmail = normalizeEmail(account.email);
+  const oauthProvider = normalizeOAuthProvider(provider);
+  const oauthProviderLabel = getOAuthProviderLabel(oauthProvider);
+  const oauthConsentSourceBase = `appwrite_${oauthProvider}`;
 
   if (!normalizedEmail || !EMAIL_RE.test(normalizedEmail)) {
     throw new AppError("Appwrite account email is invalid.", 401);
@@ -1310,7 +1361,7 @@ async function loginWithAppwriteGoogle({
 
     if (linkedUser?.appwriteSignupCompleted) {
       throw new AppError(
-        "This Google account is already linked. Please sign in with Google instead.",
+        `This ${oauthProviderLabel} account is already linked. Please sign in with ${oauthProviderLabel} instead.`,
         409,
         { requiresSignin: true }
       );
@@ -1324,6 +1375,7 @@ async function loginWithAppwriteGoogle({
         email: normalizedEmail,
         password: crypto.randomBytes(24).toString("hex"),
         authProvider: "appwrite",
+        oauthProvider,
         appwriteId: account.$id,
         appwriteSignupCompleted: true,
         appwriteSignupCompletedAt: new Date(),
@@ -1334,7 +1386,7 @@ async function loginWithAppwriteGoogle({
         marketing: {
           emailConsent: wantsMarketing,
           emailConsentAt: wantsMarketing ? new Date() : null,
-          emailConsentSource: wantsMarketing ? "appwrite_google_signup" : null,
+          emailConsentSource: wantsMarketing ? `${oauthConsentSourceBase}_signup` : null,
           emailUnsubscribedAt: null,
           timezone: sanitizeTimezone(timezone),
         },
@@ -1343,12 +1395,13 @@ async function loginWithAppwriteGoogle({
       // Unverified partial user exists — complete registration via Google
       if (user.appwriteId && user.appwriteId !== account.$id) {
         throw new AppError(
-          "This email is already linked to a different Google account.",
+          `This email is already linked to a different ${oauthProviderLabel} account.`,
           409
         );
       }
 
       user.appwriteId = account.$id;
+      user.oauthProvider = oauthProvider;
       user.appwriteSignupCompleted = true;
       user.appwriteSignupCompletedAt =
         user.appwriteSignupCompletedAt || new Date();
@@ -1365,7 +1418,7 @@ async function loginWithAppwriteGoogle({
           ...(user.marketing?.toObject ? user.marketing.toObject() : user.marketing || {}),
           emailConsent: true,
           emailConsentAt: user.marketing?.emailConsentAt || new Date(),
-          emailConsentSource: "appwrite_google_signup",
+          emailConsentSource: `${oauthConsentSourceBase}_signup`,
           emailUnsubscribedAt: null,
           timezone: sanitizeTimezone(timezone),
         };
@@ -1376,13 +1429,14 @@ async function loginWithAppwriteGoogle({
     // ── SIGN-IN FLOW ──
     if (!linkedUser || !linkedUser.appwriteSignupCompleted) {
       throw new AppError(
-        "No account found with this Google email. Please sign up with Google first.",
+        `No account found with this ${oauthProviderLabel} email. Please sign up with ${oauthProviderLabel} first.`,
         404,
         { requiresSignup: true }
       );
     }
 
     user = linkedUser;
+    user.oauthProvider = oauthProvider;
     user.emailVerified = true;
     user.referralCode =
       user.referralCode ||
@@ -1398,7 +1452,7 @@ async function loginWithAppwriteGoogle({
         ...(user.marketing?.toObject ? user.marketing.toObject() : user.marketing || {}),
         emailConsent: true,
         emailConsentAt: user.marketing?.emailConsentAt || new Date(),
-        emailConsentSource: "appwrite_google_signin",
+        emailConsentSource: `${oauthConsentSourceBase}_signin`,
         emailUnsubscribedAt: null,
         timezone: sanitizeTimezone(timezone),
       };
@@ -1406,6 +1460,7 @@ async function loginWithAppwriteGoogle({
     await user.save({ validateBeforeSave: false });
   }
 
+  await markSuccessfulAuth(user, context, oauthProvider);
   await PendingSignup.deleteOne({ email: normalizedEmail }).catch(() => {});
   if (referrer) {
     await attachReferralRelationship(user, referrer.referralCode);
@@ -1417,12 +1472,12 @@ async function loginWithAppwriteGoogle({
         consentAt: user.marketing?.emailConsentAt || new Date(),
         source:
           safeAuthMode === "signup"
-            ? "appwrite_google_signup"
-            : "appwrite_google_signin",
+            ? `${oauthConsentSourceBase}_signup`
+            : `${oauthConsentSourceBase}_signin`,
         timezone,
       });
     } catch (error) {
-      console.error("[EmailCampaign] Appwrite Google enrollment failed:", error.message);
+      console.error("[EmailCampaign] Appwrite OAuth enrollment failed:", error.message);
     }
   }
 
@@ -1430,7 +1485,7 @@ async function loginWithAppwriteGoogle({
   await ensureUserReferralCode(safeUser);
   return {
     user: safeUser.toJSON(),
-    token: signAuthToken(user._id),
+    token: signAuthToken(user),
   };
 }
 
@@ -1492,6 +1547,9 @@ async function exchangeGoogleCode(req, { code, state }) {
         ? "google_signup"
         : "google_signin",
     authMode: normalizeGoogleAuthMode(decodedState.mode),
+  }, {
+    ip: req.ip,
+    userAgent: req.get("user-agent"),
   });
 
   return {

@@ -2,6 +2,7 @@ const express = require("express");
 const { optionalAuth } = require("../middleware/auth");
 const { sendEmail } = require("../utils/sendEmail");
 const AppError = require("../utils/appError");
+const { cleanString } = require("../utils/validation");
 
 const router = express.Router();
 const SUPPORT_EMAIL = String(
@@ -47,25 +48,28 @@ router.post("/report", optionalAuth, async (req, res, next) => {
       userLabel = "",
     } = req.body || {};
 
-    const safeSubject = String(subject || "").trim();
-    const safeBody = String(body || "").trim();
+    const safeSubject = cleanString(subject, {
+      field: "Report subject",
+      max: 200,
+      required: true,
+    });
+    const safeBody = cleanString(body, {
+      field: "Report details",
+      max: 12000,
+      required: true,
+      preserveNewlines: true,
+    });
     const safeKind = SUPPORT_KIND_META[kind] ? kind : "issue";
     const kindMeta = SUPPORT_KIND_META[safeKind];
-    const safeCategory = String(category || "General").trim();
-    const safeDetail = String(detail || "").trim();
-
-    if (!safeSubject) {
-      throw new AppError("Report subject is required", 400);
-    }
-    if (!safeBody) {
-      throw new AppError("Report details are required", 400);
-    }
-    if (safeSubject.length > 200) {
-      throw new AppError("Report subject is too long", 400);
-    }
-    if (safeBody.length > 12000) {
-      throw new AppError("Report details are too long", 400);
-    }
+    const safeCategory = cleanString(category || "General", {
+      field: "Report category",
+      max: 120,
+    });
+    const safeDetail = cleanString(detail, {
+      field: "Report detail",
+      max: 12000,
+      preserveNewlines: true,
+    });
 
     const authenticatedUser = req.user || null;
     const reporterName = authenticatedUser?.name || "Guest user";
@@ -74,7 +78,7 @@ router.post("/report", optionalAuth, async (req, res, next) => {
       : "";
     const reporterEmail = authenticatedUser?.email || "";
     const resolvedUserLabel =
-      String(userLabel || "").trim() ||
+      cleanString(userLabel, { field: "User label", max: 120 }) ||
       [reporterName, reporterHandle].filter(Boolean).join(" ").trim() ||
       "Guest user";
 

@@ -1,10 +1,27 @@
 // Socket.io real-time chat and notification handler
 const Conversation = require("../models/Message");
 const User = require("../models/User");
+const { log } = require("../utils/logger");
+
+const PRESENCE_TTL_SECONDS = Math.max(
+  30,
+  Number(process.env.REDIS_PRESENCE_TTL_SECONDS || 90)
+);
+const PRESENCE_HEARTBEAT_MS = Math.max(
+  15000,
+  Number(process.env.REDIS_PRESENCE_HEARTBEAT_MS) ||
+    Math.floor((PRESENCE_TTL_SECONDS * 1000) / 3)
+);
 
 module.exports = function setupSocket(io) {
-  // Track online users: userId -> Set of socketIds (supports multiple devices)
+  // Track online users locally: userId -> Set of socketIds (supports multiple devices)
   const onlineUsers = new Map();
+  const presenceHeartbeats = new Map();
+  let redisPresence = null;
+
+  function attachRedisPresence(store) {
+    redisPresence = store || null;
+  }
 
   function hasId(list = [], userId) {
     const uid = userId ? userId.toString() : "";
@@ -105,30 +122,185 @@ module.exports = function setupSocket(io) {
     };
   }
 
-  function addOnlineUser(userId, socketId) {
+  function addOnlineUserLocal(userId, socketId) {
     if (!onlineUsers.has(userId)) {
       onlineUsers.set(userId, new Set());
     }
     onlineUsers.get(userId).add(socketId);
+    return onlineUsers.get(userId).size;
   }
 
-  function removeOnlineUser(userId, socketId) {
-    if (onlineUsers.has(userId)) {
-      onlineUsers.get(userId).delete(socketId);
-      if (onlineUsers.get(userId).size === 0) {
-        onlineUsers.delete(userId);
-        return true;
+  function removeOnlineUserLocal(userId, socketId) {
+    if (!onlineUsers.has(userId)) {
+      return {
+        fullyOffline: true,
+        deviceCount: 0,
+      };
+    }
+
+    const socketIds = onlineUsers.get(userId);
+    socketIds.delete(socketId);
+    const deviceCount = socketIds.size;
+    if (deviceCount === 0) {
+      onlineUsers.delete(userId);
+      return {
+        fullyOffline: true,
+        deviceCount: 0,
+      };
+    }
+
+    return {
+      fullyOffline: false,
+      deviceCount,
+    };
+  }
+
+  function getLocalOnlineUserIds() {
+    return Array.from(onlineUsers.keys());
+  }
+
+  function getLocalDeviceCount(userId) {
+    return onlineUsers.get(userId)?.size || 0;
+  }
+
+  async function addOnlineUser(userId, socketId) {
+    const uid = userId ? userId.toString() : "";
+    const sid = socketId ? socketId.toString() : "";
+    if (!uid || !sid) {
+      return {
+        becameOnline: false,
+        deviceCount: 0,
+      };
+    }
+
+    const wasOnline = await isOnline(uid);
+    const deviceCount = addOnlineUserLocal(uid, sid);
+
+    if (redisPresence) {
+      try {
+        await redisPresence.addSocket(uid, sid);
+      } catch (err) {
+        log("warn", "Redis presence add failed", {
+          userId: uid,
+          socketId: sid,
+          error: err.message,
+        });
       }
     }
-    return false;
+
+    return {
+      becameOnline: !wasOnline,
+      deviceCount,
+    };
   }
 
-  function isOnline(userId) {
-    return onlineUsers.has(userId) && onlineUsers.get(userId).size > 0;
+  async function touchOnlineUser(userId, socketId) {
+    const uid = userId ? userId.toString() : "";
+    const sid = socketId ? socketId.toString() : "";
+    if (!uid || !sid || !redisPresence) return;
+
+    try {
+      await redisPresence.touchSocket(uid, sid);
+    } catch (err) {
+      log("warn", "Redis presence heartbeat failed", {
+        userId: uid,
+        socketId: sid,
+        error: err.message,
+      });
+    }
   }
 
-  function getOnlineUserIds() {
-    return Array.from(onlineUsers.keys());
+  async function removeOnlineUser(userId, socketId) {
+    const uid = userId ? userId.toString() : "";
+    const sid = socketId ? socketId.toString() : "";
+    if (!uid || !sid) {
+      return {
+        fullyOffline: true,
+        localDeviceCount: 0,
+      };
+    }
+
+    const localState = removeOnlineUserLocal(uid, sid);
+
+    if (redisPresence) {
+      try {
+        await redisPresence.removeSocket(uid, sid);
+      } catch (err) {
+        log("warn", "Redis presence remove failed", {
+          userId: uid,
+          socketId: sid,
+          error: err.message,
+        });
+      }
+    }
+
+    const stillOnline = await isOnline(uid);
+    return {
+      fullyOffline: !stillOnline,
+      localDeviceCount: localState.deviceCount,
+    };
+  }
+
+  async function isOnline(userId) {
+    const uid = userId ? userId.toString() : "";
+    if (!uid) return false;
+
+    if (onlineUsers.has(uid) && onlineUsers.get(uid).size > 0) {
+      return true;
+    }
+
+    if (!redisPresence) return false;
+
+    try {
+      return await redisPresence.isOnline(uid);
+    } catch (err) {
+      log("warn", "Redis presence lookup failed", {
+        userId: uid,
+        error: err.message,
+      });
+      return false;
+    }
+  }
+
+  async function getOnlineUserIds() {
+    const mergedUserIds = new Set(getLocalOnlineUserIds());
+    if (!redisPresence) {
+      return Array.from(mergedUserIds);
+    }
+
+    try {
+      const redisUserIds = await redisPresence.getOnlineUserIds();
+      redisUserIds.forEach((userId) => mergedUserIds.add(userId));
+    } catch (err) {
+      log("warn", "Redis online user list failed", {
+        error: err.message,
+      });
+    }
+
+    return Array.from(mergedUserIds);
+  }
+
+  function stopPresenceHeartbeat(socketId) {
+    const timer = presenceHeartbeats.get(socketId);
+    if (!timer) return;
+    clearInterval(timer);
+    presenceHeartbeats.delete(socketId);
+  }
+
+  function startPresenceHeartbeat(socket) {
+    stopPresenceHeartbeat(socket.id);
+    if (!socket.userId) return;
+
+    const timer = setInterval(() => {
+      touchOnlineUser(socket.userId, socket.id).catch(() => {});
+    }, PRESENCE_HEARTBEAT_MS);
+
+    if (typeof timer.unref === "function") {
+      timer.unref();
+    }
+
+    presenceHeartbeats.set(socket.id, timer);
+    touchOnlineUser(socket.userId, socket.id).catch(() => {});
   }
 
   const WEBRTC_EVENTS = {
@@ -160,7 +332,13 @@ module.exports = function setupSocket(io) {
     if (typeof ackFn === "function") ackFn(payload);
   }
 
-  function emitSignal(targetUserId, canonicalEvent, legacyEvent, canonicalPayload, legacyPayload = canonicalPayload) {
+  function emitSignal(
+    targetUserId,
+    canonicalEvent,
+    legacyEvent,
+    canonicalPayload,
+    legacyPayload = canonicalPayload
+  ) {
     if (!targetUserId) return;
     const room = targetUserId.toString();
     io.to(room).emit(canonicalEvent, canonicalPayload);
@@ -170,23 +348,34 @@ module.exports = function setupSocket(io) {
   io.on("connection", (socket) => {
     console.log("Socket connected:", socket.id);
 
-    socket.on("join", (userId) => {
+    socket.on("join", async (userId) => {
       if (!userId) return;
 
-      socket.userId = userId;
-      addOnlineUser(userId, socket.id);
-      socket.join(userId);
-      rememberLastSeen(userId).catch(() => {});
+      const nextUserId = userId.toString();
+      if (socket.userId && socket.userId !== nextUserId) {
+        stopPresenceHeartbeat(socket.id);
+        await removeOnlineUser(socket.userId, socket.id).catch(() => {});
+      }
 
-      io.emit("userOnline", { userId, online: true });
-      socket.emit("onlineUsers", getOnlineUserIds());
+      socket.userId = nextUserId;
+      socket.join(nextUserId);
+
+      const joinState = await addOnlineUser(nextUserId, socket.id);
+      startPresenceHeartbeat(socket);
+      rememberLastSeen(nextUserId).catch(() => {});
+
+      if (joinState.becameOnline) {
+        io.emit("userOnline", { userId: nextUserId, online: true });
+      }
+
+      socket.emit("onlineUsers", await getOnlineUserIds());
       console.log(
-        `User ${userId} is online (${onlineUsers.get(userId).size} device(s))`
+        `User ${nextUserId} is online (${joinState.deviceCount} local device(s))`
       );
     });
 
-    socket.on("getOnlineUsers", () => {
-      socket.emit("onlineUsers", getOnlineUserIds());
+    socket.on("getOnlineUsers", async () => {
+      socket.emit("onlineUsers", await getOnlineUserIds());
     });
 
     socket.on("joinConversation", (convId) => {
@@ -287,7 +476,7 @@ module.exports = function setupSocket(io) {
 
     // WebRTC signaling. New explicit events are used by the current client,
     // while legacy event names stay registered for cached/older browsers.
-    function handleCallStart(data, ackFn) {
+    async function handleCallStart(data, ackFn) {
       const targetUserId = data?.to || data?.userToCall;
       const callerId = data?.from || socket.userId;
       const signal = data?.signal || data?.signalData;
@@ -297,11 +486,12 @@ module.exports = function setupSocket(io) {
         return;
       }
 
+      const targetOnline = await isOnline(targetUserId);
       console.log(
-        `webrtc:call:start ${callerId} -> ${targetUserId} (online: ${isOnline(targetUserId)})`
+        `webrtc:call:start ${callerId} -> ${targetUserId} (online: ${targetOnline})`
       );
 
-      if (!isOnline(targetUserId)) {
+      if (!targetOnline) {
         const rejectedPayload = {
           callId: data.callId || "",
           reason: "User is offline",
@@ -434,12 +624,14 @@ module.exports = function setupSocket(io) {
     socket.on(WEBRTC_EVENTS.END, handleCallEnd);
     socket.on(LEGACY_WEBRTC_EVENTS.END, handleCallEnd);
 
-    socket.on("disconnect", () => {
+    socket.on("disconnect", async () => {
+      stopPresenceHeartbeat(socket.id);
+
       const userId = socket.userId;
       if (!userId) return;
 
-      const fullyOffline = removeOnlineUser(userId, socket.id);
-      if (fullyOffline) {
+      const disconnectState = await removeOnlineUser(userId, socket.id);
+      if (disconnectState.fullyOffline) {
         const lastSeen = new Date();
         rememberLastSeen(userId, lastSeen).catch(() => {});
         io.emit("userOnline", {
@@ -450,11 +642,16 @@ module.exports = function setupSocket(io) {
         console.log(`User ${userId} went offline`);
       } else {
         console.log(
-          `User ${userId} disconnected one device (still online on ${onlineUsers.get(userId)?.size || 0} device(s))`
+          `User ${userId} disconnected one device (still online locally on ${disconnectState.localDeviceCount} device(s))`
         );
       }
     });
   });
 
-  return { onlineUsers, isOnline, getOnlineUserIds };
+  return {
+    onlineUsers,
+    attachRedisPresence,
+    isOnline,
+    getOnlineUserIds,
+  };
 };

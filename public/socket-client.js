@@ -102,6 +102,9 @@ const SocketClient = (() => {
       if (userId) {
         socket.emit("join", userId);
       }
+      if (typeof API !== "undefined" && typeof API.flushPendingChatMessages === "function") {
+        API.flushPendingChatMessages().catch(() => {});
+      }
       notifySocketReady(socket);
     });
 
@@ -191,6 +194,9 @@ const SocketClient = (() => {
     socket.on("reconnect", () => {
       console.log("🔌 Socket reconnected");
       if (userId) socket.emit("join", userId);
+      if (typeof API !== "undefined" && typeof API.flushPendingChatMessages === "function") {
+        API.flushPendingChatMessages().catch(() => {});
+      }
       notifySocketReady(socket);
     });
 

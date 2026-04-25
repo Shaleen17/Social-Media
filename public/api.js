@@ -3,6 +3,11 @@
  * All functions return promises. JWT token is stored in localStorage.
  */
 const API = (() => {
+  const PENDING_CHAT_QUEUE_KEY = "ts_pending_chat_messages";
+  const MAX_PENDING_CHAT_MESSAGES = 40;
+  const CSRF_COOKIE_NAME = "ts_csrf";
+  let csrfBootstrapPromise = null;
+
   function getBackendBase() {
     if (typeof window.getBackendBaseUrl === "function") {
       return window.getBackendBaseUrl();
@@ -58,45 +63,238 @@ const API = (() => {
     localStorage.removeItem("ts_currentUser");
   }
 
+  function sleep(ms) {
+    return new Promise((resolve) => setTimeout(resolve, ms));
+  }
+
+  function getCookie(name) {
+    const needle = `${name}=`;
+    return document.cookie
+      .split(";")
+      .map((part) => part.trim())
+      .find((part) => part.startsWith(needle))
+      ?.slice(needle.length) || "";
+  }
+
+  async function ensureCsrfToken() {
+    const existing = getCookie(CSRF_COOKIE_NAME);
+    if (existing) return existing;
+    if (csrfBootstrapPromise) return csrfBootstrapPromise;
+
+    csrfBootstrapPromise = fetch(getApiBase() + "/auth/csrf", {
+      method: "GET",
+      credentials: "include",
+      headers: {
+        Accept: "application/json",
+      },
+    })
+      .then(async (res) => {
+        const text = await res.text();
+        let data = {};
+        try {
+          data = text ? JSON.parse(text) : {};
+        } catch {}
+        if (!res.ok) {
+          throw new Error(data.error || "Could not initialize security token");
+        }
+        return data.csrfToken || getCookie(CSRF_COOKIE_NAME) || "";
+      })
+      .finally(() => {
+        csrfBootstrapPromise = null;
+      });
+
+    return csrfBootstrapPromise;
+  }
+
+  function dispatchBrowserEvent(name, detail) {
+    if (typeof window === "undefined" || typeof window.dispatchEvent !== "function") {
+      return;
+    }
+    try {
+      window.dispatchEvent(new CustomEvent(name, { detail }));
+    } catch {}
+  }
+
+  function readPendingChatQueue() {
+    try {
+      const parsed = JSON.parse(localStorage.getItem(PENDING_CHAT_QUEUE_KEY) || "[]");
+      return Array.isArray(parsed) ? parsed : [];
+    } catch {
+      return [];
+    }
+  }
+
+  function writePendingChatQueue(entries) {
+    const safeEntries = Array.isArray(entries)
+      ? entries.slice(-MAX_PENDING_CHAT_MESSAGES)
+      : [];
+    localStorage.setItem(PENDING_CHAT_QUEUE_KEY, JSON.stringify(safeEntries));
+    return safeEntries;
+  }
+
+  function makeClientMessageId() {
+    return [
+      "msg",
+      Date.now().toString(36),
+      Math.random().toString(36).slice(2, 10),
+    ].join("_");
+  }
+
+  function isRetriableStatus(status) {
+    return status === 408 || status === 425 || status === 429 || status >= 500;
+  }
+
+  function shouldQueueChatMessage(err) {
+    if (!err) return false;
+    if (typeof navigator !== "undefined" && navigator.onLine === false) return true;
+    return !err.status || err.status >= 500 || err.name === "AbortError";
+  }
+
+  function enqueuePendingChatMessage(convId, payload) {
+    if (!convId || !payload) return null;
+    const clientId = payload.clientId || makeClientMessageId();
+    const queue = readPendingChatQueue().filter(
+      (item) => (item?.payload?.clientId || item?.clientId) !== clientId
+    );
+    const entry = {
+      convId,
+      clientId,
+      payload: { ...payload, clientId },
+      queuedAt: Date.now(),
+    };
+    writePendingChatQueue([...queue, entry]);
+    dispatchBrowserEvent("ts:pending-message-queued", entry);
+    return entry;
+  }
+
+  async function flushPendingChatMessages() {
+    const queue = readPendingChatQueue();
+    if (!queue.length || !getToken()) return [];
+
+    const sent = [];
+    const remaining = [];
+
+    for (const entry of queue) {
+      try {
+        const message = await request(`/messages/${entry.convId}`, {
+          method: "POST",
+          body: JSON.stringify(entry.payload),
+          retry: 1,
+          retryDelayMs: 500,
+          timeoutMs: 15000,
+        });
+        sent.push({ convId: entry.convId, clientId: entry.clientId, message });
+        dispatchBrowserEvent("ts:pending-message-sent", {
+          convId: entry.convId,
+          clientId: entry.clientId,
+          message,
+        });
+      } catch (err) {
+        if (shouldQueueChatMessage(err)) {
+          remaining.push(entry);
+        } else {
+          dispatchBrowserEvent("ts:pending-message-failed", {
+            convId: entry.convId,
+            clientId: entry.clientId,
+            error: err,
+          });
+        }
+      }
+    }
+
+    writePendingChatQueue(remaining);
+    if (sent.length) {
+      dispatchBrowserEvent("ts:pending-message-flush", {
+        sent,
+        remaining: remaining.length,
+      });
+    }
+    return sent;
+  }
+
   async function request(path, options = {}) {
     const token = getToken();
+    const {
+      retry = 0,
+      retryDelayMs = 650,
+      timeoutMs = 0,
+      ...fetchOptions
+    } = options || {};
+    const method = String(fetchOptions.method || "GET").toUpperCase();
     const headers = {
       "Content-Type": "application/json",
-      ...(options.headers || {}),
+      ...(fetchOptions.headers || {}),
     };
     if (token) {
       headers["Authorization"] = "Bearer " + token;
     }
 
-    try {
-      const endpoint = /^https?:\/\//i.test(path) ? path : getApiBase() + path;
-      const res = await fetch(endpoint, {
-        ...options,
-        headers,
-      });
-      // Read as text first to avoid "Unexpected token" on non-JSON responses
-      const text = await res.text();
-      let data;
+    if (
+      !["GET", "HEAD", "OPTIONS"].includes(method) &&
+      !headers["x-csrf-token"] &&
+      !headers["X-CSRF-Token"]
+    ) {
+      const csrfToken = await ensureCsrfToken().catch(() => "");
+      if (csrfToken) {
+        headers["x-csrf-token"] = csrfToken;
+      }
+    }
+
+    const endpoint = /^https?:\/\//i.test(path) ? path : getApiBase() + path;
+
+    for (let attempt = 0; attempt <= retry; attempt += 1) {
+      let timeoutHandle = null;
       try {
-        data = JSON.parse(text);
-      } catch (parseErr) {
-        console.error("Non-JSON response from", endpoint, ":", text.substring(0, 200));
-        const error = new Error(res.ok ? "Invalid server response" : `Server error (${res.status})`);
-        error.status = res.status;
-        error.responseText = text;
-        throw error;
+        const controller =
+          timeoutMs > 0 && typeof AbortController !== "undefined"
+            ? new AbortController()
+            : null;
+        if (controller) {
+          timeoutHandle = setTimeout(() => controller.abort(), timeoutMs);
+        }
+
+        const res = await fetch(endpoint, {
+          ...fetchOptions,
+          headers,
+          credentials: "include",
+          ...(controller ? { signal: controller.signal } : {}),
+        });
+        const text = await res.text();
+        let data;
+        try {
+          data = JSON.parse(text);
+        } catch {
+          console.error("Non-JSON response from", endpoint, ":", text.substring(0, 200));
+          const error = new Error(res.ok ? "Invalid server response" : `Server error (${res.status})`);
+          error.status = res.status;
+          error.responseText = text;
+          throw error;
+        }
+        if (!res.ok) {
+          const error = new Error(data.error || "Request failed");
+          error.status = res.status;
+          error.details = data.details || null;
+          error.data = data;
+          throw error;
+        }
+        return data;
+      } catch (err) {
+        const canRetry =
+          attempt < retry &&
+          (isRetriableStatus(Number(err?.status)) ||
+            err?.name === "AbortError" ||
+            !err?.status);
+
+        if (canRetry) {
+          await sleep(retryDelayMs * (attempt + 1));
+          continue;
+        }
+
+        console.error("API error:", path, err.message);
+        throw err;
+      } finally {
+        if (timeoutHandle) clearTimeout(timeoutHandle);
       }
-      if (!res.ok) {
-        const error = new Error(data.error || "Request failed");
-        error.status = res.status;
-        error.details = data.details || null;
-        error.data = data;
-        throw error;
-      }
-      return data;
-    } catch (err) {
-      console.error("API error:", path, err.message);
-      throw err;
     }
   }
 
@@ -257,7 +455,8 @@ const API = (() => {
       authMode = "login",
       signupIntent = "",
       marketingConsent = false,
-      timezone = ""
+      timezone = "",
+      provider = "google"
     ) {
       const data = await request("/auth/appwrite/google", {
         method: "POST",
@@ -268,6 +467,7 @@ const API = (() => {
           signupIntent,
           marketingConsent,
           timezone,
+          provider,
         }),
       });
       setToken(data.token);
@@ -281,7 +481,21 @@ const API = (() => {
       return data.user;
     },
 
+    async getCsrfToken() {
+      return ensureCsrfToken();
+    },
+
+    async logoutRemote() {
+      try {
+        await request("/auth/logout", {
+          method: "POST",
+          body: JSON.stringify({}),
+        });
+      } catch {}
+    },
+
     logout() {
+      this.logoutRemote().catch(() => {});
       removeToken();
       removeUser();
     },
@@ -354,6 +568,31 @@ const API = (() => {
       return result;
     },
 
+    async exportMyData() {
+      const token = getToken();
+      const headers = {};
+      if (token) headers.Authorization = "Bearer " + token;
+      const csrfToken = await ensureCsrfToken().catch(() => "");
+      if (csrfToken) headers["x-csrf-token"] = csrfToken;
+      const res = await fetch(getApiBase() + "/users/account/export", {
+        method: "GET",
+        headers,
+        credentials: "include",
+      });
+      if (!res.ok) {
+        const text = await res.text();
+        throw new Error(text || "Could not export your data");
+      }
+      return res.json();
+    },
+
+    async deleteMyAccount(confirmation = "DELETE") {
+      return request("/users/account", {
+        method: "DELETE",
+        body: JSON.stringify({ confirmation }),
+      });
+    },
+
     async toggleFollow(userId) {
       return request(`/users/${userId}/follow`, { method: "PUT" });
     },
@@ -388,10 +627,26 @@ const API = (() => {
         textOrPayload && typeof textOrPayload === "object"
           ? textOrPayload
           : { text: textOrPayload, ...extra };
-      return request(`/messages/${convId}`, {
-        method: "POST",
-        body: JSON.stringify(payload),
-      });
+      const safePayload = {
+        ...payload,
+        clientId: payload.clientId || makeClientMessageId(),
+      };
+      try {
+        return await request(`/messages/${convId}`, {
+          method: "POST",
+          body: JSON.stringify(safePayload),
+          retry: 2,
+          retryDelayMs: 700,
+          timeoutMs: 15000,
+        });
+      } catch (err) {
+        if (shouldQueueChatMessage(err)) {
+          enqueuePendingChatMessage(convId, safePayload);
+          err.queued = true;
+          err.clientId = safePayload.clientId;
+        }
+        throw err;
+      }
     },
 
     async forwardMessage(sourceConvId, messageId, targetConvId) {
@@ -515,6 +770,16 @@ const API = (() => {
       return request("/notifications/unread-count");
     },
 
+    async searchAll(query, tab = "all", limit = 12) {
+      return request(
+        `/search?q=${encodeURIComponent(query)}&tab=${encodeURIComponent(tab)}&limit=${encodeURIComponent(limit)}`
+      );
+    },
+
+    async getTrendingHashtags(limit = 18) {
+      return request(`/search/hashtags/trending?limit=${encodeURIComponent(limit)}`);
+    },
+
     // Push subscriptions
     async getPushPublicKey() {
       return request("/push-subscriptions/public-key");
@@ -576,9 +841,29 @@ const API = (() => {
       });
     },
 
+    async trackEvent(type, name, meta = {}) {
+      return request("/analytics/events", {
+        method: "POST",
+        body: JSON.stringify({
+          type,
+          name,
+          page: meta.page || "",
+          path: meta.path || window.location.pathname || "/",
+          sessionId: meta.sessionId || "",
+          anonymousId: meta.anonymousId || "",
+          meta,
+        }),
+        retry: 1,
+        retryDelayMs: 350,
+        timeoutMs: 8000,
+      });
+    },
+
     // Upload
     uploadFile,
     uploadBase64,
+    flushPendingChatMessages,
+    getPendingChatMessages: readPendingChatQueue,
 
     // Mandir Community
     async getMandirPosts(mandirId, page = 1) {

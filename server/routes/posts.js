@@ -1,7 +1,11 @@
 const express = require("express");
 const Post = require("../models/Post");
-const Notification = require("../models/Notification");
 const { auth, optionalAuth } = require("../middleware/auth");
+const { createRankedNotification } = require("../services/notificationService");
+const {
+  buildSearchText,
+  moderateTextContent,
+} = require("../utils/contentFeatures");
 const {
   cleanMediaUrl,
   cleanString,
@@ -116,6 +120,18 @@ router.post("/", auth, async (req, res, next) => {
       image: safeImage || null,
       ytId: safeYtId || null,
     };
+    const contentFeatures = moderateTextContent([safeText]);
+    postData.hashtags = contentFeatures.hashtags;
+    postData.searchText = buildSearchText(
+      safeText,
+      contentFeatures.hashtags.join(" ")
+    );
+    postData.moderation = {
+      status: contentFeatures.status,
+      flags: contentFeatures.flags,
+      score: contentFeatures.score,
+      reviewedAt: contentFeatures.reviewedAt,
+    };
 
     if (poll && poll.opts && poll.opts.length >= 2) {
       const options = cleanStringArray(poll.opts, {
@@ -150,7 +166,7 @@ router.put("/:id/like", validateObjectIdParam("id"), auth, async (req, res, next
       post.likes.push(req.user._id);
       // Create notification
       if (post.user.toString() !== req.user._id.toString()) {
-        await Notification.create({
+        await createRankedNotification({
           recipient: post.user,
           sender: req.user._id,
           type: "like",
@@ -196,7 +212,7 @@ router.put("/:id/comment", validateObjectIdParam("id"), auth, async (req, res, n
 
     // Create notification
     if (post.user.toString() !== req.user._id.toString()) {
-      await Notification.create({
+      await createRankedNotification({
         recipient: post.user,
         sender: req.user._id,
         type: "comment",
@@ -237,7 +253,7 @@ router.put("/:id/repost", validateObjectIdParam("id"), auth, async (req, res, ne
     } else {
       post.reposts.push(req.user._id);
       if (post.user.toString() !== req.user._id.toString()) {
-        await Notification.create({
+        await createRankedNotification({
           recipient: post.user,
           sender: req.user._id,
           type: "repost",
@@ -374,6 +390,7 @@ function transformPost(p) {
     reposts: (p.reposts || []).map((r) => r.toString()),
     bm: (p.bookmarks || []).map((b) => b.toString()),
     poll: p.poll ? { opts: p.poll.options, votes: p.poll.votes } : null,
+    hashtags: p.hashtags || [],
     t: timeAgo(p.createdAt),
     ts: new Date(p.createdAt).getTime(),
   };
@@ -398,6 +415,7 @@ function transformPostLean(p) {
     reposts: (p.reposts || []).map((r) => r.toString()),
     bm: (p.bookmarks || []).map((b) => b.toString()),
     poll: p.poll ? { opts: p.poll.options, votes: p.poll.votes } : null,
+    hashtags: p.hashtags || [],
     t: timeAgo(p.createdAt),
     ts: new Date(p.createdAt).getTime(),
   };

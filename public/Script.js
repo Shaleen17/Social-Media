@@ -1651,7 +1651,7 @@ function goBackVideoDetail() {
 }
 function closeOvl(id) {
   if (id === "videoDetailOvl") stopVideoDetailPlayback();
-  if (id === "partnerReelsOvl") pausePartnerReels();
+  if (id === "partnerReelsOvl") pausePartnerReels({ reset: true });
   const el = document.getElementById(id);
   if (el) el.classList.remove("show");
   if (id === "moreOvl") syncMoreNavState();
@@ -2327,14 +2327,18 @@ function logout() {
   MC.info("Signed out. Jai Shri Ram 🙏");
 }
 
-function doGoogleLogin(mode = "login") {
+function doOAuthLogin(provider = "google", mode = "login") {
   const authMode = mode === "signup" ? "signup" : "login";
-  if (typeof window.startAppwriteGoogleAuth === "function") {
-    window.startAppwriteGoogleAuth(authMode);
+  if (typeof window.startAppwriteOAuth === "function") {
+    window.startAppwriteOAuth(provider, authMode);
     return;
   }
 
-  MC?.error("Google Sign-In is still loading. Please refresh and try again.");
+  MC?.error("Social sign-in is still loading. Please refresh and try again.");
+}
+
+function doGoogleLogin(mode = "login") {
+  doOAuthLogin("google", mode);
 }
 
 /* ── NAVIGATION ── */
@@ -3599,10 +3603,90 @@ window.googleTranslateElementInit = function googleTranslateElementInit() {
   scheduleGoogleTranslate({ force: true, immediate: true });
 };
 
+const LIGHT_THEME_COLOR = "#4a2e2a";
+const DARK_THEME_COLOR = "#1f1816";
+let _themeMediaQueryBound = false;
+
+function getStoredThemeMode() {
+  const explicitMode = Store.g("themeMode", "");
+  if (["light", "dark", "system"].includes(explicitMode)) {
+    return explicitMode;
+  }
+  return Store.g("theme", "light") === "dark" ? "dark" : "light";
+}
+
+function resolveThemePreference(mode = getStoredThemeMode()) {
+  if (mode === "system") {
+    return window.matchMedia?.("(prefers-color-scheme: dark)").matches
+      ? "dark"
+      : "light";
+  }
+  return mode === "dark" ? "dark" : "light";
+}
+
+function updateThemeIcons(isDark) {
+  const sunPath = `<circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/>`;
+  const moonPath = `<path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>`;
+  const nextPath = isDark ? sunPath : moonPath;
+  ["thIco", "dThemeIco"].forEach((id) => {
+    const ico = document.getElementById(id);
+    if (ico) ico.innerHTML = nextPath;
+  });
+}
+
+function syncThemeChrome(resolvedTheme) {
+  const meta = document.querySelector('meta[name="theme-color"]');
+  if (meta) {
+    meta.setAttribute(
+      "content",
+      resolvedTheme === "dark" ? DARK_THEME_COLOR : LIGHT_THEME_COLOR
+    );
+  }
+}
+
+function applyThemePreference(mode = getStoredThemeMode(), options = {}) {
+  const safeMode = ["light", "dark", "system"].includes(mode) ? mode : "light";
+  const resolvedTheme = resolveThemePreference(safeMode);
+  if (resolvedTheme === "dark") {
+    document.documentElement.setAttribute("data-dark", "");
+  } else {
+    document.documentElement.removeAttribute("data-dark");
+  }
+  Store.s("themeMode", safeMode);
+  Store.s("theme", resolvedTheme);
+  updateThemeIcons(resolvedTheme === "dark");
+  syncThemeChrome(resolvedTheme);
+  if (!options.silent) {
+    updateMoreMenuSummaries();
+    refreshMorePreferencePages();
+  }
+}
+
+function bindSystemThemePreference() {
+  if (_themeMediaQueryBound || !window.matchMedia) return;
+  const media = window.matchMedia("(prefers-color-scheme: dark)");
+  const handler = () => {
+    if (getStoredThemeMode() === "system") {
+      applyThemePreference("system");
+    }
+  };
+  if (typeof media.addEventListener === "function") {
+    media.addEventListener("change", handler);
+  } else if (typeof media.addListener === "function") {
+    media.addListener(handler);
+  }
+  _themeMediaQueryBound = true;
+}
+
+bindSystemThemePreference();
+
 function getCurrentThemeLabel() {
-  return document.documentElement.hasAttribute("data-dark")
-    ? "Dark theme"
-    : "Light theme";
+  const mode = getStoredThemeMode();
+  const resolvedTheme = resolveThemePreference(mode);
+  if (mode === "system") {
+    return `System theme (${resolvedTheme === "dark" ? "Dark" : "Light"})`;
+  }
+  return resolvedTheme === "dark" ? "Dark theme" : "Light theme";
 }
 
 function sanitizeReferralCodeValue(code = "") {
@@ -3929,14 +4013,7 @@ function togglePrivateAccountPreference() {
 }
 
 function setThemePreference(mode) {
-  const wantsDark = mode === "dark";
-  const isDark = document.documentElement.hasAttribute("data-dark");
-  if (wantsDark !== isDark) {
-    toggleDark();
-  } else {
-    updateMoreMenuSummaries();
-    refreshMorePreferencePages();
-  }
+  applyThemePreference(mode);
 }
 
 function copyTextToClipboard(text, successMessage = "Copied.") {
@@ -4878,11 +4955,22 @@ function playPartnerReel(index) {
   else video.addEventListener("loadeddata", startPlayback, { once: true });
 }
 
-function pausePartnerReels() {
-  document.querySelectorAll("#partnerReelsFeed .partner-reel-video").forEach((video) => {
+function pausePartnerReels(options = {}) {
+  const shouldReset = !!options.reset;
+  document.querySelectorAll("#partnerReelsFeed .partner-reel-slide").forEach((slide) => {
+    const video = slide.querySelector(".partner-reel-video");
+    if (!video) return;
     try {
       video.pause();
     } catch { }
+    if (shouldReset) {
+      try {
+        video.currentTime = 0;
+      } catch { }
+      const fill = slide.querySelector(".partner-reel-progress-fill");
+      if (fill) fill.style.transform = "scaleX(0)";
+      slide.classList.remove("is-paused", "is-active");
+    }
   });
 }
 
@@ -5089,6 +5177,10 @@ function bindPartnerReelsGlobalListeners() {
     if (!isPartnerReelsOpen()) return;
     scrollToPartnerReel(partnerReelsActiveIndex, true);
   });
+
+  window.addEventListener("pagehide", () => {
+    pausePartnerReels({ reset: true });
+  });
 }
 
 function openPartnerReels(index = 0) {
@@ -5113,7 +5205,6 @@ function openPartnerReels(index = 0) {
 }
 
 function closePartnerReelsOverlay() {
-  pausePartnerReels();
   closeOvl("partnerReelsOvl");
 }
 
@@ -5680,6 +5771,8 @@ function renderSettingsPrivacyPage() {
   const page = document.getElementById("pgSettingsPrivacy");
   if (!page) return;
   const prefs = getMorePrefs();
+  const themeMode =
+    typeof getStoredThemeMode === "function" ? getStoredThemeMode() : "light";
   const isDark = document.documentElement.hasAttribute("data-dark");
   const selectedLanguage = getMoreLanguageOption(prefs.language);
 
@@ -5806,10 +5899,10 @@ function renderSettingsPrivacyPage() {
           </div>
           <div class="more-theme-grid">
             <button
-              class="more-theme-card${!isDark ? " on" : ""}"
+              class="more-theme-card${themeMode === "light" ? " on" : ""}"
               type="button"
               onclick="setThemePreference('light')"
-              aria-pressed="${!isDark}"
+              aria-pressed="${themeMode === "light"}"
             >
               <div class="more-theme-preview more-theme-preview-light">
                 <span></span><span></span><span></span>
@@ -5818,16 +5911,28 @@ function renderSettingsPrivacyPage() {
               <small>Soft ivory surfaces and warm accents</small>
             </button>
             <button
-              class="more-theme-card${isDark ? " on" : ""}"
+              class="more-theme-card${themeMode === "dark" ? " on" : ""}"
               type="button"
               onclick="setThemePreference('dark')"
-              aria-pressed="${isDark}"
+              aria-pressed="${themeMode === "dark"}"
             >
               <div class="more-theme-preview more-theme-preview-dark">
                 <span></span><span></span><span></span>
               </div>
               <span>Dark</span>
               <small>Low-glare reading for evenings and long sessions</small>
+            </button>
+            <button
+              class="more-theme-card${themeMode === "system" ? " on" : ""}"
+              type="button"
+              onclick="setThemePreference('system')"
+              aria-pressed="${themeMode === "system"}"
+            >
+              <div class="more-theme-preview more-theme-preview-light">
+                <span></span><span></span><span></span>
+              </div>
+              <span>System</span>
+              <small>Follow your device theme automatically</small>
             </button>
           </div>
         </section>
@@ -11354,19 +11459,9 @@ function renderWidgets() {
 
 /* ── DARK MODE ── */
 function toggleDark() {
-  const isDark = document.documentElement.hasAttribute("data-dark");
-  if (isDark) document.documentElement.removeAttribute("data-dark");
-  else document.documentElement.setAttribute("data-dark", "");
-  Store.s("theme", isDark ? "light" : "dark");
-  const sunPath = `<circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/>`;
-  const moonPath = `<path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>`;
-  const np = isDark ? moonPath : sunPath;
-  ["thIco", "dThemeIco"].forEach((id) => {
-    const ico = document.getElementById(id);
-    if (ico) ico.innerHTML = np;
-  });
-  updateMoreMenuSummaries();
-  refreshMorePreferencePages();
+  const nextMode =
+    resolveThemePreference(getStoredThemeMode()) === "dark" ? "light" : "dark";
+  applyThemePreference(nextMode);
 }
 
 /* ── INIT UI ── */
@@ -11436,15 +11531,7 @@ async function init() {
     }
 
     // Step 3 — restore theme
-    const theme = Store.g("theme", "light");
-    if (theme === "dark") {
-      document.documentElement.setAttribute("data-dark", "");
-      const sunPath = `<circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/>`;
-      ["thIco", "dThemeIco"].forEach((id) => {
-        const ico = document.getElementById(id);
-        if (ico) ico.innerHTML = sunPath;
-      });
-    }
+    applyThemePreference(getStoredThemeMode(), { silent: true });
     applyLanguagePreference();
 
     // Step 4 — wire auth buttons
@@ -11550,7 +11637,7 @@ window.addEventListener("DOMContentLoaded", init);
     // 3. If any modal is open → close it
     const openModal = document.querySelector(".ovl.show");
     if (openModal) {
-      openModal.classList.remove("show");
+      closeOvl(openModal.id);
       history.pushState({ page: curPage }, "", "");
       return;
     }

@@ -92,6 +92,9 @@
   let _cachedVideos = [];
   let _cachedLiveStreams = [];
   let _cachedVidStories = [];
+  let _remoteHashtagDiscovery = [];
+  let _remoteSearchHashtags = [];
+  let _activeSearchRequestId = 0;
   let _dataLoaded = false;
   let _liveRefreshTimer = null;
   let _liveRefreshInFlight = false;
@@ -317,7 +320,7 @@
 
   let _chatPushSetupPromise = null;
   let _pendingOpenChatId = consumeOpenChatParam();
-  const APP_ASSET_VERSION = "20260423-secure-google-intent-1";
+  const APP_ASSET_VERSION = "20260425-scale-search-oauth-1";
   let _appSwPromise = null;
   let _deferredInstallPrompt = null;
   let _installPromptBound = false;
@@ -530,6 +533,69 @@
         openChatWindow(convId).catch(() => {});
       });
     }, 160);
+  }
+
+  function mergeUniqueById(existing, incoming) {
+    const map = new Map();
+    [...(existing || []), ...(incoming || [])].forEach((item) => {
+      const key = (item?.id || item?._id || "").toString();
+      if (!key) return;
+      map.set(key, { ...(map.get(key) || {}), ...item });
+    });
+    return Array.from(map.values());
+  }
+
+  function mergeHashtagCollections() {
+    const map = new Map();
+    Array.from(arguments)
+      .flat()
+      .filter(Boolean)
+      .forEach((item) => {
+        const tag = String(item.tag || "").trim();
+        if (!tag) return;
+        const key = tag.toLowerCase();
+        const current = map.get(key) || {
+          tag,
+          category: item.category || "Hashtag",
+          count: 0,
+          countLabel: item.countLabel || "",
+        };
+        current.count = Math.max(Number(current.count) || 0, Number(item.count) || 0);
+        current.category = item.category || current.category;
+        current.countLabel = item.countLabel || current.countLabel || "";
+        map.set(key, current);
+      });
+    return Array.from(map.values()).sort(
+      (left, right) =>
+        (Number(right.count) || 0) - (Number(left.count) || 0) ||
+        left.tag.localeCompare(right.tag)
+    );
+  }
+
+  function mergeSearchResultsIntoCaches(result) {
+    if (!result || typeof result !== "object") return;
+    if (Array.isArray(result.users) && result.users.length) {
+      _cachedUsers = mergeUniqueById(_cachedUsers, result.users);
+    }
+    if (Array.isArray(result.posts) && result.posts.length) {
+      _cachedPosts = mergeUniqueById(_cachedPosts, result.posts);
+    }
+    if (Array.isArray(result.videos) && result.videos.length) {
+      _cachedVideos = mergeUniqueById(_cachedVideos, result.videos);
+      _cachedLiveStreams = mapLiveStreamsFromVideos(_cachedVideos);
+    }
+    writeBootCache();
+  }
+
+  async function loadTrendingHashtagDiscovery() {
+    if (!API?.getTrendingHashtags) return [];
+    try {
+      const tags = await API.getTrendingHashtags(18);
+      _remoteHashtagDiscovery = Array.isArray(tags) ? tags : [];
+      return _remoteHashtagDiscovery;
+    } catch {
+      return [];
+    }
   }
 
   // =============================================
@@ -1601,7 +1667,7 @@
           ? filterVisibleNotifications(notifs)
           : notifs;
       if (filter === "mentions")
-        filtered = filtered.filter((n) => n.type === "comment");
+        filtered = filtered.filter((n) => n.type === "comment" || n.type === "mention");
       if (filter === "pranams")
         filtered = filtered.filter((n) => n.type === "like");
 
@@ -1648,9 +1714,10 @@
             (u.name || "Someone") +
             "</strong> " +
             n.txt +
+            (Number(n.count) > 1 ? " (" + Number(n.count) + ")" : "") +
             "</div>" +
             '<div class="notif-tm">' +
-            n.t +
+            [n.t, n.priority].filter(Boolean).join(" • ") +
             "</div>" +
             "</div></div></div>"
           );
@@ -1783,6 +1850,7 @@
 
       _dataLoaded = true;
       writeBootCache();
+      loadTrendingHashtagDiscovery().catch(() => {});
       return true;
     } catch (err) {
       console.error("Failed to load data from backend:", err);
@@ -1808,6 +1876,49 @@
     } catch {}
   }
   window.checkNotifications = checkNotifications;
+
+  // =============================================
+  // Enhanced Search — warm results from backend
+  // =============================================
+  const _origDoSearch = window.doSearch;
+  const _origGetSearchHashtags = window.getSearchHashtags;
+
+  window.getSearchHashtags = function () {
+    const base =
+      typeof _origGetSearchHashtags === "function" ? _origGetSearchHashtags() : [];
+    return mergeHashtagCollections(
+      base,
+      _remoteHashtagDiscovery,
+      _remoteSearchHashtags
+    );
+  };
+
+  window.doSearch = function (q) {
+    const query = String(q || "").trim();
+    const requestId = ++_activeSearchRequestId;
+    const rendered =
+      typeof _origDoSearch === "function" ? _origDoSearch(q) : undefined;
+
+    if (!query || !API?.searchAll) {
+      _remoteSearchHashtags = [];
+      return rendered;
+    }
+
+    API.searchAll(query, curSTabVal || "all", 12)
+      .then((result) => {
+        if (requestId !== _activeSearchRequestId) return;
+        mergeSearchResultsIntoCaches(result);
+        _remoteSearchHashtags = Array.isArray(result?.hashtags)
+          ? result.hashtags
+          : [];
+        if (typeof _origDoSearch === "function") {
+          _origDoSearch(query);
+        }
+      })
+      .catch(() => {});
+
+    return rendered;
+  };
 
   // =============================================
   // ======= REAL-TIME CHAT MODULE =======
@@ -1949,6 +2060,11 @@
   function renderTickHtml(status) {
     const tickSvg =
       '<svg class="msg-tick" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>';
+    if (status === "queued" || status === "sending") {
+      return '<span class="msg-tick-wrap"><span class="msg-queued-state">' +
+        (status === "sending" ? "sending" : "queued") +
+        "</span></span>";
+    }
     if (status === "read") {
       return '<span class="msg-tick-wrap">' +
         tickSvg.replace('class="msg-tick"', 'class="msg-tick double tick-read"') +
@@ -2035,15 +2151,17 @@
     const timeStr = d && !isNaN(d.getTime()) ? fmtMsgTs(d) : (message.t || "");
     const tickHtml = isOut ? renderTickHtml(getOutgoingStatus(message, conv)) : "";
     const bubbleHandlers =
-      ' oncontextmenu="openChatMessageMenu(event,\'' +
-      chatId +
-      "','" +
-      message.id +
-      '\');return false" onpointerdown="startChatMessagePress(event,\'' +
-      chatId +
-      "','" +
-      message.id +
-      '\')" onpointerup="endChatMessagePress()" onpointerleave="endChatMessagePress()" onpointercancel="endChatMessagePress()"';
+      message.status === "queued" || message.status === "sending"
+        ? ""
+        : ' oncontextmenu="openChatMessageMenu(event,\'' +
+          chatId +
+          "','" +
+          message.id +
+          '\');return false" onpointerdown="startChatMessagePress(event,\'' +
+          chatId +
+          "','" +
+          message.id +
+          '\')" onpointerup="endChatMessagePress()" onpointerleave="endChatMessagePress()" onpointercancel="endChatMessagePress()"';
 
     return `<div class="msg-row ${isOut ? "out" : "in"}">
       ${avOrSpacer}
@@ -2059,6 +2177,93 @@
         </div>
       </div>
     </div>`;
+  }
+
+  function upsertConversationMessage(convId, message) {
+    if (!convId || !message) return message;
+    if (!_conversationMessages[convId]) {
+      _conversationMessages[convId] = [];
+    }
+
+    const targetId = (message.id || "").toString();
+    const targetClientId = (message.clientId || "").toString();
+    const existingIndex = _conversationMessages[convId].findIndex((item) => {
+      const itemId = (item.id || "").toString();
+      const itemClientId = (item.clientId || "").toString();
+      return (
+        (targetId && itemId === targetId) ||
+        (targetClientId && itemClientId === targetClientId) ||
+        (targetClientId && itemId === targetClientId)
+      );
+    });
+
+    if (existingIndex > -1) {
+      _conversationMessages[convId][existingIndex] = {
+        ..._conversationMessages[convId][existingIndex],
+        ...message,
+      };
+      return _conversationMessages[convId][existingIndex];
+    }
+
+    _conversationMessages[convId].push(message);
+    _conversationMessages[convId].sort((left, right) => {
+      const leftSeq = Number(left?.seq) || 0;
+      const rightSeq = Number(right?.seq) || 0;
+      if (leftSeq && rightSeq && leftSeq !== rightSeq) {
+        return leftSeq - rightSeq;
+      }
+      return new Date(left.ts || 0).getTime() - new Date(right.ts || 0).getTime();
+    });
+    return message;
+  }
+
+  function buildQueuedMessageDraft(payload, clientId) {
+    const now = new Date().toISOString();
+    return {
+      id: clientId,
+      clientId,
+      seq: 0,
+      from: myId(),
+      sender: {
+        _id: myId(),
+        name: CU?.name || "You",
+        handle: CU?.handle || "",
+        avatar: CU?.avatar || null,
+      },
+      txt: payload.text || "",
+      ts: now,
+      t: "Queued",
+      read: false,
+      delivered: false,
+      status: "queued",
+      isMe: true,
+      deleted: false,
+      forwarded: !!payload.forwarded,
+      attachments: Array.isArray(payload.attachments) ? payload.attachments : [],
+      replyTo: payload.replyTo || null,
+    };
+  }
+
+  function reconcilePendingMessage(detail) {
+    const convId = (detail?.convId || "").toString();
+    const clientId = (detail?.clientId || "").toString();
+    const message = detail?.message;
+    if (!convId || !message) return;
+
+    const normalized = {
+      ...message,
+      clientId: message.clientId || clientId,
+      isMe: true,
+    };
+
+    upsertConversationMessage(convId, normalized);
+    updateConversationPreview(convId, normalized);
+    if (activeChatId === convId) {
+      renderChatMessages(convId);
+    }
+    if (curPage === "chats") {
+      updateChatItemDOM(convId, getMessagePreview(normalized), "just now", 0);
+    }
   }
 
   function syncReplyPreview() {
@@ -2696,18 +2901,27 @@
   // =============================================
   async function sendChatPayload(payload, restoreText) {
     const convId = activeChatId;
-    const msg = await API.sendMessage(convId, payload);
-
-    if (!_conversationMessages[convId]) {
-      _conversationMessages[convId] = [];
+    try {
+      const msg = await API.sendMessage(convId, payload);
+      upsertConversationMessage(convId, msg);
+      updateConversationPreview(convId, msg);
+      appendChatMessageDOM(msg, convId);
+      updateChatItemDOM(convId, getMessagePreview(msg), "just now", 0);
+      window.clearChatReply();
+      return msg;
+    } catch (err) {
+      if (err?.queued) {
+        const queuedMsg = buildQueuedMessageDraft(payload, err.clientId);
+        upsertConversationMessage(convId, queuedMsg);
+        updateConversationPreview(convId, queuedMsg);
+        appendChatMessageDOM(queuedMsg, convId);
+        updateChatItemDOM(convId, getMessagePreview(queuedMsg), "queued", 0);
+        window.clearChatReply();
+        MC?.info("Message queued. It will send automatically when your connection returns.");
+        return queuedMsg;
+      }
+      throw err;
     }
-    _conversationMessages[convId].push(msg);
-
-    updateConversationPreview(convId, msg);
-    appendChatMessageDOM(msg, convId);
-    updateChatItemDOM(convId, getMessagePreview(msg), "just now", 0);
-    window.clearChatReply();
-    return msg;
   }
 
   window.sendChatMessage = async function () {
@@ -3141,12 +3355,16 @@
       _conversationMessages[convId] = [];
     }
 
-    // Avoid duplicates
-    const existing = _conversationMessages[convId].find(
-      (m) => m.id && msg.id && m.id.toString() === msg.id.toString()
-    );
+    const existing = _conversationMessages[convId].find((m) => {
+      const incomingId = (msg.id || "").toString();
+      const incomingClientId = (msg.clientId || "").toString();
+      return (
+        (incomingId && (m.id || "").toString() === incomingId) ||
+        (incomingClientId && (m.clientId || "").toString() === incomingClientId)
+      );
+    });
     if (!existing) {
-      _conversationMessages[convId].push(msg);
+      upsertConversationMessage(convId, msg);
       SocketClient.emitMessageDelivered(convId, msg.id);
     }
 
@@ -3365,15 +3583,13 @@
       updateInstallButtons();
 
       // Restore theme
-      const theme = Store.g("theme", "light");
-      if (theme === "dark") {
-        document.documentElement.setAttribute("data-dark", "");
-        const sunPath =
-          '<circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/>';
-        ["thIco", "dThemeIco"].forEach((id) => {
-          const ico = document.getElementById(id);
-          if (ico) ico.innerHTML = sunPath;
-        });
+      if (typeof applyThemePreference === "function") {
+        applyThemePreference(
+          typeof getStoredThemeMode === "function"
+            ? getStoredThemeMode()
+            : Store.g("theme", "light"),
+          { silent: true }
+        );
       }
 
       // Wire auth buttons
@@ -3422,6 +3638,7 @@
         try {
           CU = await API.getMe();
           SocketClient.connect((CU.id || CU._id).toString());
+          API.flushPendingChatMessages?.().catch(() => {});
           ensureChatPushNotifications(false).catch(() => {});
         } catch {
           CU = null;
@@ -3467,12 +3684,21 @@
         MC.error(appwriteRedirect.authError);
       } else if (
         appwriteRedirect?.token &&
-        appwriteRedirect.authSource === "appwrite-google"
+        String(appwriteRedirect.authSource || "").startsWith("appwrite")
       ) {
         if (typeof window.clearPendingReferralCode === "function") {
           window.clearPendingReferralCode();
         }
-        MC.success("Google Sign-In completed successfully.");
+        const providerLabel =
+          {
+            google: "Google",
+            github: "GitHub",
+            discord: "Discord",
+            apple: "Apple",
+            facebook: "Facebook",
+            microsoft: "Microsoft",
+          }[String(appwriteRedirect.provider || "").toLowerCase()] || "Social";
+        MC.success(providerLabel + " Sign-In completed successfully.");
       } else if (authRedirect?.authError) {
         MC.error(authRedirect.authError);
       } else if (
@@ -3486,6 +3712,7 @@
       }
 
       scheduleNonCriticalWork(() => {
+        loadTrendingHashtagDiscovery().catch(() => {});
         checkNotifications();
         openPendingChatIfNeeded();
       });
@@ -3595,5 +3822,11 @@
   })();
 
   // Remove the old DOMContentLoaded listener and re-fire init
+  window.addEventListener("online", () => {
+    API.flushPendingChatMessages?.().catch(() => {});
+  });
+  window.addEventListener("ts:pending-message-sent", (event) => {
+    reconcilePendingMessage(event.detail || {});
+  });
   window.init();
 })();

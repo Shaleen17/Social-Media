@@ -1,6 +1,7 @@
 const express = require("express");
 const Notification = require("../models/Notification");
 const { auth } = require("../middleware/auth");
+const { getPriorityLabel } = require("../services/notificationService");
 const { getPagination } = require("../utils/validation");
 
 const router = express.Router();
@@ -14,7 +15,7 @@ router.get("/", auth, async (req, res, next) => {
     });
     const notifs = await Notification.find({ recipient: req.user._id })
       .populate("sender", "name handle avatar")
-      .sort({ createdAt: -1 })
+      .sort({ read: 1, deliveryScore: -1, lastEventAt: -1, createdAt: -1 })
       .skip(skip)
       .limit(limit)
       .lean();
@@ -26,7 +27,10 @@ router.get("/", auth, async (req, res, next) => {
       sender: n.sender,
       pid: n.post,
       txt: n.text,
-      t: timeAgo(n.createdAt),
+      count: Math.max(1, Number(n.meta?.count) || 1),
+      priority: getPriorityLabel(n.importance),
+      score: Number(n.deliveryScore) || 0,
+      t: timeAgo(n.lastEventAt || n.createdAt),
       unread: !n.read,
     }));
 

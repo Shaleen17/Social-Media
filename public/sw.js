@@ -1,8 +1,37 @@
-self.__TS_SW_VERSION__ = "20260423-secure-google-intent-1";
+self.__TS_SW_VERSION__ = "20260425-foundation-security-1";
 const TS_STATIC_CACHE = `ts-static-${self.__TS_SW_VERSION__}`;
+const TS_API_CACHE = `ts-api-${self.__TS_SW_VERSION__}`;
+
+const CORE_ASSETS = [
+  "/",
+  "/index.html",
+  "/manifest.webmanifest",
+  "/manifest.webmanifest?v=20260420-advanced-search-1",
+  "/apple-touch-icon.png",
+  "/pwa-192.png",
+  "/pwa-512.png",
+  "/Brand_Logo.jpg",
+  "/Style.css",
+  "/Style.css?v=20260425-foundation-security-1",
+  "/Script.js?v=20260425-foundation-security-1",
+  "/api.js?v=20260425-foundation-security-1",
+  "/backend-adapter.js?v=20260425-scale-search-oauth-1",
+  "/appwrite-auth.js?v=20260425-scale-search-oauth-1",
+  "/config.js?v=20260420-advanced-search-1",
+  "/socket-client.js?v=20260425-scale-search-oauth-1",
+  "/webrtc-client.js?v=20260422-webrtc-socket-signaling-1",
+  "/enhancements-bootstrap.js?v=20260425-foundation-security-1",
+  "/noncritical-enhancements.js?v=20260425-foundation-security-1",
+];
 
 self.addEventListener("install", (event) => {
-  event.waitUntil(self.skipWaiting());
+  event.waitUntil(
+    caches
+      .open(TS_STATIC_CACHE)
+      .then((cache) => cache.addAll(CORE_ASSETS))
+      .catch(() => null)
+      .then(() => self.skipWaiting())
+  );
 });
 
 self.addEventListener("activate", (event) => {
@@ -12,7 +41,12 @@ self.addEventListener("activate", (event) => {
       .then((keys) =>
         Promise.all(
           keys
-            .filter((key) => key.startsWith("ts-static-") && key !== TS_STATIC_CACHE)
+            .filter(
+              (key) =>
+                (key.startsWith("ts-static-") || key.startsWith("ts-api-")) &&
+                key !== TS_STATIC_CACHE &&
+                key !== TS_API_CACHE
+            )
             .map((key) => caches.delete(key))
         )
       )
@@ -20,8 +54,14 @@ self.addEventListener("activate", (event) => {
   );
 });
 
-async function networkFirst(request) {
-  const cache = await caches.open(TS_STATIC_CACHE);
+self.addEventListener("message", (event) => {
+  if (event.data === "SKIP_WAITING") {
+    self.skipWaiting();
+  }
+});
+
+async function networkFirst(request, cacheName, fallbackRequest) {
+  const cache = await caches.open(cacheName);
   try {
     const response = await fetch(request);
     if (response && response.ok) {
@@ -29,14 +69,14 @@ async function networkFirst(request) {
     }
     return response;
   } catch {
-    const cached = await cache.match(request);
+    const cached = (await cache.match(request)) || (fallbackRequest ? await cache.match(fallbackRequest) : null);
     if (cached) return cached;
     throw new Error("offline");
   }
 }
 
-async function staleWhileRevalidate(request) {
-  const cache = await caches.open(TS_STATIC_CACHE);
+async function staleWhileRevalidate(request, cacheName) {
+  const cache = await caches.open(cacheName);
   const cached = await cache.match(request);
   const networkPromise = fetch(request)
     .then((response) => {
@@ -47,13 +87,17 @@ async function staleWhileRevalidate(request) {
     })
     .catch(() => null);
 
-  if (cached) {
-    return cached;
-  }
+  if (cached) return cached;
 
-  const networkResponse = await networkPromise;
-  if (networkResponse) return networkResponse;
+  const response = await networkPromise;
+  if (response) return response;
   throw new Error("offline");
+}
+
+function isApiReadEligible(url) {
+  return /^\/api\/(posts|videos|users\/all|search\/hashtags\/trending|notifications|messages)/i.test(
+    url.pathname
+  );
 }
 
 self.addEventListener("fetch", (event) => {
@@ -62,40 +106,52 @@ self.addEventListener("fetch", (event) => {
 
   const url = new URL(request.url);
   if (url.origin !== self.location.origin) return;
-  if (url.pathname.startsWith("/api/")) return;
+
   if (/\/sw\.js$/i.test(url.pathname)) {
     event.respondWith(fetch(request, { cache: "no-store" }));
     return;
   }
 
-  const isStaticAsset =
-    request.destination === "script" ||
-    request.destination === "style" ||
-    request.destination === "font" ||
-    request.destination === "image" ||
-    request.destination === "video" ||
-    /[?&]v=/.test(url.search) ||
-    /\.(js|css|png|jpg|jpeg|gif|webp|avif|svg|ico|woff2?|ttf|mp4|webmanifest)$/i.test(
-      url.pathname
-    );
+  if (url.pathname.startsWith("/api/")) {
+    if (isApiReadEligible(url)) {
+      event.respondWith(networkFirst(request, TS_API_CACHE));
+    }
+    return;
+  }
+
   const isCodeAsset =
     request.destination === "script" ||
     request.destination === "style" ||
     /\.(js|css|webmanifest)$/i.test(url.pathname) ||
     /[?&]v=/.test(url.search);
+  const isStaticAsset =
+    isCodeAsset ||
+    request.destination === "font" ||
+    request.destination === "image" ||
+    request.destination === "video" ||
+    /\.(png|jpg|jpeg|gif|webp|avif|svg|ico|woff2?|ttf|mp4)$/i.test(url.pathname);
 
   if (request.mode === "navigate") {
-    event.respondWith(networkFirst(request));
+    event.respondWith(
+      networkFirst(request, TS_STATIC_CACHE, "/index.html").catch(async () => {
+        const cache = await caches.open(TS_STATIC_CACHE);
+        return (
+          (await cache.match("/index.html")) ||
+          (await cache.match("/")) ||
+          Response.error()
+        );
+      })
+    );
     return;
   }
 
   if (isCodeAsset) {
-    event.respondWith(networkFirst(request));
+    event.respondWith(networkFirst(request, TS_STATIC_CACHE));
     return;
   }
 
   if (isStaticAsset) {
-    event.respondWith(staleWhileRevalidate(request));
+    event.respondWith(staleWhileRevalidate(request, TS_STATIC_CACHE));
   }
 });
 
@@ -132,7 +188,8 @@ self.addEventListener("notificationclick", (event) => {
   event.notification.close();
 
   const targetUrl =
-    event.notification.data?.url || "/?openChat=" + encodeURIComponent(event.notification.data?.convId || "");
+    event.notification.data?.url ||
+    "/?openChat=" + encodeURIComponent(event.notification.data?.convId || "");
 
   event.waitUntil(
     clients.matchAll({ type: "window", includeUncontrolled: true }).then((list) => {

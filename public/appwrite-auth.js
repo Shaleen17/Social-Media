@@ -4,11 +4,19 @@
  * for the existing Tirth Sutra API token so the rest of the app stays unchanged.
  */
 (function initAppwriteAuthBridge(global) {
-  const APPWRITE_AUTH_SOURCE = "appwrite-google";
+  const APPWRITE_AUTH_SOURCE = "appwrite-oauth";
   const APPWRITE_AUTH_PARAM = "appwriteAuth";
   const APPWRITE_CONFIG = {
     endpoint: "https://nyc.cloud.appwrite.io/v1",
     projectId: "69ea1b4e000d4e4e2b20",
+  };
+  const OAUTH_LABELS = {
+    google: "Google",
+    github: "GitHub",
+    discord: "Discord",
+    apple: "Apple",
+    facebook: "Facebook",
+    microsoft: "Microsoft",
   };
 
   let appwriteClient = null;
@@ -38,6 +46,39 @@
   function getGoogleProvider() {
     const sdk = getSdk();
     return sdk?.OAuthProvider?.Google || sdk?.OAuthProvider?.GOOGLE || "google";
+  }
+
+  function normalizeProvider(provider) {
+    const normalized = String(provider || "").trim().toLowerCase();
+    return OAUTH_LABELS[normalized] ? normalized : "google";
+  }
+
+  function getProviderLabel(provider) {
+    return OAUTH_LABELS[normalizeProvider(provider)] || "OAuth";
+  }
+
+  function getAppwriteProvider(provider) {
+    const sdk = getSdk();
+    const normalized = normalizeProvider(provider);
+    if (!sdk?.OAuthProvider) {
+      return normalized;
+    }
+
+    const variants = [
+      normalized,
+      normalized.toUpperCase(),
+      normalized.charAt(0).toUpperCase() + normalized.slice(1),
+      normalized === "github" ? "Github" : "",
+      normalized === "github" ? "GitHub" : "",
+    ].filter(Boolean);
+
+    for (const key of variants) {
+      if (sdk.OAuthProvider[key]) {
+        return sdk.OAuthProvider[key];
+      }
+    }
+
+    return normalized;
   }
 
   function getCleanAppUrl() {
@@ -73,14 +114,16 @@
     return mode === "signup" ? "signup" : "login";
   }
 
-  function buildReturnUrl(status, authMode = "login", signupIntent = "") {
+  function buildReturnUrl(status, authMode = "login", signupIntent = "", provider = "google") {
     const url = getCleanAppUrl();
     const referralCode = getActiveReferralCode();
     const marketingConsent = getMarketingConsent();
+    const safeProvider = normalizeProvider(provider);
 
     url.searchParams.set(APPWRITE_AUTH_PARAM, status);
     url.searchParams.set("authSource", APPWRITE_AUTH_SOURCE);
     url.searchParams.set("authMode", normalizeAuthMode(authMode));
+    url.searchParams.set("provider", safeProvider);
     if (signupIntent) {
       url.searchParams.set("signupIntent", signupIntent);
     }
@@ -113,6 +156,7 @@
       authSource: params.get("authSource"),
       referralCode: params.get("ref") || "",
       authMode: normalizeAuthMode(params.get("authMode")),
+      provider: normalizeProvider(params.get("provider")),
       signupIntent: params.get("signupIntent") || "",
       marketingConsent: params.get("marketing") === "1",
       timezone: params.get("tz") || getTimezone(),
@@ -126,6 +170,7 @@
       "authSource",
       "authError",
       "authMode",
+      "provider",
       "signupIntent",
       "status",
       "marketing",
@@ -180,13 +225,16 @@
     }
   }
 
-  async function createSignupIntent(authMode) {
+  async function createSignupIntent(authMode, provider) {
     if (normalizeAuthMode(authMode) !== "signup") return "";
 
     const response = await fetch(`${getBackendBase()}/api/auth/appwrite/google-intent`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ authMode: "signup" }),
+      body: JSON.stringify({
+        authMode: "signup",
+        provider: normalizeProvider(provider),
+      }),
     });
 
     const text = await response.text();
@@ -212,7 +260,8 @@
         authParams.authMode,
         authParams.signupIntent,
         authParams.marketingConsent,
-        authParams.timezone
+        authParams.timezone,
+        authParams.provider
       );
     }
 
@@ -226,6 +275,7 @@
         signupIntent: authParams.signupIntent,
         marketingConsent: authParams.marketingConsent,
         timezone: authParams.timezone,
+        provider: authParams.provider,
       }),
     });
 
@@ -247,7 +297,9 @@
     return data;
   }
 
-  async function startGoogleAuth(authMode = "login") {
+  async function startOAuthAuth(provider = "google", authMode = "login") {
+    const safeProvider = normalizeProvider(provider);
+    const providerLabel = getProviderLabel(safeProvider);
     const safeAuthMode = normalizeAuthMode(authMode);
     const loaderToken =
       typeof global.startAppTopLoader === "function"
@@ -256,11 +308,11 @@
 
     try {
       const account = getAccount();
-      const signupIntent = await createSignupIntent(safeAuthMode);
+      const signupIntent = await createSignupIntent(safeAuthMode, safeProvider);
       const request = {
-        provider: getGoogleProvider(),
-        success: buildReturnUrl("success", safeAuthMode, signupIntent),
-        failure: buildReturnUrl("failure", safeAuthMode, signupIntent),
+        provider: getAppwriteProvider(safeProvider),
+        success: buildReturnUrl("success", safeAuthMode, signupIntent, safeProvider),
+        failure: buildReturnUrl("failure", safeAuthMode, signupIntent, safeProvider),
         scopes: ["openid", "email", "profile"],
       };
 
@@ -269,14 +321,14 @@
         result.catch((error) => {
           stopLoader(loaderToken);
           if (typeof global.MC !== "undefined") {
-            global.MC.error(error.message || "Could not start Google Sign-In.");
+            global.MC.error(error.message || `Could not start ${providerLabel} Sign-In.`);
           }
         });
       }
     } catch (error) {
       stopLoader(loaderToken);
       if (typeof global.MC !== "undefined") {
-        global.MC.error(error.message || "Could not start Google Sign-In.");
+        global.MC.error(error.message || `Could not start ${providerLabel} Sign-In.`);
       }
     }
   }
@@ -291,8 +343,9 @@
       if (authParams.status !== "success") {
         clearAuthParams();
         return {
-          authError: "Google Sign-In was canceled or failed.",
+          authError: `${getProviderLabel(authParams.provider)} Sign-In was canceled or failed.`,
           authSource: APPWRITE_AUTH_SOURCE,
+          provider: authParams.provider,
         };
       }
 
@@ -310,16 +363,18 @@
         return {
           ...data,
           authSource: APPWRITE_AUTH_SOURCE,
+          provider: authParams.provider,
         };
       } catch (error) {
         clearAuthParams();
         return {
           authError:
             error.message ||
-            "Could not finish Google Sign-In. Please try again.",
+            `Could not finish ${getProviderLabel(authParams.provider)} Sign-In. Please try again.`,
           authDetails: error.details || null,
           authMode: authParams.authMode,
           authSource: APPWRITE_AUTH_SOURCE,
+          provider: authParams.provider,
         };
       }
     })();
@@ -327,7 +382,10 @@
     return completionPromise;
   }
 
-  global.startAppwriteGoogleAuth = startGoogleAuth;
+  global.startAppwriteOAuth = startOAuthAuth;
+  global.startAppwriteGoogleAuth = function startAppwriteGoogleAuth(authMode) {
+    return startOAuthAuth("google", authMode);
+  };
   global.consumePendingAppwriteAuth = consumePendingAppwriteAuth;
   global.APPWRITE_AUTH_CONFIG = { ...APPWRITE_CONFIG };
 })(window);
