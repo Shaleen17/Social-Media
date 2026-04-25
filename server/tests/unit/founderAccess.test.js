@@ -9,6 +9,10 @@ test("founder access recognizes the default founder email", () => {
     true
   );
   assert.equal(
+    founderAccess.isFounderUser({ handle: "tirthsutra" }),
+    true
+  );
+  assert.equal(
     founderAccess.isFounderUser({ email: "someone@example.com" }),
     false
   );
@@ -29,5 +33,6 @@ test("founder access honors configured founder emails", (t) => {
     "owner@example.com",
     "lead@example.com",
   ]);
+  assert.deepEqual(founderAccess.getFounderOwnerHandles(), ["tirthsutra"]);
   assert.equal(founderAccess.isFounderUser({ email: "lead@example.com" }), true);
 });

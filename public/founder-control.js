@@ -5,6 +5,7 @@
     "tirthsutra@gmail.com",
     "tirthsutra@gemail.com",
   ];
+  const FOUNDER_OWNER_HANDLES = ["tirthsutra"];
   const PAGE_ID = "founderControl";
   const ROOT_ID = "pgFounderControl";
   const POLL_INTERVAL_MS = 10000;
@@ -12,6 +13,7 @@
   let latestRequestId = 0;
   let latestSnapshot = null;
   let currentProfileId = "";
+  let profileActionsObserver = null;
 
   function getCurrentUser() {
     return global.CU || global.API?.getStoredUser?.() || null;
@@ -24,7 +26,17 @@
 
   function isFounderOwner(user = getCurrentUser()) {
     const email = String(user?.email || "").trim().toLowerCase();
-    return !!email && FOUNDER_OWNER_EMAILS.includes(email);
+    const handle = String(user?.handle || "").trim().toLowerCase().replace(/^@/, "");
+    return (
+      (!!email && FOUNDER_OWNER_EMAILS.includes(email)) ||
+      (!!handle && FOUNDER_OWNER_HANDLES.includes(handle))
+    );
+  }
+
+  function isOwnProfileActionArea(prActions) {
+    if (!prActions) return false;
+    const text = String(prActions.textContent || "").toLowerCase();
+    return text.includes("edit profile") && text.includes("sign out");
   }
 
   function escapeHtml(value) {
@@ -380,8 +392,11 @@
     const existing = prActions.querySelector("[data-founder-control-btn]");
     const shouldShow =
       isFounderOwner() &&
-      !!getCurrentUserId() &&
-      getCurrentUserId() === String(currentProfileId || "").trim();
+      (
+        (!!getCurrentUserId() &&
+          getCurrentUserId() === String(currentProfileId || "").trim()) ||
+        isOwnProfileActionArea(prActions)
+      );
 
     if (!shouldShow) {
       existing?.remove();
@@ -399,6 +414,18 @@
       }
     };
     prActions.appendChild(button);
+  }
+
+  function observeProfileActions() {
+    if (profileActionsObserver || !document.body) return;
+    profileActionsObserver = new MutationObserver(() => {
+      ensureFounderButton();
+    });
+    profileActionsObserver.observe(document.body, {
+      childList: true,
+      subtree: true,
+    });
+    ensureFounderButton();
   }
 
   function wrapProfileRender() {
@@ -452,4 +479,5 @@
 
   wrapProfileRender();
   wrapNavigation();
+  observeProfileActions();
 })(window);
