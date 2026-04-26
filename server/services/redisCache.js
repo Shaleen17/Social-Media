@@ -3,6 +3,7 @@ const { log } = require("../utils/logger");
 const {
   attachRedisLogging,
   buildRedisClientOptions,
+  describeRedisConfigIssue,
   getRedisConfig,
   safeQuit,
 } = require("./redisCommon");
@@ -139,8 +140,10 @@ async function initializeRedisCache() {
         reason: "connection_failed",
       };
       await safeQuit(client);
+      const hint = describeRedisConfigIssue(error);
       log("warn", "Redis cache unavailable, using MongoDB reads only", {
         error: error.message,
+        ...(hint ? { hint } : {}),
       });
       return getRedisCacheState();
     } finally {

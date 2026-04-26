@@ -5,6 +5,7 @@ const { log } = require("../utils/logger");
 const {
   attachRedisLogging,
   buildRedisClientOptions,
+  describeRedisConfigIssue,
   getRedisConfig,
   safeQuit,
 } = require("./redisCommon");
@@ -74,9 +75,11 @@ async function initializeRedisRealtime(io, socketState) {
       safeQuit(subClient),
       safeQuit(presenceClient),
     ]);
+    const hint = describeRedisConfigIssue(error);
 
     log("warn", "Redis realtime unavailable, using local socket state only", {
       error: error.message,
+      ...(hint ? { hint } : {}),
     });
 
     return {
