@@ -659,6 +659,14 @@ const API = (() => {
       );
     },
 
+    async getBootstrapFeed() {
+      return request("/bootstrap/feed", {
+        retry: 1,
+        retryDelayMs: 500,
+        timeoutMs: 30000,
+      });
+    },
+
     async getFollowers(userId) {
       return request(`/users/${userId}/followers`);
     },

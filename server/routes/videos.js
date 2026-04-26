@@ -22,7 +22,7 @@ const {
 
 const router = express.Router();
 
-function invalidateVideoCaches(namespaces = ["videos", "search"]) {
+function invalidateVideoCaches(namespaces = ["videos", "search", "bootstrap"]) {
   return invalidateRedisCacheNamespaces(namespaces).catch(() => 0);
 }
 

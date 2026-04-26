@@ -99,7 +99,7 @@
   let _liveRefreshTimer = null;
   let _liveRefreshInFlight = false;
   const BOOT_CACHE_KEY = "backendBootCache";
-  const BOOT_CACHE_VERSION = "20260426-user-visibility-fix-1";
+  const BOOT_CACHE_VERSION = "20260426-production-bootstrap-fix-1";
   const BOOT_CACHE_TTL = 1000 * 60 * 60 * 24 * 30;
   const LIVE_REFRESH_INTERVAL_MS = 15000;
 
@@ -330,7 +330,7 @@
 
   let _chatPushSetupPromise = null;
   let _pendingOpenChatId = consumeOpenChatParam();
-  const APP_ASSET_VERSION = "20260425-scale-search-oauth-1";
+  const APP_ASSET_VERSION = "20260426-production-bootstrap-fix-1";
   let _appSwPromise = null;
   let _deferredInstallPrompt = null;
   let _installPromptBound = false;
@@ -1878,12 +1878,44 @@
   // =============================================
   async function loadAllData() {
     try {
-      const [users, posts, videos, vidStories] = await Promise.all([
-        API.getAllUsers().catch(() => []),
-        (API.getAllPosts ? API.getAllPosts("forYou") : API.getPosts()).catch(() => []),
-        (API.getAllVideos ? API.getAllVideos() : API.getVideos()).catch(() => []),
-        API.getVideoStories().catch(() => []),
-      ]);
+      let users = [];
+      let posts = [];
+      let videos = [];
+      let vidStories = [];
+
+      if (API.getBootstrapFeed) {
+        try {
+          const bootstrap = await API.getBootstrapFeed();
+          users = Array.isArray(bootstrap?.users) ? bootstrap.users : [];
+          posts = Array.isArray(bootstrap?.posts) ? bootstrap.posts : [];
+          videos = Array.isArray(bootstrap?.videos) ? bootstrap.videos : [];
+          vidStories = Array.isArray(bootstrap?.vidStories) ? bootstrap.vidStories : [];
+        } catch (bootstrapError) {
+          console.warn("Bootstrap feed load failed, falling back to paginated fetches:", bootstrapError?.message || bootstrapError);
+        }
+      }
+
+      if (!users.length || !posts.length || !videos.length) {
+        const fallbackResults = await Promise.all([
+          users.length
+            ? Promise.resolve(users)
+            : API.getAllUsers().catch(() => []),
+          posts.length
+            ? Promise.resolve(posts)
+            : (API.getAllPosts ? API.getAllPosts("forYou") : API.getPosts()).catch(() => []),
+          videos.length
+            ? Promise.resolve(videos)
+            : (API.getAllVideos ? API.getAllVideos() : API.getVideos()).catch(() => []),
+          vidStories.length
+            ? Promise.resolve(vidStories)
+            : API.getVideoStories().catch(() => []),
+        ]);
+
+        users = fallbackResults[0];
+        posts = fallbackResults[1];
+        videos = fallbackResults[2];
+        vidStories = fallbackResults[3];
+      }
 
       const embeddedUsers = [
         ...(posts || []).map((post) => post?.user).filter(Boolean),

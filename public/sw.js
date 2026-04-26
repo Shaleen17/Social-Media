@@ -1,4 +1,4 @@
-self.__TS_SW_VERSION__ = "20260426-founder-intelligence-1";
+self.__TS_SW_VERSION__ = "20260426-deploy-feed-fix-1";
 const TS_STATIC_CACHE = `ts-static-${self.__TS_SW_VERSION__}`;
 const TS_API_CACHE = `ts-api-${self.__TS_SW_VERSION__}`;
 
@@ -12,17 +12,17 @@ const CORE_ASSETS = [
   "/pwa-512.png",
   "/Brand_Logo.jpg",
   "/Style.css",
-  "/Style.css?v=20260426-founder-intelligence-1",
-  "/Script.js?v=20260426-founder-intelligence-1",
-  "/api.js?v=20260426-redis-pagination-fix-1",
-  "/backend-adapter.js?v=20260426-founder-intelligence-1",
-  "/founder-control.js?v=20260426-founder-intelligence-1",
+  "/Style.css?v=20260426-deploy-feed-fix-1",
+  "/Script.js?v=20260426-deploy-feed-fix-1",
+  "/api.js?v=20260426-deploy-feed-fix-1",
+  "/backend-adapter.js?v=20260426-deploy-feed-fix-1",
+  "/founder-control.js?v=20260426-deploy-feed-fix-1",
   "/appwrite-auth.js?v=20260425-scale-search-oauth-1",
   "/config.js?v=20260420-advanced-search-1",
   "/socket-client.js?v=20260425-scale-search-oauth-1",
   "/webrtc-client.js?v=20260422-webrtc-socket-signaling-1",
-  "/enhancements-bootstrap.js?v=20260426-founder-intelligence-1",
-  "/noncritical-enhancements.js?v=20260426-founder-intelligence-1",
+  "/enhancements-bootstrap.js?v=20260426-deploy-feed-fix-1",
+  "/noncritical-enhancements.js?v=20260426-deploy-feed-fix-1",
 ];
 
 self.addEventListener("install", (event) => {

@@ -23,7 +23,7 @@ const {
 
 const router = express.Router();
 
-function invalidatePostCaches(namespaces = ["posts", "search"]) {
+function invalidatePostCaches(namespaces = ["posts", "search", "bootstrap"]) {
   return invalidateRedisCacheNamespaces(namespaces).catch(() => 0);
 }
 
@@ -193,7 +193,7 @@ router.post("/", auth, async (req, res, next) => {
       },
     });
 
-    invalidatePostCaches(["posts", "search", "users"]);
+    invalidatePostCaches(["posts", "search", "users", "bootstrap"]);
     res.status(201).json(transformPost(populated.toJSON()));
   } catch (err) {
     next(err);
@@ -429,7 +429,7 @@ router.delete("/:id", validateObjectIdParam("id"), auth, async (req, res, next) 
       return res.status(403).json({ error: "Not authorized" });
     }
     await post.deleteOne();
-    invalidatePostCaches(["posts", "search", "users"]);
+    invalidatePostCaches(["posts", "search", "users", "bootstrap"]);
     res.json({ success: true });
   } catch (err) {
     next(err);
