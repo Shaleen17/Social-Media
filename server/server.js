@@ -8,6 +8,10 @@ const cloudinary = require("cloudinary").v2;
 const mongoose = require("mongoose");
 const connectDB = require("./config/db");
 const setupSocket = require("./socket/chat");
+const {
+  getRedisCacheState,
+  initializeRedisCache,
+} = require("./services/redisCache");
 const { initializeRedisRealtime } = require("./services/redisRealtime");
 const AppError = require("./utils/appError");
 const securityHeaders = require("./middleware/securityHeaders");
@@ -116,6 +120,11 @@ app.set("io", io);
 // Setup Socket.io handlers
 const socketState = setupSocket(io);
 app.set("socketState", socketState);
+initializeRedisCache().catch((error) =>
+  log("warn", "Redis cache bootstrap failed", {
+    error: error.message,
+  })
+);
 initializeRedisRealtime(io, socketState).catch((error) =>
   log("warn", "Redis realtime bootstrap failed", {
     error: error.message,
@@ -210,6 +219,7 @@ app.get("/api/health", (req, res) => {
     uptimeSeconds: Math.floor(process.uptime()),
     dbState: mongoose.connection.readyState,
     memory: process.memoryUsage(),
+    redisCache: getRedisCacheState(),
     email: isEmailDeliveryConfigured() ? "configured" : "NOT_CONFIGURED",
   });
 });
@@ -219,6 +229,7 @@ app.get("/api/health/ready", (req, res) => {
   res.status(dbReady ? 200 : 503).json({
     status: dbReady ? "ready" : "not_ready",
     dbState: mongoose.connection.readyState,
+    redisCache: getRedisCacheState(),
     timestamp: new Date().toISOString(),
   });
 });

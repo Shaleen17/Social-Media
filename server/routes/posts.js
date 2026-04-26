@@ -4,6 +4,12 @@ const { auth, optionalAuth } = require("../middleware/auth");
 const { createRankedNotification } = require("../services/notificationService");
 const { recordAnalyticsEventSafe } = require("../services/analyticsService");
 const {
+  applyRedisCacheHeader,
+  buildRedisCacheKey,
+  invalidateRedisCacheNamespaces,
+  withRedisJsonCache,
+} = require("../services/redisCache");
+const {
   buildSearchText,
   moderateTextContent,
 } = require("../utils/contentFeatures");
@@ -16,6 +22,10 @@ const {
 } = require("../utils/validation");
 
 const router = express.Router();
+
+function invalidatePostCaches(namespaces = ["posts", "search"]) {
+  return invalidateRedisCacheNamespaces(namespaces).catch(() => 0);
+}
 
 // GET /api/posts — list posts
 router.get("/", optionalAuth, async (req, res, next) => {
@@ -38,48 +48,58 @@ router.get("/", optionalAuth, async (req, res, next) => {
       // We'll do this in-memory for simplicity
     }
 
-    let posts = await Post.find(query)
-      .sort(sort)
-      .skip(skip)
-      .limit(limit)
-      .populate("user", "name handle avatar verified")
-      .populate("comments.user", "name handle avatar")
-      .lean();
+    const cacheKey = buildRedisCacheKey("posts", "list", tab || "all", page, limit);
+    const { status: cacheStatus, value: result } = await withRedisJsonCache(
+      cacheKey,
+      async () => {
+        let posts = await Post.find(query)
+          .sort(sort)
+          .skip(skip)
+          .limit(limit)
+          .populate("user", "name handle avatar verified")
+          .populate("comments.user", "name handle avatar")
+          .lean();
 
-    if (tab === "trending") {
-      posts.sort(
-        (a, b) =>
-          b.likes.length +
-          b.reposts.length -
-          (a.likes.length + a.reposts.length)
-      );
-    }
+        if (tab === "trending") {
+          posts.sort(
+            (a, b) =>
+              b.likes.length +
+              b.reposts.length -
+              (a.likes.length + a.reposts.length)
+          );
+        }
 
-    // Transform for frontend compatibility
-    const result = posts.map((p) => ({
-      id: p._id,
-      uid: p.user?._id || p.user,
-      user: p.user,
-      txt: p.text,
-      img: p.image,
-      ytId: p.ytId,
-      likes: p.likes.map((l) => l.toString()),
-      cmts: (p.comments || []).map((c) => ({
-        id: c._id,
-        uid: c.user?._id || c.user,
-        user: c.user,
-        txt: c.text,
-        t: timeAgo(c.createdAt),
-      })),
-      reposts: p.reposts.map((r) => r.toString()),
-      bm: p.bookmarks.map((b) => b.toString()),
-      poll: p.poll
-        ? { opts: p.poll.options, votes: p.poll.votes }
-        : null,
-      t: timeAgo(p.createdAt),
-      ts: new Date(p.createdAt).getTime(),
-    }));
+        return posts.map((p) => ({
+          id: p._id,
+          uid: p.user?._id || p.user,
+          user: p.user,
+          txt: p.text,
+          img: p.image,
+          ytId: p.ytId,
+          likes: p.likes.map((l) => l.toString()),
+          cmts: (p.comments || []).map((c) => ({
+            id: c._id,
+            uid: c.user?._id || c.user,
+            user: c.user,
+            txt: c.text,
+            t: timeAgo(c.createdAt),
+          })),
+          reposts: p.reposts.map((r) => r.toString()),
+          bm: p.bookmarks.map((b) => b.toString()),
+          poll: p.poll
+            ? { opts: p.poll.options, votes: p.poll.votes }
+            : null,
+          t: timeAgo(p.createdAt),
+          ts: new Date(p.createdAt).getTime(),
+        }));
+      },
+      {
+        ttlSeconds: tab === "trending" ? 45 : 60,
+        bypass: tab === "following" && !!req.user,
+      }
+    );
 
+    applyRedisCacheHeader(res, cacheStatus);
     res.setHeader("X-Page", String(page));
     res.setHeader("X-Limit", String(limit));
     res.setHeader("X-Has-More", String(result.length === limit));
@@ -92,12 +112,20 @@ router.get("/", optionalAuth, async (req, res, next) => {
 // GET /api/posts/:id — get single post
 router.get("/:id", validateObjectIdParam("id"), optionalAuth, async (req, res, next) => {
   try {
-    const post = await Post.findById(req.params.id)
-      .populate("user", "name handle avatar verified")
-      .populate("comments.user", "name handle avatar");
+    const cacheKey = buildRedisCacheKey("posts", "detail", req.params.id);
+    const { status: cacheStatus, value: post } = await withRedisJsonCache(
+      cacheKey,
+      async () => {
+        const found = await Post.findById(req.params.id)
+          .populate("user", "name handle avatar verified")
+          .populate("comments.user", "name handle avatar");
+        return found ? transformPost(found.toJSON()) : null;
+      },
+      { ttlSeconds: 90 }
+    );
+    applyRedisCacheHeader(res, cacheStatus);
     if (!post) return res.status(404).json({ error: "Post not found" });
-
-    res.json(transformPost(post.toJSON()));
+    res.json(post);
   } catch (err) {
     next(err);
   }
@@ -165,6 +193,7 @@ router.post("/", auth, async (req, res, next) => {
       },
     });
 
+    invalidatePostCaches(["posts", "search", "users"]);
     res.status(201).json(transformPost(populated.toJSON()));
   } catch (err) {
     next(err);
@@ -203,6 +232,7 @@ router.put("/:id/like", validateObjectIdParam("id"), auth, async (req, res, next
     }
 
     await post.save();
+    invalidatePostCaches();
     await recordAnalyticsEventSafe({
       req,
       type: "interaction",
@@ -272,6 +302,7 @@ router.put("/:id/comment", validateObjectIdParam("id"), auth, async (req, res, n
     }
 
     const newComment = post.comments[post.comments.length - 1];
+    invalidatePostCaches();
     res.json({
       id: newComment._id,
       uid: req.user._id,
@@ -314,6 +345,7 @@ router.put("/:id/repost", validateObjectIdParam("id"), auth, async (req, res, ne
     }
 
     await post.save();
+    invalidatePostCaches();
     await recordAnalyticsEventSafe({
       req,
       type: "interaction",
@@ -349,6 +381,7 @@ router.put("/:id/bookmark", validateObjectIdParam("id"), auth, async (req, res, 
     }
 
     await post.save();
+    invalidatePostCaches();
     res.json({
       bookmarks: post.bookmarks.map((b) => b.toString()),
       bookmarked: post.bookmarks.includes(req.user._id),
@@ -379,6 +412,7 @@ router.put("/:id/vote", validateObjectIdParam("id"), auth, async (req, res, next
     post.poll.votes.push(`${userId}:${option}`);
     post.markModified("poll");
     await post.save();
+    invalidatePostCaches();
 
     res.json({ poll: { opts: post.poll.options, votes: post.poll.votes } });
   } catch (err) {
@@ -395,6 +429,7 @@ router.delete("/:id", validateObjectIdParam("id"), auth, async (req, res, next) 
       return res.status(403).json({ error: "Not authorized" });
     }
     await post.deleteOne();
+    invalidatePostCaches(["posts", "search", "users"]);
     res.json({ success: true });
   } catch (err) {
     next(err);

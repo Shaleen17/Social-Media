@@ -3,6 +3,12 @@ const Video = require("../models/Video");
 const { auth, optionalAuth } = require("../middleware/auth");
 const { recordAnalyticsEventSafe } = require("../services/analyticsService");
 const {
+  applyRedisCacheHeader,
+  buildRedisCacheKey,
+  invalidateRedisCacheNamespaces,
+  withRedisJsonCache,
+} = require("../services/redisCache");
+const {
   buildSearchText,
   moderateTextContent,
 } = require("../utils/contentFeatures");
@@ -15,6 +21,10 @@ const {
 } = require("../utils/validation");
 
 const router = express.Router();
+
+function invalidateVideoCaches(namespaces = ["videos", "search"]) {
+  return invalidateRedisCacheNamespaces(namespaces).catch(() => 0);
+}
 
 function timeAgo(date) {
   if (!date) return "";
@@ -99,19 +109,35 @@ router.get("/", optionalAuth, async (req, res) => {
       query.isLive = true;
     }
 
-    const videos = await Video.find(query)
-      .sort({ createdAt: -1 })
-      .skip(skip)
-      .limit(limit)
-      .populate("user", "name handle avatar verified followers following bio")
-      .populate("comments.user", "name handle avatar verified")
-      .populate("comments.replies.user", "name handle avatar verified")
-      .lean();
+    const cacheKey = buildRedisCacheKey(
+      "videos",
+      "list",
+      category || "All",
+      tab || "feed",
+      page,
+      limit
+    );
+    const { status: cacheStatus, value: videos } = await withRedisJsonCache(
+      cacheKey,
+      async () => {
+        const found = await Video.find(query)
+          .sort({ createdAt: -1 })
+          .skip(skip)
+          .limit(limit)
+          .populate("user", "name handle avatar verified followers following bio")
+          .populate("comments.user", "name handle avatar verified")
+          .populate("comments.replies.user", "name handle avatar verified")
+          .lean();
+        return found.map(mapVideo);
+      },
+      { ttlSeconds: tab === "live" ? 30 : 60 }
+    );
 
+    applyRedisCacheHeader(res, cacheStatus);
     res.setHeader("X-Page", String(page));
     res.setHeader("X-Limit", String(limit));
     res.setHeader("X-Has-More", String(videos.length === limit));
-    res.json(videos.map(mapVideo));
+    res.json(videos);
   } catch (err) {
     res.status(500).json({ error: "Server error" });
   }
@@ -120,24 +146,31 @@ router.get("/", optionalAuth, async (req, res) => {
 // GET /api/videos/stories - video stories for Tirth Tube
 router.get("/stories", optionalAuth, async (req, res) => {
   try {
-    const videos = await Video.find({ isLive: false })
-      .sort({ createdAt: -1 })
-      .limit(10)
-      .populate("user", "name handle avatar")
-      .lean();
+    const cacheKey = buildRedisCacheKey("videos", "stories");
+    const { status: cacheStatus, value } = await withRedisJsonCache(
+      cacheKey,
+      async () => {
+        const videos = await Video.find({ isLive: false })
+          .sort({ createdAt: -1 })
+          .limit(10)
+          .populate("user", "name handle avatar")
+          .lean();
 
-    res.json(
-      videos.map((v) => ({
-        id: v._id,
-        uid: v.user?._id,
-        user: v.user,
-        cap: v.title,
-        t: timeAgo(v.createdAt),
-        type: "video",
-        emo: "",
-        src: v.src,
-      }))
+        return videos.map((v) => ({
+          id: v._id,
+          uid: v.user?._id,
+          user: v.user,
+          cap: v.title,
+          t: timeAgo(v.createdAt),
+          type: "video",
+          emo: "",
+          src: v.src,
+        }));
+      },
+      { ttlSeconds: 90 }
     );
+    applyRedisCacheHeader(res, cacheStatus);
+    res.json(value);
   } catch (err) {
     res.status(500).json({ error: "Server error" });
   }
@@ -146,14 +179,23 @@ router.get("/stories", optionalAuth, async (req, res) => {
 // GET /api/videos/:id - get single video
 router.get("/:id", validateObjectIdParam("id"), optionalAuth, async (req, res, next) => {
   try {
-    const video = await Video.findById(req.params.id)
-      .populate("user", "name handle avatar verified followers following bio")
-      .populate("comments.user", "name handle avatar verified")
-      .populate("comments.replies.user", "name handle avatar verified");
+    const cacheKey = buildRedisCacheKey("videos", "detail", req.params.id);
+    const { status: cacheStatus, value: video } = await withRedisJsonCache(
+      cacheKey,
+      async () => {
+        const found = await Video.findById(req.params.id)
+          .populate("user", "name handle avatar verified followers following bio")
+          .populate("comments.user", "name handle avatar verified")
+          .populate("comments.replies.user", "name handle avatar verified");
+        return found ? mapVideo(found) : null;
+      },
+      { ttlSeconds: 90 }
+    );
 
+    applyRedisCacheHeader(res, cacheStatus);
     if (!video) return res.status(404).json({ error: "Video not found" });
 
-    res.json(mapVideo(video));
+    res.json(video);
   } catch (err) {
     next(err);
   }
@@ -229,6 +271,7 @@ router.post("/", auth, async (req, res, next) => {
       },
     });
 
+    invalidateVideoCaches();
     res.status(201).json({
       id: video._id,
       uid: req.user._id,
@@ -269,6 +312,7 @@ router.put("/:id/like", validateObjectIdParam("id"), auth, async (req, res, next
     }
 
     await video.save();
+    invalidateVideoCaches();
     await recordAnalyticsEventSafe({
       req,
       type: "interaction",
@@ -310,6 +354,7 @@ router.put("/:id/dislike", validateObjectIdParam("id"), auth, async (req, res, n
     }
 
     await video.save();
+    invalidateVideoCaches();
     res.json({
       likes: video.likes.map((l) => l.toString()),
       dislikes: video.dislikes.map((d) => d.toString()),
@@ -334,6 +379,7 @@ router.put("/:id/comment", validateObjectIdParam("id"), auth, async (req, res, n
 
     video.comments.push({ user: req.user._id, text });
     await video.save();
+    invalidateVideoCaches();
     await recordAnalyticsEventSafe({
       req,
       type: "interaction",
@@ -386,6 +432,7 @@ router.put("/:id/comment/:commentId/reply", validateObjectIdParam("id"), validat
 
     comment.replies.push({ user: req.user._id, text });
     await video.save();
+    invalidateVideoCaches();
 
     const reply = comment.replies[comment.replies.length - 1];
     res.json({
@@ -422,6 +469,7 @@ router.put("/:id/comment/:commentId/pin", validateObjectIdParam("id"), validateO
     video.pinnedComment =
       currentPinnedId === comment._id.toString() ? null : comment._id;
     await video.save();
+    invalidateVideoCaches();
 
     res.json({
       pinnedCommentId: video.pinnedComment ? video.pinnedComment.toString() : null,
@@ -435,6 +483,7 @@ router.put("/:id/comment/:commentId/pin", validateObjectIdParam("id"), validateO
 router.put("/:id/view", validateObjectIdParam("id"), async (req, res, next) => {
   try {
     await Video.findByIdAndUpdate(req.params.id, { $inc: { views: 1 } });
+    invalidateVideoCaches();
     res.json({ success: true });
   } catch (err) {
     next(err);
@@ -483,6 +532,7 @@ router.post("/live", auth, async (req, res, next) => {
       },
     });
 
+    invalidateVideoCaches();
     res.status(201).json({ id: video._id });
   } catch (err) {
     next(err);

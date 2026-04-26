@@ -16,6 +16,8 @@ const JS_FILES = [
   "routes/search.js",
   "routes/users.js",
   "services/founderDashboardService.js",
+  "services/redisCache.js",
+  "services/redisCommon.js",
   "services/redisRealtime.js",
   "utils/authTokens.js",
   "utils/cookies.js",

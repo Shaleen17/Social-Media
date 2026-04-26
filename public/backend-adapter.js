@@ -99,6 +99,7 @@
   let _liveRefreshTimer = null;
   let _liveRefreshInFlight = false;
   const BOOT_CACHE_KEY = "backendBootCache";
+  const BOOT_CACHE_VERSION = "20260426-user-visibility-fix-1";
   const BOOT_CACHE_TTL = 1000 * 60 * 60 * 24 * 30;
   const LIVE_REFRESH_INTERVAL_MS = 15000;
 
@@ -138,6 +139,7 @@
 
   function writeBootCache() {
     Store.s(BOOT_CACHE_KEY, {
+      version: BOOT_CACHE_VERSION,
       ts: Date.now(),
       users: _cachedUsers,
       posts: _cachedPosts,
@@ -199,6 +201,10 @@
   function hydrateBootCache() {
     const cached = Store.g(BOOT_CACHE_KEY);
     if (!cached || typeof cached !== "object") return false;
+    if (cached.version !== BOOT_CACHE_VERSION) {
+      Store.d(BOOT_CACHE_KEY);
+      return false;
+    }
     if (
       typeof cached.ts === "number" &&
       Date.now() - cached.ts > BOOT_CACHE_TTL
@@ -576,6 +582,26 @@
     );
   }
 
+  function findEmbeddedUserById(id) {
+    const idStr = (id || "").toString();
+    if (!idStr) return null;
+    const pools = [_cachedPosts, _cachedVideos, _cachedVidStories];
+    for (const pool of pools) {
+      const match = (pool || []).find((item) => {
+        const user = item?.user;
+        const userId = (user?.id || user?._id || item?.uid || "").toString();
+        return user && userId === idStr;
+      });
+      if (match?.user) {
+        return {
+          id: match.user.id || match.user._id || idStr,
+          ...match.user,
+        };
+      }
+    }
+    return null;
+  }
+
   function mergeSearchResultsIntoCaches(result) {
     if (!result || typeof result !== "object") return;
     if (Array.isArray(result.users) && result.users.length) {
@@ -606,6 +632,14 @@
   // Override getUsers/getPosts/etc to use cache
   // =============================================
   window.getUsers = function () {
+    const embeddedUsers = [
+      ...(_cachedPosts || []).map((post) => post?.user).filter(Boolean),
+      ...(_cachedVideos || []).map((video) => video?.user).filter(Boolean),
+      ...(_cachedVidStories || []).map((story) => story?.user).filter(Boolean),
+    ];
+    if (embeddedUsers.length) {
+      _cachedUsers = mergeUniqueById(_cachedUsers, embeddedUsers);
+    }
     return _cachedUsers;
   };
   window.getPosts = function () {
@@ -624,10 +658,17 @@
   window.getUser = function (id) {
     if (!id) return null;
     const idStr = id.toString();
-    return _cachedUsers.find((u) => {
+    const cachedUser = _cachedUsers.find((u) => {
       const uid = (u.id || u._id || "").toString();
       return uid === idStr;
-    }) || null;
+    });
+    if (cachedUser) return cachedUser;
+    const embeddedUser = findEmbeddedUserById(idStr);
+    if (embeddedUser) {
+      _cachedUsers = mergeUniqueById(_cachedUsers, [embeddedUser]);
+      return _cachedUsers.find((u) => (u.id || u._id || "").toString() === idStr) || embeddedUser;
+    }
+    return null;
   };
 
   window.getPost = function (id) {
@@ -1839,12 +1880,18 @@
     try {
       const [users, posts, videos, vidStories] = await Promise.all([
         API.getAllUsers().catch(() => []),
-        API.getPosts().catch(() => []),
-        API.getVideos().catch(() => []),
+        (API.getAllPosts ? API.getAllPosts("forYou") : API.getPosts()).catch(() => []),
+        (API.getAllVideos ? API.getAllVideos() : API.getVideos()).catch(() => []),
         API.getVideoStories().catch(() => []),
       ]);
 
-      _cachedUsers = users || [];
+      const embeddedUsers = [
+        ...(posts || []).map((post) => post?.user).filter(Boolean),
+        ...(videos || []).map((video) => video?.user).filter(Boolean),
+        ...(vidStories || []).map((story) => story?.user).filter(Boolean),
+      ];
+
+      _cachedUsers = mergeUniqueById(users || [], embeddedUsers);
       _cachedPosts = posts || [];
 
       _cachedVideos = (videos || []).filter((v) => !v.live);

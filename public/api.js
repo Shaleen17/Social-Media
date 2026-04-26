@@ -317,6 +317,40 @@ const API = (() => {
     throw lastError;
   }
 
+  function mergeUniqueById(existing, incoming) {
+    const map = new Map();
+    [...(existing || []), ...(incoming || [])].forEach((item) => {
+      const key = (item?.id || item?._id || "").toString();
+      if (!key) return;
+      map.set(key, { ...(map.get(key) || {}), ...(item || {}) });
+    });
+    return Array.from(map.values());
+  }
+
+  async function fetchAllPagedResults(fetchPage, options = {}) {
+    const pageSize = Math.max(1, Number(options.pageSize) || 50);
+    const maxPages = Math.max(1, Number(options.maxPages) || 50);
+    let page = 1;
+    let combined = [];
+
+    while (page <= maxPages) {
+      let items;
+      try {
+        items = await fetchPage(page, pageSize);
+      } catch (err) {
+        if (combined.length) break;
+        throw err;
+      }
+      const list = Array.isArray(items) ? items : [];
+      if (!list.length) break;
+      combined = mergeUniqueById(combined, list);
+      if (list.length < pageSize) break;
+      page += 1;
+    }
+
+    return combined;
+  }
+
   async function uploadFile(file) {
     const token = getToken();
     const formData = new FormData();
@@ -501,8 +535,22 @@ const API = (() => {
     },
 
     // Posts
-    async getPosts(tab = "forYou", page = 1) {
-      return request(`/posts?tab=${tab}&page=${page}`);
+    async getPosts(tab = "forYou", page = 1, limit) {
+      const params = new URLSearchParams();
+      if (tab) params.set("tab", tab);
+      params.set("page", String(page || 1));
+      if (limit) params.set("limit", String(limit));
+      return request(`/posts?${params.toString()}`);
+    },
+
+    async getAllPosts(tab = "forYou") {
+      return fetchAllPagedResults(
+        (page, pageSize) => this.getPosts(tab, page, pageSize),
+        {
+          pageSize: 50,
+          maxPages: 80,
+        }
+      );
     },
 
     async getPost(id) {
@@ -602,7 +650,13 @@ const API = (() => {
     },
 
     async getAllUsers() {
-      return request("/users/all");
+      return fetchAllPagedResults(
+        (page, pageSize) => request(`/users/all?page=${page}&limit=${pageSize}`),
+        {
+          pageSize: 100,
+          maxPages: 50,
+        }
+      );
     },
 
     async getFollowers(userId) {
@@ -696,11 +750,23 @@ const API = (() => {
     },
 
     // Videos
-    async getVideos(category, tab, page = 1) {
-      let q = `?page=${page}`;
-      if (category && category !== "All") q += `&category=${category}`;
-      if (tab) q += `&tab=${tab}`;
-      return request(`/videos${q}`);
+    async getVideos(category, tab, page = 1, limit) {
+      const params = new URLSearchParams();
+      params.set("page", String(page || 1));
+      if (limit) params.set("limit", String(limit));
+      if (category && category !== "All") params.set("category", category);
+      if (tab) params.set("tab", tab);
+      return request(`/videos?${params.toString()}`);
+    },
+
+    async getAllVideos(category, tab) {
+      return fetchAllPagedResults(
+        (page, pageSize) => this.getVideos(category, tab, page, pageSize),
+        {
+          pageSize: 50,
+          maxPages: 60,
+        }
+      );
     },
 
     async getVideo(id) {

@@ -3,14 +3,21 @@ const Post = require("../models/Post");
 const User = require("../models/User");
 const Video = require("../models/Video");
 const { optionalAuth } = require("../middleware/auth");
+const {
+  applyRedisCacheHeader,
+  buildRedisCacheKey,
+  withRedisJsonCache,
+} = require("../services/redisCache");
 const { cleanString, getPagination } = require("../utils/validation");
 const {
   buildSearchText,
   extractHashtags,
   normalizeHashtagTag,
 } = require("../utils/contentFeatures");
+const { getVisibleAccountStatusFilter } = require("../utils/userVisibility");
 
 const router = express.Router();
+const SEARCH_VISIBILITY_CACHE_VERSION = "legacy-active-v1";
 
 function escapeRegex(value = "") {
   return String(value).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -186,130 +193,147 @@ router.get("/", optionalAuth, async (req, res, next) => {
       });
     }
 
-    const safeRegex = new RegExp(escapeRegex(q), "i");
-    const userQuery =
-      tab && tab !== "all" && tab !== "users"
-        ? Promise.resolve([])
-        : User.find({
-            accountStatus: "active",
-            $or: [
-              { name: safeRegex },
-              { handle: safeRegex },
-              { bio: safeRegex },
-              { location: safeRegex },
-              { spiritualName: safeRegex },
-              { homeMandir: safeRegex },
-              { favoriteDeity: safeRegex },
-              { spiritualPath: safeRegex },
-              { interests: safeRegex },
-            ],
-          })
-            .select(
-              "name handle avatar bio location website verified followers spiritualName homeMandir favoriteDeity spiritualPath interests spokenLanguages seva yatraWishlist sankalp"
-            )
-            .limit(limit * 2)
-            .lean();
-
-    const postQuery =
-      tab && tab !== "all" && tab !== "posts" && tab !== "tags"
-        ? Promise.resolve([])
-        : Post.find({
-            $and: [
-              APPROVED_CONTENT_FILTER,
-              {
+    const cacheKey = buildRedisCacheKey(
+      "search",
+      "full",
+      SEARCH_VISIBILITY_CACHE_VERSION,
+      q.toLowerCase(),
+      tab || "all",
+      limit
+    );
+    const { status: cacheStatus, value } = await withRedisJsonCache(
+      cacheKey,
+      async () => {
+        const safeRegex = new RegExp(escapeRegex(q), "i");
+        const userQuery =
+          tab && tab !== "all" && tab !== "users"
+            ? Promise.resolve([])
+            : User.find({
+                ...getVisibleAccountStatusFilter(),
                 $or: [
-                  { text: safeRegex },
-                  { hashtags: safeRegex },
-                  { searchText: safeRegex },
+                  { name: safeRegex },
+                  { handle: safeRegex },
+                  { bio: safeRegex },
+                  { location: safeRegex },
+                  { spiritualName: safeRegex },
+                  { homeMandir: safeRegex },
+                  { favoriteDeity: safeRegex },
+                  { spiritualPath: safeRegex },
+                  { interests: safeRegex },
                 ],
-              },
-            ],
-          })
-            .populate("user", "name handle avatar verified")
-            .populate("comments.user", "name handle avatar")
-            .sort({ createdAt: -1 })
-            .limit(limit * 2)
-            .lean();
+              })
+                .select(
+                  "name handle avatar bio location website verified followers spiritualName homeMandir favoriteDeity spiritualPath interests spokenLanguages seva yatraWishlist sankalp"
+                )
+                .limit(limit * 2)
+                .lean();
 
-    const videoQuery =
-      tab && !["all", "reels", "bhajans", "topics", "tags"].includes(tab)
-        ? Promise.resolve([])
-        : Video.find({
-            $and: [
-              APPROVED_CONTENT_FILTER,
-              {
-                $or: [
-                  { title: safeRegex },
-                  { description: safeRegex },
-                  { category: safeRegex },
-                  { hashtags: safeRegex },
-                  { searchText: safeRegex },
+        const postQuery =
+          tab && tab !== "all" && tab !== "posts" && tab !== "tags"
+            ? Promise.resolve([])
+            : Post.find({
+                $and: [
+                  APPROVED_CONTENT_FILTER,
+                  {
+                    $or: [
+                      { text: safeRegex },
+                      { hashtags: safeRegex },
+                      { searchText: safeRegex },
+                    ],
+                  },
                 ],
-              },
-            ],
-          })
-            .populate("user", "name handle avatar verified")
-            .sort({ createdAt: -1 })
-            .limit(limit * 2)
-            .lean();
+              })
+                .populate("user", "name handle avatar verified")
+                .populate("comments.user", "name handle avatar")
+                .sort({ createdAt: -1 })
+                .limit(limit * 2)
+                .lean();
 
-    const [users, posts, videos] = await Promise.all([
-      userQuery,
-      postQuery,
-      videoQuery,
-    ]);
+        const videoQuery =
+          tab && !["all", "reels", "bhajans", "topics", "tags"].includes(tab)
+            ? Promise.resolve([])
+            : Video.find({
+                $and: [
+                  APPROVED_CONTENT_FILTER,
+                  {
+                    $or: [
+                      { title: safeRegex },
+                      { description: safeRegex },
+                      { category: safeRegex },
+                      { hashtags: safeRegex },
+                      { searchText: safeRegex },
+                    ],
+                  },
+                ],
+              })
+                .populate("user", "name handle avatar verified")
+                .sort({ createdAt: -1 })
+                .limit(limit * 2)
+                .lean();
 
-    const rankedUsers = users
-      .map((user) => ({
-        score: scoreMatch(q, [
-          user.name,
-          user.handle,
-          user.bio,
-          user.location,
-          user.spiritualName,
-          user.homeMandir,
-          user.favoriteDeity,
-          user.spiritualPath,
-          user.interests,
-        ]),
-        value: mapUser(user),
-      }))
-      .sort((left, right) => right.score - left.score || left.value.name.localeCompare(right.value.name))
-      .slice(0, limit)
-      .map((item) => item.value);
+        const [users, posts, videos] = await Promise.all([
+          userQuery,
+          postQuery,
+          videoQuery,
+        ]);
 
-    const rankedPosts = posts
-      .map((post) => ({
-        score: scoreMatch(q, [post.text, ...(post.hashtags || [])]),
-        value: mapPost(post),
-      }))
-      .sort((left, right) => right.score - left.score || right.value.ts - left.value.ts)
-      .slice(0, limit)
-      .map((item) => item.value);
+        const rankedUsers = users
+          .map((user) => ({
+            score: scoreMatch(q, [
+              user.name,
+              user.handle,
+              user.bio,
+              user.location,
+              user.spiritualName,
+              user.homeMandir,
+              user.favoriteDeity,
+              user.spiritualPath,
+              user.interests,
+            ]),
+            value: mapUser(user),
+          }))
+          .sort((left, right) => right.score - left.score || left.value.name.localeCompare(right.value.name))
+          .slice(0, limit)
+          .map((item) => item.value);
 
-    const rankedVideos = videos
-      .map((video) => ({
-        score: scoreMatch(q, [
-          video.title,
-          video.description,
-          video.category,
-          ...(video.hashtags || []),
-        ]),
-        value: mapVideo(video),
-      }))
-      .sort((left, right) => right.score - left.score || right.value.ts - left.value.ts)
-      .slice(0, limit)
-      .map((item) => item.value);
+        const rankedPosts = posts
+          .map((post) => ({
+            score: scoreMatch(q, [post.text, ...(post.hashtags || [])]),
+            value: mapPost(post),
+          }))
+          .sort((left, right) => right.score - left.score || right.value.ts - left.value.ts)
+          .slice(0, limit)
+          .map((item) => item.value);
 
+        const rankedVideos = videos
+          .map((video) => ({
+            score: scoreMatch(q, [
+              video.title,
+              video.description,
+              video.category,
+              ...(video.hashtags || []),
+            ]),
+            value: mapVideo(video),
+          }))
+          .sort((left, right) => right.score - left.score || right.value.ts - left.value.ts)
+          .slice(0, limit)
+          .map((item) => item.value);
+
+        return {
+          query: q,
+          tab: tab || "all",
+          users: rankedUsers,
+          posts: rankedPosts,
+          videos: rankedVideos,
+          hashtags: aggregateHashtags(q, posts, videos, Math.max(8, limit)),
+        };
+      },
+      { ttlSeconds: 45 }
+    );
+
+    applyRedisCacheHeader(res, cacheStatus);
     res.setHeader("Cache-Control", "private, max-age=30, stale-while-revalidate=120");
-    res.json({
-      query: q,
-      tab: tab || "all",
-      users: rankedUsers,
-      posts: rankedPosts,
-      videos: rankedVideos,
-      hashtags: aggregateHashtags(q, posts, videos, Math.max(8, limit)),
-    });
+    res.json(value);
   } catch (err) {
     next(err);
   }
@@ -321,21 +345,30 @@ router.get("/hashtags/trending", optionalAuth, async (req, res, next) => {
       defaultLimit: 18,
       maxLimit: 40,
     });
-    const [posts, videos] = await Promise.all([
-      Post.find(APPROVED_CONTENT_FILTER)
-        .sort({ createdAt: -1 })
-        .limit(250)
-        .select("text hashtags")
-        .lean(),
-      Video.find(APPROVED_CONTENT_FILTER)
-        .sort({ createdAt: -1 })
-        .limit(250)
-        .select("title description hashtags")
-        .lean(),
-    ]);
+    const cacheKey = buildRedisCacheKey("search", "hashtags", "trending", limit);
+    const { status: cacheStatus, value } = await withRedisJsonCache(
+      cacheKey,
+      async () => {
+        const [posts, videos] = await Promise.all([
+          Post.find(APPROVED_CONTENT_FILTER)
+            .sort({ createdAt: -1 })
+            .limit(250)
+            .select("text hashtags")
+            .lean(),
+          Video.find(APPROVED_CONTENT_FILTER)
+            .sort({ createdAt: -1 })
+            .limit(250)
+            .select("title description hashtags")
+            .lean(),
+        ]);
+        return aggregateHashtags("", posts, videos, limit);
+      },
+      { ttlSeconds: 120 }
+    );
 
+    applyRedisCacheHeader(res, cacheStatus);
     res.setHeader("Cache-Control", "public, max-age=120, stale-while-revalidate=600");
-    res.json(aggregateHashtags("", posts, videos, limit));
+    res.json(value);
   } catch (err) {
     next(err);
   }

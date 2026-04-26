@@ -15,6 +15,12 @@ const { auth, optionalAuth } = require("../middleware/auth");
 const { createRankedNotification } = require("../services/notificationService");
 const { recordAnalyticsEventSafe } = require("../services/analyticsService");
 const {
+  applyRedisCacheHeader,
+  buildRedisCacheKey,
+  invalidateRedisCacheNamespaces,
+  withRedisJsonCache,
+} = require("../services/redisCache");
+const {
   assertObjectId,
   cleanHttpUrl,
   cleanMediaUrl,
@@ -22,8 +28,14 @@ const {
   getPagination,
   validateObjectIdParam,
 } = require("../utils/validation");
+const { getVisibleAccountStatusFilter } = require("../utils/userVisibility");
 
 const router = express.Router();
+const USER_VISIBILITY_CACHE_VERSION = "legacy-active-v1";
+
+function invalidateUserCaches(namespaces = ["users", "search"]) {
+  return invalidateRedisCacheNamespaces(namespaces).catch(() => 0);
+}
 
 function normalizeStringList(values) {
   if (!Array.isArray(values)) return [];
@@ -114,34 +126,46 @@ router.get("/search", optionalAuth, async (req, res, next) => {
     if (!q) return res.json([]);
     const safeRegex = escapeRegex(q);
     const { limit } = getPagination(req.query, { defaultLimit: 20, maxLimit: 50 });
-
-    const users = await User.find({
-      accountStatus: "active",
-      $or: USER_SEARCH_FIELDS.map((field) => ({
-        [field]: { $regex: safeRegex, $options: "i" },
-      })),
-    })
-      .select(`name handle avatar bio location website verified followers privateAccount blockedUsers notificationSettings ${PROFILE_EXTRA_SELECT}`)
-      .limit(limit)
-      .lean();
-
-    res.json(
-      users.map((u) => ({
-        id: u._id,
-        name: u.name,
-        handle: u.handle,
-        avatar: u.avatar,
-        bio: u.bio,
-        location: u.location || "",
-        website: u.website || "",
-        ...pickProfileExtras(u),
-        privateAccount: !!u.privateAccount,
-        blockedUsers: (u.blockedUsers || []).map((item) => item.toString()),
-        notificationSettings: sanitizeNotificationSettings(u.notificationSettings),
-        verified: u.verified,
-        followersCount: (u.followers || []).length,
-      }))
+    const cacheKey = buildRedisCacheKey(
+      "users",
+      "search",
+      USER_VISIBILITY_CACHE_VERSION,
+      q.toLowerCase(),
+      limit
     );
+    const { status: cacheStatus, value } = await withRedisJsonCache(
+      cacheKey,
+      async () => {
+        const users = await User.find({
+          ...getVisibleAccountStatusFilter(),
+          $or: USER_SEARCH_FIELDS.map((field) => ({
+            [field]: { $regex: safeRegex, $options: "i" },
+          })),
+        })
+          .select(`name handle avatar bio location website verified followers privateAccount blockedUsers notificationSettings ${PROFILE_EXTRA_SELECT}`)
+          .limit(limit)
+          .lean();
+
+        return users.map((u) => ({
+          id: u._id,
+          name: u.name,
+          handle: u.handle,
+          avatar: u.avatar,
+          bio: u.bio,
+          location: u.location || "",
+          website: u.website || "",
+          ...pickProfileExtras(u),
+          privateAccount: !!u.privateAccount,
+          blockedUsers: (u.blockedUsers || []).map((item) => item.toString()),
+          notificationSettings: sanitizeNotificationSettings(u.notificationSettings),
+          verified: u.verified,
+          followersCount: (u.followers || []).length,
+        }));
+      },
+      { ttlSeconds: 90 }
+    );
+    applyRedisCacheHeader(res, cacheStatus);
+    res.json(value);
   } catch (err) {
     next(err);
   }
@@ -154,37 +178,51 @@ router.get("/all", optionalAuth, async (req, res, next) => {
       defaultLimit: 100,
       maxLimit: 100,
     });
-    const users = await User.find({ accountStatus: "active" })
-      .sort({ createdAt: -1 })
-      .skip(skip)
-      .select(`name handle avatar bio verified followers following followedMandirs followedSants location website joined privateAccount blockedUsers notificationSettings ${PROFILE_EXTRA_SELECT}`)
-      .limit(limit)
-      .lean();
+    const cacheKey = buildRedisCacheKey(
+      "users",
+      "all",
+      USER_VISIBILITY_CACHE_VERSION,
+      page,
+      limit
+    );
+    const { status: cacheStatus, value } = await withRedisJsonCache(
+      cacheKey,
+      async () => {
+        const users = await User.find(getVisibleAccountStatusFilter())
+          .sort({ createdAt: -1 })
+          .skip(skip)
+          .select(`name handle avatar bio verified followers following followedMandirs followedSants location website joined privateAccount blockedUsers notificationSettings ${PROFILE_EXTRA_SELECT}`)
+          .limit(limit)
+          .lean();
 
+        return users.map((u) => ({
+          id: u._id,
+          name: u.name,
+          handle: u.handle,
+          avatar: u.avatar,
+          bio: u.bio,
+          location: u.location || "",
+          website: u.website || "",
+          ...pickProfileExtras(u),
+          verified: u.verified,
+          followers: (u.followers || []).map((f) => f.toString()),
+          following: (u.following || []).map((f) => f.toString()),
+          followedMandirs: normalizeStringList(u.followedMandirs),
+          followedSants: normalizeStringList(u.followedSants),
+          privateAccount: !!u.privateAccount,
+          blockedUsers: (u.blockedUsers || []).map((item) => item.toString()),
+          notificationSettings: sanitizeNotificationSettings(u.notificationSettings),
+          joined: u.joined || "",
+        }));
+      },
+      { ttlSeconds: 120 }
+    );
+
+    applyRedisCacheHeader(res, cacheStatus);
     res.setHeader("X-Page", String(page));
     res.setHeader("X-Limit", String(limit));
-    res.setHeader("X-Has-More", String(users.length === limit));
-    res.json(
-      users.map((u) => ({
-        id: u._id,
-        name: u.name,
-        handle: u.handle,
-        avatar: u.avatar,
-        bio: u.bio,
-        location: u.location || "",
-        website: u.website || "",
-        ...pickProfileExtras(u),
-        verified: u.verified,
-        followers: (u.followers || []).map((f) => f.toString()),
-        following: (u.following || []).map((f) => f.toString()),
-        followedMandirs: normalizeStringList(u.followedMandirs),
-        followedSants: normalizeStringList(u.followedSants),
-        privateAccount: !!u.privateAccount,
-        blockedUsers: (u.blockedUsers || []).map((item) => item.toString()),
-        notificationSettings: sanitizeNotificationSettings(u.notificationSettings),
-        joined: u.joined || "",
-      }))
-    );
+    res.setHeader("X-Has-More", String(value.length === limit));
+    res.json(value);
   } catch (err) {
     next(err);
   }
@@ -193,35 +231,45 @@ router.get("/all", optionalAuth, async (req, res, next) => {
 // GET /api/users/:id — get profile
 router.get("/:id([0-9a-fA-F]{24})", validateObjectIdParam("id"), optionalAuth, async (req, res, next) => {
   try {
-    const user = await User.findById(req.params.id)
-      .select("-password")
-      .lean();
+    const cacheKey = buildRedisCacheKey("users", "profile", req.params.id);
+    const { status: cacheStatus, value: user } = await withRedisJsonCache(
+      cacheKey,
+      async () => {
+        const found = await User.findById(req.params.id)
+          .select("-password")
+          .lean();
+        if (!found) return null;
+
+        const postsCount = await Post.countDocuments({ user: found._id });
+
+        return {
+          id: found._id,
+          name: found.name,
+          handle: found.handle,
+          email: found.email,
+          bio: found.bio,
+          location: found.location,
+          website: found.website,
+          ...pickProfileExtras(found),
+          avatar: found.avatar,
+          banner: found.banner,
+          verified: found.verified,
+          joined: found.joined,
+          followers: (found.followers || []).map((f) => f.toString()),
+          following: (found.following || []).map((f) => f.toString()),
+          followedMandirs: normalizeStringList(found.followedMandirs),
+          followedSants: normalizeStringList(found.followedSants),
+          privateAccount: !!found.privateAccount,
+          blockedUsers: (found.blockedUsers || []).map((item) => item.toString()),
+          notificationSettings: sanitizeNotificationSettings(found.notificationSettings),
+          postsCount,
+        };
+      },
+      { ttlSeconds: 120 }
+    );
+    applyRedisCacheHeader(res, cacheStatus);
     if (!user) return res.status(404).json({ error: "User not found" });
-
-    const postsCount = await Post.countDocuments({ user: user._id });
-
-    res.json({
-      id: user._id,
-      name: user.name,
-      handle: user.handle,
-      email: user.email,
-      bio: user.bio,
-      location: user.location,
-      website: user.website,
-      ...pickProfileExtras(user),
-      avatar: user.avatar,
-      banner: user.banner,
-      verified: user.verified,
-      joined: user.joined,
-      followers: (user.followers || []).map((f) => f.toString()),
-      following: (user.following || []).map((f) => f.toString()),
-      followedMandirs: normalizeStringList(user.followedMandirs),
-      followedSants: normalizeStringList(user.followedSants),
-      privateAccount: !!user.privateAccount,
-      blockedUsers: (user.blockedUsers || []).map((item) => item.toString()),
-      notificationSettings: sanitizeNotificationSettings(user.notificationSettings),
-      postsCount,
-    });
+    res.json(user);
   } catch (err) {
     next(err);
   }
@@ -433,6 +481,7 @@ router.delete("/account", auth, async (req, res, next) => {
     user.referralCode = null;
     user.referredBy = null;
     await user.save();
+    invalidateUserCaches(["users", "search", "posts", "videos"]);
 
     res.json({
       success: true,
@@ -504,6 +553,7 @@ router.put("/:id([0-9a-fA-F]{24})", validateObjectIdParam("id"), auth, async (re
       new: true,
     }).select("-password");
 
+    invalidateUserCaches();
     res.json(user.toJSON());
   } catch (err) {
     next(err);
@@ -553,6 +603,7 @@ router.put("/:id([0-9a-fA-F]{24})/follow", validateObjectIdParam("id"), auth, as
 
     await me.save();
     await targetUser.save();
+    invalidateUserCaches();
     await recordAnalyticsEventSafe({
       req,
       type: "interaction",
@@ -583,23 +634,33 @@ router.get("/:id([0-9a-fA-F]{24})/followers", validateObjectIdParam("id"), async
       defaultLimit: 50,
       maxLimit: 100,
     });
-    const user = await User.findById(req.params.id)
-      .populate("followers", "name handle avatar verified")
-      .lean();
-    if (!user) return res.status(404).json({ error: "User not found" });
-    const followers = (user.followers || []).slice(skip, skip + limit);
+    const cacheKey = buildRedisCacheKey("users", "followers", req.params.id, page, limit);
+    const { status: cacheStatus, value } = await withRedisJsonCache(
+      cacheKey,
+      async () => {
+        const user = await User.findById(req.params.id)
+          .populate("followers", "name handle avatar verified")
+          .lean();
+        if (!user) return null;
+        return {
+          total: (user.followers || []).length,
+          followers: (user.followers || []).slice(skip, skip + limit).map((f) => ({
+            id: f._id,
+            name: f.name,
+            handle: f.handle,
+            avatar: f.avatar,
+            verified: f.verified,
+          })),
+        };
+      },
+      { ttlSeconds: 120 }
+    );
+    applyRedisCacheHeader(res, cacheStatus);
+    if (!value) return res.status(404).json({ error: "User not found" });
     res.setHeader("X-Page", String(page));
     res.setHeader("X-Limit", String(limit));
-    res.setHeader("X-Has-More", String((user.followers || []).length > skip + limit));
-    res.json(
-      followers.map((f) => ({
-        id: f._id,
-        name: f.name,
-        handle: f.handle,
-        avatar: f.avatar,
-        verified: f.verified,
-      }))
-    );
+    res.setHeader("X-Has-More", String(value.total > skip + limit));
+    res.json(value.followers);
   } catch (err) {
     next(err);
   }
@@ -612,23 +673,33 @@ router.get("/:id([0-9a-fA-F]{24})/following", validateObjectIdParam("id"), async
       defaultLimit: 50,
       maxLimit: 100,
     });
-    const user = await User.findById(req.params.id)
-      .populate("following", "name handle avatar verified")
-      .lean();
-    if (!user) return res.status(404).json({ error: "User not found" });
-    const following = (user.following || []).slice(skip, skip + limit);
+    const cacheKey = buildRedisCacheKey("users", "following", req.params.id, page, limit);
+    const { status: cacheStatus, value } = await withRedisJsonCache(
+      cacheKey,
+      async () => {
+        const user = await User.findById(req.params.id)
+          .populate("following", "name handle avatar verified")
+          .lean();
+        if (!user) return null;
+        return {
+          total: (user.following || []).length,
+          following: (user.following || []).slice(skip, skip + limit).map((f) => ({
+            id: f._id,
+            name: f.name,
+            handle: f.handle,
+            avatar: f.avatar,
+            verified: f.verified,
+          })),
+        };
+      },
+      { ttlSeconds: 120 }
+    );
+    applyRedisCacheHeader(res, cacheStatus);
+    if (!value) return res.status(404).json({ error: "User not found" });
     res.setHeader("X-Page", String(page));
     res.setHeader("X-Limit", String(limit));
-    res.setHeader("X-Has-More", String((user.following || []).length > skip + limit));
-    res.json(
-      following.map((f) => ({
-        id: f._id,
-        name: f.name,
-        handle: f.handle,
-        avatar: f.avatar,
-        verified: f.verified,
-      }))
-    );
+    res.setHeader("X-Has-More", String(value.total > skip + limit));
+    res.json(value.following);
   } catch (err) {
     next(err);
   }

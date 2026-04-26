@@ -7,13 +7,24 @@
   const PRIVACY_MODAL_ID = "tsPrivacyModal";
   const COOKIE_BANNER_DELAY_MS = 60 * 1000;
   const HEARTBEAT_MS = 30 * 1000;
+  const IDLE_MS = 45 * 1000;
+  const PAUSE_SIGNAL_MS = 12 * 1000;
   let cookieConsentTimerId = 0;
   let heartbeatTimerId = 0;
+  let idleTimerId = 0;
   let trackedPage = "home";
   let pageEnteredAt = Date.now();
   let maxScrollDepth = 0;
+  let lastActivityAt = Date.now();
+  let sessionIsIdle = false;
+  let lastTrackedScrollDepth = 0;
+  let lastScrollSignalAt = 0;
   let lastTrackedSearch = { query: "", at: 0 };
+  let lastTrackedTypingAt = 0;
+  let hoverIntentTimerId = 0;
+  let hoverIntentTarget = null;
   const trackedVideos = new WeakSet();
+  const trackedVideoTimers = new WeakMap();
   const SUPPORTED_LANGUAGES = {
     en: "english",
     hi: "hindi",
@@ -177,10 +188,52 @@
     maxScrollDepth = Math.max(maxScrollDepth, computeScrollDepth());
   }
 
+  function clearIdleTimer() {
+    if (!idleTimerId) return;
+    global.clearTimeout(idleTimerId);
+    idleTimerId = 0;
+  }
+
+  function scheduleIdleCheck() {
+    clearIdleTimer();
+    idleTimerId = global.setTimeout(() => {
+      if (document.visibilityState !== "visible" || sessionIsIdle) return;
+      sessionIsIdle = true;
+      safeTrack("interaction", "session_idle", {
+        page: trackedPage || getCurrentPageName(),
+        idleSeconds: Math.round((Date.now() - lastActivityAt) / 1000),
+      });
+    }, IDLE_MS);
+  }
+
+  function noteUserActivity(source, extra = {}) {
+    const now = Date.now();
+    const pauseGapMs = now - lastActivityAt;
+    if (pauseGapMs >= PAUSE_SIGNAL_MS && pauseGapMs < 5 * 60 * 1000) {
+      safeTrack("interaction", "attention_pause", {
+        page: trackedPage || getCurrentPageName(),
+        pauseSeconds: Math.round(pauseGapMs / 1000),
+        resumedBy: source,
+        ...extra,
+      });
+    }
+    if (sessionIsIdle) {
+      sessionIsIdle = false;
+      safeTrack("interaction", "session_resumed", {
+        page: trackedPage || getCurrentPageName(),
+        resumedBy: source,
+      });
+    }
+    lastActivityAt = now;
+    scheduleIdleCheck();
+  }
+
   function resetTrackedPage(page) {
     trackedPage = page || getCurrentPageName();
     pageEnteredAt = Date.now();
     maxScrollDepth = computeScrollDepth();
+    lastTrackedScrollDepth = maxScrollDepth;
+    lastScrollSignalAt = 0;
   }
 
   function flushPageDuration(reason, extra = {}) {
@@ -221,11 +274,13 @@
 
   function installLifecycleTracking() {
     resetTrackedPage(getCurrentPageName());
+    lastActivityAt = Date.now();
     safeTrack("interaction", "session_started", {
       page: trackedPage,
       entryPage: trackedPage,
     });
     startHeartbeatLoop();
+    scheduleIdleCheck();
 
     if (typeof global.gp === "function" && !global.gp.__tsFounderTelemetry) {
       const originalGp = global.gp;
@@ -244,6 +299,7 @@
         }
         const result = originalGp.apply(this, arguments);
         resetTrackedPage(page || getCurrentPageName());
+        noteUserActivity("navigation", { toPage: page || getCurrentPageName() });
         return result;
       };
       wrappedGp.__tsFounderTelemetry = true;
@@ -255,9 +311,11 @@
       () => {
         if (document.visibilityState === "hidden") {
           flushPageDuration("hidden");
+          clearIdleTimer();
           return;
         }
         resetTrackedPage(getCurrentPageName());
+        noteUserActivity("visibility");
       },
       { passive: true }
     );
@@ -274,6 +332,43 @@
       "scroll",
       () => {
         updateScrollDepth();
+        const now = Date.now();
+        const currentDepth = computeScrollDepth();
+        const deltaDepth = Math.abs(currentDepth - lastTrackedScrollDepth);
+        const deltaSeconds = Math.max(1, Math.round((now - (lastScrollSignalAt || now)) / 1000));
+        if (!lastScrollSignalAt || now - lastScrollSignalAt >= 6000 || deltaDepth >= 12) {
+          safeTrack("interaction", "scroll_activity", {
+            page: trackedPage || getCurrentPageName(),
+            currentScrollDepth: currentDepth,
+            maxScrollDepth,
+            deltaDepth,
+            scrollSpeed: Number((deltaDepth / deltaSeconds).toFixed(1)),
+          });
+          lastScrollSignalAt = now;
+          lastTrackedScrollDepth = currentDepth;
+        }
+        noteUserActivity("scroll", {
+          currentScrollDepth: currentDepth,
+        });
+      },
+      { passive: true }
+    );
+
+    ["pointerdown", "touchstart", "keydown"].forEach((eventName) => {
+      global.addEventListener(
+        eventName,
+        () => {
+          noteUserActivity(eventName);
+        },
+        { passive: true }
+      );
+    });
+
+    global.addEventListener(
+      "mousemove",
+      () => {
+        if (Date.now() - lastActivityAt < 2500) return;
+        noteUserActivity("mousemove");
       },
       { passive: true }
     );
@@ -384,9 +479,47 @@
       started: false,
       completed: false,
       milestones: new Set(),
+      lastPlayStartedAt: 0,
+      lastPausedAt: 0,
+      lastKnownTime: 0,
     };
 
+    function stopHeartbeat() {
+      const existing = trackedVideoTimers.get(video);
+      if (existing) {
+        global.clearInterval(existing);
+        trackedVideoTimers.delete(video);
+      }
+    }
+
+    function startHeartbeat() {
+      stopHeartbeat();
+      const timerId = global.setInterval(() => {
+        if (video.paused || video.ended || document.visibilityState !== "visible") return;
+        const info = getVideoAnalyticsInfo(video);
+        safeTrack("interaction", "video_playback_heartbeat", {
+          page: getCurrentPageName(),
+          ...info,
+          currentTimeSeconds: Math.round(video.currentTime || 0),
+          durationSeconds: Number.isFinite(video.duration) ? Math.round(video.duration) : 0,
+        });
+      }, 15000);
+      trackedVideoTimers.set(video, timerId);
+    }
+
     video.addEventListener("play", () => {
+      if (state.lastKnownTime && video.currentTime + 3 < state.lastKnownTime) {
+        const info = getVideoAnalyticsInfo(video);
+        safeTrack("interaction", "video_replay", {
+          page: getCurrentPageName(),
+          ...info,
+          previousTimeSeconds: Math.round(state.lastKnownTime),
+          currentTimeSeconds: Math.round(video.currentTime || 0),
+        });
+      }
+      state.lastPlayStartedAt = Date.now();
+      state.lastPausedAt = 0;
+      startHeartbeat();
       if (state.started) return;
       state.started = true;
       const info = getVideoAnalyticsInfo(video);
@@ -397,7 +530,46 @@
       });
     });
 
+    video.addEventListener("pause", () => {
+      state.lastKnownTime = Math.max(state.lastKnownTime, Number(video.currentTime) || 0);
+      stopHeartbeat();
+      if (video.ended) return;
+      const info = getVideoAnalyticsInfo(video);
+      const pauseSeconds = state.lastPlayStartedAt
+        ? Math.max(0, Math.round((Date.now() - state.lastPlayStartedAt) / 1000))
+        : 0;
+      state.lastPausedAt = Date.now();
+      safeTrack("interaction", "video_paused", {
+        page: getCurrentPageName(),
+        ...info,
+        currentTimeSeconds: Math.round(video.currentTime || 0),
+        pauseSeconds,
+      });
+    });
+
+    video.addEventListener("seeked", () => {
+      const currentTime = Number(video.currentTime) || 0;
+      if (state.lastKnownTime && currentTime + 3 < state.lastKnownTime) {
+        const info = getVideoAnalyticsInfo(video);
+        safeTrack("interaction", "video_replay", {
+          page: getCurrentPageName(),
+          ...info,
+          previousTimeSeconds: Math.round(state.lastKnownTime),
+          currentTimeSeconds: Math.round(currentTime),
+        });
+      } else {
+        const info = getVideoAnalyticsInfo(video);
+        safeTrack("interaction", "video_seek", {
+          page: getCurrentPageName(),
+          ...info,
+          currentTimeSeconds: Math.round(currentTime),
+        });
+      }
+      state.lastKnownTime = Math.max(state.lastKnownTime, currentTime);
+    });
+
     video.addEventListener("timeupdate", () => {
+      state.lastKnownTime = Math.max(state.lastKnownTime, Number(video.currentTime) || 0);
       if (!Number.isFinite(video.duration) || video.duration <= 0) return;
       const progress = Math.round((video.currentTime / video.duration) * 100);
       [25, 50, 75].forEach((milestone) => {
@@ -415,6 +587,7 @@
     });
 
     video.addEventListener("ended", () => {
+      stopHeartbeat();
       if (state.completed) return;
       state.completed = true;
       const info = getVideoAnalyticsInfo(video);
@@ -770,6 +943,7 @@
     const originalSearch = global.doSearch;
     const wrappedSearch = function wrappedSearch(query) {
       const text = String(query || "").trim();
+      noteUserActivity("search");
       if (text.length >= 2) {
         const now = Date.now();
         if (
@@ -793,10 +967,120 @@
     global.doSearch = wrappedSearch;
   }
 
+  function getHoverInterestLabel(target) {
+    const node = target?.closest?.(
+      "button, a, .post, .card, .vid-card, [data-video-id], [data-user-id], .chat-item, .fol-item"
+    );
+    if (!node) return "";
+    const explicit =
+      node.getAttribute("aria-label") ||
+      node.getAttribute("title") ||
+      node.getAttribute("data-video-title") ||
+      node.getAttribute("data-alt") ||
+      "";
+    if (explicit) return compactText(explicit, 70);
+    return compactText(node.textContent || "", 70);
+  }
+
+  function installHoverInterestTracking() {
+    document.addEventListener(
+      "mouseover",
+      (event) => {
+        const label = getHoverInterestLabel(event.target);
+        if (!label) return;
+        hoverIntentTarget = label;
+        if (hoverIntentTimerId) {
+          global.clearTimeout(hoverIntentTimerId);
+        }
+        hoverIntentTimerId = global.setTimeout(() => {
+          hoverIntentTimerId = 0;
+          if (!hoverIntentTarget) return;
+          safeTrack("interaction", "hover_interest", {
+            page: getCurrentPageName(),
+            targetLabel: hoverIntentTarget,
+          });
+        }, 900);
+      },
+      { passive: true }
+    );
+
+    document.addEventListener(
+      "mouseout",
+      () => {
+        hoverIntentTarget = null;
+        if (hoverIntentTimerId) {
+          global.clearTimeout(hoverIntentTimerId);
+          hoverIntentTimerId = 0;
+        }
+      },
+      { passive: true }
+    );
+  }
+
+  function installChatTracking() {
+    if (typeof global.openChatWindow === "function" && !global.openChatWindow.__tsEnhanced) {
+      const originalOpenChatWindow = global.openChatWindow;
+      const wrappedOpenChatWindow = function wrappedOpenChatWindow(chatId) {
+        const chatKey = String(chatId || "").trim();
+        if (chatKey) {
+          safeTrack("interaction", "chat_opened", {
+            page: "chats",
+            chatId: chatKey,
+            conversationType: chatKey.startsWith("cg") ? "group" : "direct",
+          });
+        }
+        return originalOpenChatWindow.apply(this, arguments);
+      };
+      wrappedOpenChatWindow.__tsEnhanced = true;
+      global.openChatWindow = wrappedOpenChatWindow;
+    }
+
+    if (typeof global.openNewDMModal === "function" && !global.openNewDMModal.__tsEnhanced) {
+      const originalOpenNewDMModal = global.openNewDMModal;
+      const wrappedOpenNewDMModal = function wrappedOpenNewDMModal() {
+        safeTrack("interaction", "dm_modal_opened", {
+          page: "chats",
+        });
+        return originalOpenNewDMModal.apply(this, arguments);
+      };
+      wrappedOpenNewDMModal.__tsEnhanced = true;
+      global.openNewDMModal = wrappedOpenNewDMModal;
+    }
+
+    if (typeof global.openNewGroupModal === "function" && !global.openNewGroupModal.__tsEnhanced) {
+      const originalOpenNewGroupModal = global.openNewGroupModal;
+      const wrappedOpenNewGroupModal = function wrappedOpenNewGroupModal() {
+        safeTrack("interaction", "group_modal_opened", {
+          page: "chats",
+        });
+        return originalOpenNewGroupModal.apply(this, arguments);
+      };
+      wrappedOpenNewGroupModal.__tsEnhanced = true;
+      global.openNewGroupModal = wrappedOpenNewGroupModal;
+    }
+
+    if (typeof global.updateChatTyping === "function" && !global.updateChatTyping.__tsEnhanced) {
+      const originalUpdateChatTyping = global.updateChatTyping;
+      const wrappedUpdateChatTyping = function wrappedUpdateChatTyping() {
+        const now = Date.now();
+        if (now - lastTrackedTypingAt >= 10000) {
+          lastTrackedTypingAt = now;
+          safeTrack("interaction", "chat_typing", {
+            page: "chats",
+          });
+        }
+        return originalUpdateChatTyping.apply(this, arguments);
+      };
+      wrappedUpdateChatTyping.__tsEnhanced = true;
+      global.updateChatTyping = wrappedUpdateChatTyping;
+    }
+  }
+
   function installLogoutTracking() {
     if (typeof global.logout !== "function" || global.logout.__tsEnhanced) return;
     const originalLogout = global.logout;
     const wrappedLogout = function wrappedLogout() {
+      clearIdleTimer();
       flushPageDuration("logout");
       safeTrack("interaction", "auth_logout", {
         page: getCurrentPageName(),
@@ -887,6 +1171,8 @@
     installLifecycleTracking();
     installPageTracking();
     installSearchTracking();
+    installHoverInterestTracking();
+    installChatTracking();
     installLogoutTracking();
     installErrorTracking();
     installPerformanceTracking();

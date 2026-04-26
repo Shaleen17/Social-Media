@@ -7346,7 +7346,16 @@ function getBlockedUserIds() {
 }
 
 function isUserBlocked(uid) {
+  if (hasFounderVisibilityOverride()) return false;
   return !!uid && getBlockedUserIds().has(String(uid));
+}
+
+function hasFounderVisibilityOverride() {
+  return (
+    typeof window !== "undefined" &&
+    typeof window.isFounderOwner === "function" &&
+    window.isFounderOwner()
+  );
 }
 
 function getUserPrivateAccountState(uid) {
@@ -7369,6 +7378,7 @@ function isPrivateProfileLocked(uid) {
 }
 
 function canCurrentUserViewUser(uid) {
+  if (hasFounderVisibilityOverride()) return !!uid;
   if (!uid) return false;
   if (isCurrentUserId(uid)) return true;
   if (isUserBlocked(uid)) return false;
@@ -7376,6 +7386,7 @@ function canCurrentUserViewUser(uid) {
 }
 
 function canStartDirectMessageWith(uid) {
+  if (hasFounderVisibilityOverride()) return !!uid;
   return !!uid && !isUserBlocked(uid) && !isPrivateProfileLocked(uid);
 }
 
