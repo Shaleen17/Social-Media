@@ -33,7 +33,7 @@ const { getVisibleAccountStatusFilter } = require("../utils/userVisibility");
 const router = express.Router();
 const USER_VISIBILITY_CACHE_VERSION = "legacy-active-v1";
 
-function invalidateUserCaches(namespaces = ["users", "search", "bootstrap"]) {
+function invalidateUserCaches(namespaces = ["users", "search", "bootstrap", "videos"]) {
   return invalidateRedisCacheNamespaces(namespaces).catch(() => 0);
 }
 

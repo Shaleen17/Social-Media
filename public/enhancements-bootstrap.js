@@ -1,5 +1,5 @@
 (function initEnhancementBootstrap(global) {
-  const VERSION = "20260426-deploy-feed-fix-1";
+const VERSION = "20260428-tirth-tube-liveframes-18";
   const SCRIPT_ID = "ts-noncritical-enhancements";
   let started = false;
 

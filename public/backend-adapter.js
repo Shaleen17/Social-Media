@@ -98,10 +98,13 @@
   let _dataLoaded = false;
   let _liveRefreshTimer = null;
   let _liveRefreshInFlight = false;
+  let _videoRefreshTimer = null;
+  let _videoRefreshInFlight = false;
   const BOOT_CACHE_KEY = "backendBootCache";
-  const BOOT_CACHE_VERSION = "20260426-production-bootstrap-fix-1";
+  const BOOT_CACHE_VERSION = "20260428-tirth-tube-liveframes-18";
   const BOOT_CACHE_TTL = 1000 * 60 * 60 * 24 * 30;
   const LIVE_REFRESH_INTERVAL_MS = 15000;
+  const VIDEO_REFRESH_INTERVAL_MS = 45000;
 
   function scheduleNonCriticalWork(task, timeout = 800) {
     if (typeof task !== "function") return;
@@ -110,6 +113,26 @@
       return;
     }
     setTimeout(task, Math.min(timeout, 250));
+  }
+
+  function normalizeVideoRecord(video) {
+    if (!video || typeof video !== "object") return video;
+    const thumb =
+      video.thumb ||
+      video.thumbnail ||
+      video.poster ||
+      video.thumbUrl ||
+      video.thumbnailUrl ||
+      "";
+    return {
+      ...video,
+      thumb,
+      thumbnail: thumb || video.thumbnail || "",
+    };
+  }
+
+  function normalizeVideoCollection(videos) {
+    return (Array.isArray(videos) ? videos : []).map(normalizeVideoRecord);
   }
 
   function syncBackendCache(payload) {
@@ -128,10 +151,19 @@
       return false;
     }
 
+    const normalizedVideos = normalizeVideoCollection(videos);
     _cachedUsers = users;
     _cachedPosts = posts;
-    _cachedVideos = videos;
-    _cachedLiveStreams = liveStreams;
+    _cachedVideos = normalizedVideos.filter((video) => !video?.live);
+    _cachedLiveStreams = Array.isArray(liveStreams) && liveStreams.length
+      ? liveStreams.map((stream) => ({
+          ...stream,
+          poster:
+            stream?.poster ||
+            normalizedVideos.find((video) => (video?.id || "").toString() === (stream?.id || "").toString())?.thumb ||
+            "",
+        }))
+      : mapLiveStreamsFromVideos(normalizedVideos);
     _cachedVidStories = vidStories;
     _dataLoaded = true;
     return true;
@@ -159,12 +191,85 @@
         src: v.src,
         viewers: v.viewers || 0,
         started: v.started || "recently",
-        poster: v.thumb || v.poster || "",
+        poster: v.thumb || v.thumbnail || v.poster || "",
       }));
+  }
+  function getCachedVideoSignature(videos) {
+    return (Array.isArray(videos) ? videos : [])
+      .map((video) => {
+        const user = video?.user || {};
+        return [
+          video?.id || video?._id || "",
+          video?.uid || "",
+          Number(video?.ts || 0),
+          Number(video?.views || 0),
+          Array.isArray(video?.likes) ? video.likes.length : 0,
+          Array.isArray(video?.cmts) ? video.cmts.length : 0,
+          Number(video?.viewers || 0),
+          String(video?.started || ""),
+          String(video?.title || "").slice(0, 48),
+          String(video?.cat || "").slice(0, 20),
+          video?.thumb ? 1 : 0,
+          video?.live ? 1 : 0,
+          String(user?.name || "").slice(0, 32),
+          String(user?.handle || "").slice(0, 24),
+          user?.verified ? 1 : 0,
+          Array.isArray(user?.followers) ? user.followers.length : 0,
+        ].join(":");
+      })
+      .join("|");
+  }
+
+  function getCachedLiveSignature(liveStreams) {
+    return (Array.isArray(liveStreams) ? liveStreams : [])
+      .map((stream) =>
+        [
+          stream?.id || "",
+          stream?.uid || "",
+          Number(stream?.viewers || 0),
+          String(stream?.started || ""),
+          String(stream?.title || "").slice(0, 48),
+          stream?.poster ? 1 : 0,
+        ].join(":"),
+      )
+      .join("|");
+  }
+
+  function getCachedUserSignature(users) {
+    return (Array.isArray(users) ? users : [])
+      .map((user) =>
+        [
+          user?.id || user?._id || "",
+          String(user?.name || "").slice(0, 32),
+          String(user?.handle || "").slice(0, 24),
+          user?.avatar ? 1 : 0,
+          user?.verified ? 1 : 0,
+          Array.isArray(user?.followers) ? user.followers.length : 0,
+          Array.isArray(user?.following) ? user.following.length : 0,
+        ].join(":"),
+      )
+      .join("|");
+  }
+
+  function isVideoPageActive() {
+    return document.visibilityState === "visible" && curPage === "video";
+  }
+
+  function isVideoDetailOpen() {
+    return !!document
+      .getElementById("videoDetailOvl")
+      ?.classList.contains("show");
   }
 
   function shouldRefreshLiveStreams() {
     return document.visibilityState === "visible" && curPage === "video";
+  }
+
+  function shouldRefreshVideos() {
+    const detailOpen = document
+      .getElementById("videoDetailOvl")
+      ?.classList.contains("show");
+    return document.visibilityState === "visible" && (curPage === "video" || detailOpen);
   }
 
   async function refreshLiveStreamsIfNeeded() {
@@ -194,6 +299,42 @@
     document.addEventListener("visibilitychange", () => {
       if (shouldRefreshLiveStreams()) {
         refreshLiveStreamsIfNeeded().catch(() => {});
+      }
+    });
+  }
+
+  async function refreshVideosIfNeeded() {
+    if (
+      _videoRefreshInFlight ||
+      !shouldRefreshVideos() ||
+      typeof window.refreshVideosFromBackend !== "function"
+    ) {
+      return false;
+    }
+
+    _videoRefreshInFlight = true;
+    try {
+      return await window.refreshVideosFromBackend({
+        render: true,
+        renderFeed: isVideoPageActive(),
+        renderLive: isVideoPageActive(),
+        renderDetail: isVideoDetailOpen(),
+      });
+    } finally {
+      _videoRefreshInFlight = false;
+    }
+  }
+
+  function ensureVideoRefreshLoop() {
+    if (_videoRefreshTimer) return;
+
+    _videoRefreshTimer = window.setInterval(() => {
+      refreshVideosIfNeeded().catch(() => {});
+    }, VIDEO_REFRESH_INTERVAL_MS);
+
+    document.addEventListener("visibilitychange", () => {
+      if (shouldRefreshVideos()) {
+        refreshVideosIfNeeded().catch(() => {});
       }
     });
   }
@@ -330,7 +471,7 @@
 
   let _chatPushSetupPromise = null;
   let _pendingOpenChatId = consumeOpenChatParam();
-  const APP_ASSET_VERSION = "20260426-production-bootstrap-fix-1";
+const APP_ASSET_VERSION = "20260428-tirth-tube-liveframes-18";
   let _appSwPromise = null;
   let _deferredInstallPrompt = null;
   let _installPromptBound = false;
@@ -717,21 +858,82 @@
 
   window.refreshLiveStreamsFromBackend = async function (options = {}) {
     try {
-      const liveVideos = await API.getVideos(undefined, "live");
-      _cachedLiveStreams = mapLiveStreamsFromVideos(liveVideos || []);
-      writeBootCache();
+      const liveVideos = normalizeVideoCollection(await API.getVideos(undefined, "live"));
+      const previousSignature = getCachedLiveSignature(_cachedLiveStreams);
+      const previousUserSignature = getCachedUserSignature(_cachedUsers);
+      const embeddedUsers = (liveVideos || []).map((video) => video?.user).filter(Boolean);
+      if (embeddedUsers.length) {
+        _cachedUsers = mergeUniqueById(_cachedUsers, embeddedUsers);
+      }
 
-      if (options.render && typeof renderLiveSection === "function") {
+      _cachedLiveStreams = mapLiveStreamsFromVideos(liveVideos || []);
+      const nextSignature = getCachedLiveSignature(_cachedLiveStreams);
+      const nextUserSignature = getCachedUserSignature(_cachedUsers);
+      if (previousSignature !== nextSignature || previousUserSignature !== nextUserSignature) {
+        writeBootCache();
+      }
+
+      if (options.render && typeof renderLiveSection === "function" && isVideoPageActive()) {
         renderLiveSection();
       }
-      return true;
+      return previousSignature !== nextSignature || previousUserSignature !== nextUserSignature;
     } catch (err) {
       console.warn("Failed to refresh live streams:", err);
       return false;
     }
   };
 
+  window.refreshVideosFromBackend = async function (options = {}) {
+    try {
+      const previousVideoSignature = getCachedVideoSignature(_cachedVideos);
+      const previousLiveSignature = getCachedLiveSignature(_cachedLiveStreams);
+      const previousUserSignature = getCachedUserSignature(_cachedUsers);
+      const videos = await (API.getAllVideos ? API.getAllVideos() : API.getVideos());
+      const allVideos = normalizeVideoCollection(videos);
+      const embeddedUsers = allVideos.map((video) => video?.user).filter(Boolean);
+
+      if (embeddedUsers.length) {
+        _cachedUsers = mergeUniqueById(_cachedUsers, embeddedUsers);
+      }
+
+      _cachedVideos = allVideos.filter((video) => !video?.live);
+      _cachedLiveStreams = mapLiveStreamsFromVideos(allVideos);
+      const nextVideoSignature = getCachedVideoSignature(_cachedVideos);
+      const nextLiveSignature = getCachedLiveSignature(_cachedLiveStreams);
+      const nextUserSignature = getCachedUserSignature(_cachedUsers);
+      if (
+        previousVideoSignature !== nextVideoSignature ||
+        previousLiveSignature !== nextLiveSignature ||
+        previousUserSignature !== nextUserSignature
+      ) {
+        writeBootCache();
+      }
+
+      if (options.render) {
+        if (options.renderFeed !== false && typeof renderVidFeed === "function" && isVideoPageActive()) {
+          renderVidFeed();
+        }
+        if (options.renderLive !== false && typeof renderLiveSection === "function" && isVideoPageActive()) {
+          renderLiveSection();
+        }
+        if (options.renderDetail !== false && typeof rerenderVideoDetail === "function" && isVideoDetailOpen()) {
+          rerenderVideoDetail();
+        }
+      }
+
+      return (
+        previousVideoSignature !== nextVideoSignature ||
+        previousLiveSignature !== nextLiveSignature ||
+        previousUserSignature !== nextUserSignature
+      );
+    } catch (err) {
+      console.warn("Failed to refresh Tirth Tube videos:", err);
+      return false;
+    }
+  };
+
   ensureLiveRefreshLoop();
+  ensureVideoRefreshLoop();
 
   // =============================================
   // Override seedData — load from API instead
@@ -757,7 +959,56 @@
     const i = _cachedVideos.findIndex(
       (x) => (x.id || x._id || "").toString() === id.toString()
     );
-    if (i > -1) Object.assign(_cachedVideos[i], data);
+    if (i > -1) {
+      Object.assign(_cachedVideos[i], normalizeVideoRecord(data));
+      writeBootCache();
+    }
+  };
+
+  window.hydrateRemoteUser = function (user) {
+    if (!user) return null;
+    const id = (user.id || user._id || "").toString();
+    if (!id) return null;
+
+    const existingIndex = _cachedUsers.findIndex(
+      (item) => (item.id || item._id || "").toString() === id
+    );
+
+    if (existingIndex > -1) {
+      _cachedUsers[existingIndex] = {
+        ..._cachedUsers[existingIndex],
+        ...user,
+      };
+    } else {
+      _cachedUsers.push({ ...user });
+    }
+
+    if (CU && (CU.id || CU._id || "").toString() === id) {
+      Object.assign(CU, user);
+      API.setUser(CU);
+    }
+
+    writeBootCache();
+    return _cachedUsers.find((item) => (item.id || item._id || "").toString() === id) || null;
+  };
+
+  window.hydrateRemoteChannelVideos = function (userId, videos = []) {
+    const id = (userId || "").toString();
+    if (!id) return false;
+
+    const incoming = (Array.isArray(videos) ? videos : [])
+      .filter((video) => ((video?.uid || "").toString() === id) && !video?.live)
+      .map((video) => normalizeVideoRecord(video));
+
+    const retained = _cachedVideos.filter(
+      (video) => ((video?.uid || "").toString() !== id)
+    );
+
+    _cachedVideos = mergeUniqueById(retained, incoming).sort(
+      (a, b) => Number(b?.ts || 0) - Number(a?.ts || 0)
+    );
+    writeBootCache();
+    return true;
   };
 
   window.updateUser = function (id, data) {
@@ -1888,7 +2139,7 @@
           const bootstrap = await API.getBootstrapFeed();
           users = Array.isArray(bootstrap?.users) ? bootstrap.users : [];
           posts = Array.isArray(bootstrap?.posts) ? bootstrap.posts : [];
-          videos = Array.isArray(bootstrap?.videos) ? bootstrap.videos : [];
+          videos = normalizeVideoCollection(bootstrap?.videos);
           vidStories = Array.isArray(bootstrap?.vidStories) ? bootstrap.vidStories : [];
         } catch (bootstrapError) {
           console.warn("Bootstrap feed load failed, falling back to paginated fetches:", bootstrapError?.message || bootstrapError);
@@ -1913,7 +2164,7 @@
 
         users = fallbackResults[0];
         posts = fallbackResults[1];
-        videos = fallbackResults[2];
+        videos = normalizeVideoCollection(fallbackResults[2]);
         vidStories = fallbackResults[3];
       }
 
@@ -1926,7 +2177,7 @@
       _cachedUsers = mergeUniqueById(users || [], embeddedUsers);
       _cachedPosts = posts || [];
 
-      _cachedVideos = (videos || []).filter((v) => !v.live);
+      _cachedVideos = normalizeVideoCollection(videos).filter((v) => !v.live);
       _cachedLiveStreams = mapLiveStreamsFromVideos(videos || []);
 
       _cachedVidStories = vidStories || [];

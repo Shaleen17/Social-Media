@@ -35,7 +35,7 @@
     <link rel="preconnect" href="https://videos-o57d.vercel.app" crossorigin>
     <link rel="dns-prefetch" href="//videos-o57d.vercel.app">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-    <link href="Style.css?v=20260426-deploy-feed-fix-1" rel="stylesheet" type="text/css" />
+<link href="Style.css?v=20260428-tirth-tube-liveframes-18" rel="stylesheet" type="text/css" />
     <script src="https://checkout.razorpay.com/v1/checkout.js"></script>
     <!-- Google tag (gtag.js) -->
     <script
@@ -1252,6 +1252,9 @@
       <div class="modal video-detail-modal">
         <div class="mhdr">
           <div class="video-detail-left">
+            <button class="video-menu-btn" id="videoDetailMenuBtn" onclick="toggleDrawer()" aria-label="Open menu">
+              <div class="ham-icon"><span></span><span></span><span></span></div>
+            </button>
             <button class="xbtn video-back-btn" id="videoDetailBackBtn" onclick="goBackVideoDetail()">
               <svg viewBox="0 0 24 24"><polyline points="15 18 9 12 15 6" /></svg>
             </button>
@@ -2601,8 +2604,19 @@
           <div class="page hide" id="pgVideo">
             <div class="vid-hdr">
               <div class="vid-hdr-row">
-                <span class="vid-hdr-title">🎬 Tirth Tube</span>
-                <div style="display: flex; gap: 6px">
+                <span class="vid-hdr-title">
+                  <span class="vid-hdr-badge" aria-hidden="true">
+                    <svg viewBox="0 0 24 24">
+                      <path d="M3.5 5.5h17v13h-17z" />
+                      <path d="M3.5 9.5h17" />
+                      <path d="M7 5.5l3 4" />
+                      <path d="M12 5.5l3 4" />
+                      <path d="M17 5.5l3 4" />
+                    </svg>
+                  </span>
+                  <span>Tirth Tube</span>
+                </span>
+                <div class="vid-hdr-actions">
                   <button
                     class="btn btn-red btn-sm"
                     onclick="auth(() => openOvl('goLiveModal'))"
@@ -4636,7 +4650,7 @@
     </script>
     <script>
       (function () {
-      const runtimeVersion = "20260426-deploy-feed-fix-1";
+const runtimeVersion = "20260428-tirth-tube-liveframes-18";
         const refreshKey = "ts_frontendRuntimeRefresh_" + runtimeVersion;
         try {
           const storedVersion = localStorage.getItem("ts_frontendRuntimeVersion");
@@ -4692,18 +4706,18 @@
         } catch {}
       })();
     </script>
-    <script src="Script.js?v=20260426-deploy-feed-fix-1"></script>
+<script src="Script.js?v=20260428-tirth-tube-liveframes-18"></script>
     <script src="https://cdn.socket.io/4.7.4/socket.io.min.js"></script>
     <!-- Vercel Config & API Backend Scripts -->
     <script src="config.js?v=20260420-advanced-search-1"></script>
-    <script src="api.js?v=20260426-deploy-feed-fix-1"></script>
+<script src="api.js?v=20260428-tirth-tube-liveframes-18"></script>
     <script src="socket-client.js?v=20260425-scale-search-oauth-1"></script>
     <script src="webrtc-client.js?v=20260422-webrtc-socket-signaling-1"></script>
     <script src="https://cdn.jsdelivr.net/npm/appwrite@19.0.0"></script>
     <script src="appwrite-auth.js?v=20260425-scale-search-oauth-1"></script>
-    <script src="backend-adapter.js?v=20260426-deploy-feed-fix-1"></script>
-    <script src="founder-control.js?v=20260426-deploy-feed-fix-1"></script>
-    <script src="enhancements-bootstrap.js?v=20260426-deploy-feed-fix-1"></script>
+<script src="backend-adapter.js?v=20260428-tirth-tube-liveframes-18"></script>
+<script src="founder-control.js?v=20260428-tirth-tube-liveframes-18"></script>
+<script src="enhancements-bootstrap.js?v=20260428-tirth-tube-liveframes-18"></script>
     <script src="donation-module.js?v=20260420-advanced-search-1"></script>
   </body>
 </html>

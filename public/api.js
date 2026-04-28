@@ -781,6 +781,10 @@ const API = (() => {
       return request(`/videos/${id}`);
     },
 
+    async getVideoChannel(userId) {
+      return request(`/videos/channel/${userId}`);
+    },
+
     async getVideoStories() {
       return request("/videos/stories");
     },

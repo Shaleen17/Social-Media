@@ -133,8 +133,21 @@ let curVidCat = "All",
   curVidTab = "feed";
 let activeVidWatchId = null,
   activeVidChannelId = null;
+let videoPageWarmRefreshTimer = 0,
+  videoPageWarmRefreshAt = 0,
+  videoFeedRenderToken = 0,
+  videoFeedChunkFrame = 0,
+  videoFeedLastSignature = "",
+  videoFeedLastEmptyState = "",
+  videoStoriesLastSignature = "",
+  liveSectionLastSignature = "",
+  livePreviewStateBound = false;
 let videoDetailHistory = [];
 let trackedVideoViews = new Set();
+let videoDetailRealtimeTimer = null,
+  videoDetailRealtimeInFlight = false;
+let videoDetailRealtimeLastSyncedAt = 0,
+  videoDetailRealtimeStatus = "idle";
 let vidUploadFile = null,
   storyUploadFile = null,
   liveFile = null,
@@ -149,6 +162,7 @@ const PENDING_REFERRAL_KEY = "pendingReferralCode";
 const REFERRAL_QUERY_KEYS = ["ref", "invite"];
 const INVITE_SHARE_IMAGE_PATH = "images/post/invite_image.jpg";
 const FALLBACK_LIVE_STREAM_SRC = "https://www.w3schools.com/html/mov_bbb.mp4";
+const VIDEO_DETAIL_REALTIME_INTERVAL_MS = 12000;
 const APP_TOP_LOADER_MIN_VISIBLE_MS = 140;
 const APP_TOP_LOADER_COMPLETE_MS = 170;
 let appTopLoaderTokenSeq = 0;
@@ -1611,30 +1625,49 @@ function setVideoDetailTitle(title = "Tirth Tube") {
   const el = document.getElementById("videoDetailTitle");
   if (el) el.textContent = title;
 }
+function stopMediaPlaybackInContainer(container) {
+  if (!container) return;
+  container.querySelectorAll("video, audio").forEach((media) => {
+    try {
+      media.pause();
+    } catch {}
+    try {
+      media.muted = true;
+    } catch {}
+    try {
+      media.currentTime = 0;
+    } catch {}
+    try {
+      media.removeAttribute("autoplay");
+    } catch {}
+    try {
+      media.removeAttribute("src");
+    } catch {}
+    try {
+      media.querySelectorAll("source").forEach((source) => source.removeAttribute("src"));
+    } catch {}
+    try {
+      media.load();
+    } catch {}
+  });
+}
 function stopVideoDetailPlayback() {
   const host = document.getElementById("videoDetailContent");
-  if (!host) return;
-  host.querySelectorAll("video").forEach((video) => {
-    try {
-      video.pause();
-    } catch { }
-    try {
-      video.currentTime = 0;
-    } catch { }
-    try {
-      video.removeAttribute("autoplay");
-    } catch { }
-    try {
-      video.removeAttribute("src");
-      video.load();
-    } catch { }
-  });
+  stopMediaPlaybackInContainer(host);
+}
+function stopPostDetailPlayback() {
+  const host = document.getElementById("pdContent");
+  stopMediaPlaybackInContainer(host);
 }
 function resetVideoDetailState() {
   activeVidWatchId = null;
   activeVidChannelId = null;
   videoDetailHistory = [];
+  videoDetailRealtimeLastSyncedAt = 0;
+  videoDetailRealtimeStatus = "idle";
   setVideoDetailTitle();
+  const host = document.getElementById("videoDetailContent");
+  if (host) host.innerHTML = "";
 }
 function syncVideoDetailState(state, replace = false) {
   const next = { ...state, focus: state.focus || "" };
@@ -1668,11 +1701,16 @@ function goBackVideoDetail() {
 }
 function closeOvl(id) {
   if (id === "videoDetailOvl") stopVideoDetailPlayback();
+  if (id === "pdOvl") stopPostDetailPlayback();
   if (id === "partnerReelsOvl") pausePartnerReels({ reset: true });
   const el = document.getElementById(id);
   if (el) el.classList.remove("show");
   if (id === "moreOvl") syncMoreNavState();
   if (id === "videoDetailOvl") resetVideoDetailState();
+  if (id === "pdOvl") {
+    const host = document.getElementById("pdContent");
+    if (host) host.innerHTML = "";
+  }
 }
 document.addEventListener("click", (e) => {
   document.querySelectorAll(".ovl.show").forEach((o) => {
@@ -6180,6 +6218,9 @@ function gp(page) {
     if (di) di.classList.add("on");
     else if (MORE_NAV_PAGES.includes(page)) syncMoreNavState(true);
     curPage = page;
+    if (typeof syncTirthTubePerformanceState === "function") {
+      syncTirthTubePerformanceState(page);
+    }
     trackVirtualPageView(page);
     const renderers = {
       home: () => {
@@ -8697,12 +8738,346 @@ function renderVideoPage() {
   renderVidStories();
   renderLiveSection();
   renderVidFeed();
+  syncTirthTubePerformanceState();
+  ensureVideoDetailRealtimeLoop();
+  scheduleVideoPageWarmRefresh();
+}
+function scheduleVideoPageWarmRefresh() {
+  if (videoPageWarmRefreshTimer) {
+    window.clearTimeout(videoPageWarmRefreshTimer);
+    videoPageWarmRefreshTimer = 0;
+  }
+  if (typeof window.refreshVideosFromBackend !== "function") return;
+  if (Date.now() - videoPageWarmRefreshAt < 25000) return;
+
+  videoPageWarmRefreshTimer = window.setTimeout(() => {
+    videoPageWarmRefreshTimer = 0;
+    if (curPage !== "video" || typeof window.refreshVideosFromBackend !== "function") {
+      return;
+    }
+
+    const runRefresh = () => {
+      if (curPage !== "video") return;
+      videoPageWarmRefreshAt = Date.now();
+      window
+        .refreshVideosFromBackend({
+          render: true,
+          renderFeed: true,
+          renderLive: true,
+          renderDetail: false,
+        })
+        .catch(() => {});
+    };
+
+    if (typeof window.requestIdleCallback === "function") {
+      window.requestIdleCallback(runRefresh, { timeout: 1600 });
+    } else {
+      runRefresh();
+    }
+  }, 320);
+}
+function ensureTirthTubePerformanceBindings() {
+  if (livePreviewStateBound) return;
+  livePreviewStateBound = true;
+  document.addEventListener("visibilitychange", () => {
+    syncTirthTubePerformanceState();
+  });
+}
+function teardownLivePreviewPlayback() {
+  if (livePreviewObserver) {
+    livePreviewObserver.disconnect();
+    livePreviewObserver = null;
+  }
+  document
+    .querySelectorAll("#liveScroll video[data-live-preview]")
+    .forEach((video) => {
+      try {
+        video.pause();
+      } catch (err) {}
+    });
+}
+function syncTirthTubePerformanceState(page = curPage) {
+  ensureTirthTubePerformanceBindings();
+  const isActive = page === "video" && document.visibilityState === "visible";
+  if (!isActive) {
+    if (videoFeedChunkFrame) {
+      window.cancelAnimationFrame(videoFeedChunkFrame);
+      videoFeedChunkFrame = 0;
+      videoFeedLastSignature = "";
+    }
+    teardownLivePreviewPlayback();
+    teardownVideoFeedPreviewPlayback();
+    return;
+  }
+
+  const liveScroll = document.getElementById("liveScroll");
+  if (liveScroll && liveScroll.querySelector("[data-live-preview]")) {
+    window.requestAnimationFrame(() => {
+      setupLivePreviewPlayback(liveScroll);
+    });
+  }
+  const vidFeed = document.getElementById("vidFeed");
+  if (vidFeed && vidFeed.querySelector("[data-feed-preview]")) {
+    window.requestAnimationFrame(() => {
+      setupVideoFeedPreviewPlayback(vidFeed);
+    });
+  }
+}
+function getVideoStoriesRenderSignature(profiles, seen) {
+  const list = Array.isArray(profiles) ? profiles : [];
+  const seenIds = Array.isArray(seen) ? seen : [];
+  const seenSet = new Set(seenIds);
+  const signature = list
+    .map((profile) => {
+      const items = Array.isArray(profile?.items) ? profile.items : [];
+      return [
+        compactCachePart(profile?.name, 36),
+        profile?.avatar ? 1 : 0,
+        items.length,
+        hashCacheSignature(
+          items
+            .map((item) =>
+              [
+                item?.id || "",
+                item?.type || "",
+                compactCachePart(item?.src, 48),
+                compactCachePart(item?.t, 20),
+              ].join(":"),
+            )
+            .join("|"),
+        ),
+        items.every((item) => seenSet.has(item?.id)) ? 1 : 0,
+      ].join(":");
+    })
+    .join("|");
+  return `${list.length}:${hashCacheSignature(signature)}:${hashCacheSignature(
+    seenIds.join(","),
+  )}`;
+}
+function getLiveSectionRenderSignature(lives = getLiveStreams()) {
+  const list = Array.isArray(lives) ? lives : [];
+  const signature = list
+    .map((live) => {
+      const user = getUser(live?.uid) || {};
+      return [
+        live?.id || "",
+        live?.uid || "",
+        compactCachePart(live?.title, 40),
+        Number(live?.viewers || 0),
+        compactCachePart(live?.started, 18),
+        live?.poster ? 1 : 0,
+        compactCachePart(user?.name, 28),
+        compactCachePart(user?.handle, 20),
+        user?.avatar ? 1 : 0,
+      ].join(":");
+    })
+    .join("|");
+  return `${list.length}:${hashCacheSignature(signature)}`;
+}
+function getVidFeedRenderSignature(videos) {
+  const list = Array.isArray(videos) ? videos : [];
+  const viewerId = (CU?.id || CU?._id || "guest").toString();
+  const signature = list
+    .map((video) => {
+      const creator = getVidCreator(video);
+      return [
+        video?.id || video?._id || "",
+        video?.uid || "",
+        Number(video?.ts || 0),
+        Number(video?.views || 0),
+        Array.isArray(video?.likes) ? video.likes.length : 0,
+        Array.isArray(video?.cmts) ? video.cmts.length : 0,
+        compactCachePart(video?.title, 48),
+        compactCachePart(video?.cat, 18),
+        video?.thumb ? 1 : 0,
+        compactCachePart(creator?.name, 28),
+        compactCachePart(creator?.handle, 20),
+        creator?.verified ? 1 : 0,
+        Array.isArray(creator?.followers) ? creator.followers.length : 0,
+      ].join(":");
+    })
+    .join("|");
+  return `${curVidTab}~${curVidCat}~${viewerId}~${list.length}~${hashCacheSignature(
+    signature,
+  )}`;
+}
+function isVideoDetailRealtimeActive() {
+  return (
+    !!document.getElementById("videoDetailOvl")?.classList.contains("show") &&
+    document.visibilityState === "visible" &&
+    !!(activeVidWatchId || activeVidChannelId)
+  );
+}
+function hydrateVideoUserSnapshot(user) {
+  if (!user) return null;
+  if (typeof window.hydrateRemoteUser === "function") {
+    return window.hydrateRemoteUser(user);
+  }
+
+  const users = getUsers();
+  const id = (user.id || user._id || "").toString();
+  if (!id || !Array.isArray(users)) return null;
+
+  const index = users.findIndex(
+    (item) => (item.id || item._id || "").toString() === id,
+  );
+  if (index > -1) users[index] = { ...users[index], ...user };
+  else users.push({ ...user });
+
+  Store.s("users", users);
+  if (CU && (CU.id || CU._id || "").toString() === id) {
+    Object.assign(CU, user);
+    Store.s("currentUser", CU);
+  }
+  return users.find((item) => (item.id || item._id || "").toString() === id) || null;
+}
+function hydrateVideoChannelSnapshot(userId, videos = []) {
+  if (!userId) return false;
+  if (typeof window.hydrateRemoteChannelVideos === "function") {
+    return window.hydrateRemoteChannelVideos(userId, videos);
+  }
+
+  const allVideos = getVideos();
+  const id = userId.toString();
+  const incoming = (Array.isArray(videos) ? videos : [])
+    .filter((video) => (video?.uid || "").toString() === id && !video?.live)
+    .map((video) => ({ ...video }));
+  const nextVideos = allVideos
+    .filter((video) => (video?.uid || "").toString() !== id)
+    .concat(incoming)
+    .sort((a, b) => Number(b?.ts || 0) - Number(a?.ts || 0));
+
+  Store.s("videos", nextVideos);
+  return true;
+}
+async function refreshActiveWatchVideoDetail(options = {}) {
+  if (!activeVidWatchId || !window.API?.getVideo) return false;
+
+  const previousSignature = JSON.stringify(getVideo(activeVidWatchId) || null);
+  const fresh = await API.getVideo(activeVidWatchId);
+  if (!fresh) return false;
+
+  hydrateVideoUserSnapshot(fresh.user);
+  saveVideo(activeVidWatchId, fresh);
+
+  const nextSignature = JSON.stringify(fresh);
+  if (options.render !== false && previousSignature !== nextSignature) {
+    rerenderVideoDetail();
+  } else {
+    syncVideoDetailRealtimeBadge();
+  }
+  return true;
+}
+async function refreshActiveVideoChannelDetail(options = {}) {
+  if (!activeVidChannelId || !window.API) return false;
+
+  const currentChannelId = activeVidChannelId.toString();
+  const previousSignature = JSON.stringify({
+    channel: getUser(currentChannelId) || null,
+    videos: getVideos()
+      .filter((video) => (video?.uid || "").toString() === currentChannelId)
+      .map((video) => ({
+        id: video.id || video._id,
+        title: video.title,
+        views: video.views,
+        likes: (video.likes || []).length,
+        comments: (video.cmts || []).length,
+        ts: video.ts,
+      })),
+  });
+  let channelSnapshot = null;
+  if (API.getVideoChannel && isLikelyObjectId(activeVidChannelId)) {
+    channelSnapshot = await API.getVideoChannel(activeVidChannelId);
+  } else {
+    const [channel, allVideos] = await Promise.all([
+      API.getUser?.(activeVidChannelId),
+      API.getAllVideos ? API.getAllVideos() : API.getVideos?.(),
+    ]);
+    channelSnapshot = {
+      channel,
+      videos: (allVideos || []).filter(
+        (video) => (video?.uid || "").toString() === activeVidChannelId.toString()
+      ),
+    };
+  }
+
+  if (!channelSnapshot?.channel) return false;
+
+  hydrateVideoUserSnapshot(channelSnapshot.channel);
+  hydrateVideoChannelSnapshot(activeVidChannelId, channelSnapshot.videos || []);
+
+  const nextSignature = JSON.stringify({
+    channel: channelSnapshot.channel,
+    videos: (channelSnapshot.videos || []).map((video) => ({
+      id: video.id || video._id,
+      title: video.title,
+      views: video.views,
+      likes: (video.likes || []).length,
+      comments: (video.cmts || []).length,
+      ts: video.ts,
+    })),
+  });
+
+  if (options.render !== false && previousSignature !== nextSignature) {
+    rerenderVideoDetail();
+  } else {
+    syncVideoDetailRealtimeBadge();
+  }
+  return true;
+}
+async function refreshActiveVideoDetailRealtime(options = {}) {
+  if (videoDetailRealtimeInFlight || !isVideoDetailRealtimeActive()) return false;
+
+  videoDetailRealtimeInFlight = true;
+  videoDetailRealtimeStatus = "syncing";
+  syncVideoDetailRealtimeBadge();
+  try {
+    let refreshed = false;
+    if (activeVidWatchId) {
+      refreshed = await refreshActiveWatchVideoDetail(options);
+    } else if (activeVidChannelId) {
+      refreshed = await refreshActiveVideoChannelDetail(options);
+    }
+
+    if (refreshed) {
+      videoDetailRealtimeLastSyncedAt = Date.now();
+      videoDetailRealtimeStatus = "synced";
+    } else {
+      videoDetailRealtimeStatus = "idle";
+    }
+    syncVideoDetailRealtimeBadge();
+    return refreshed;
+  } catch (err) {
+    videoDetailRealtimeStatus = "error";
+    syncVideoDetailRealtimeBadge();
+    throw err;
+  } finally {
+    videoDetailRealtimeInFlight = false;
+  }
+}
+function ensureVideoDetailRealtimeLoop() {
+  if (videoDetailRealtimeTimer) return;
+
+  videoDetailRealtimeTimer = window.setInterval(() => {
+    refreshActiveVideoDetailRealtime({ render: true }).catch(() => {});
+  }, VIDEO_DETAIL_REALTIME_INTERVAL_MS);
+
+  document.addEventListener("visibilitychange", () => {
+    if (isVideoDetailRealtimeActive()) {
+      refreshActiveVideoDetailRealtime({ render: true }).catch(() => {});
+    }
+  });
 }
 function renderVidStories() {
   const row = document.getElementById("vidStoriesRow");
   if (!row) return;
   const profiles = SEED_VID_STORIES.map(resolveVidStoryProfile);
   const seen = Store.g("vidStoriesSeen", []);
+  const signature = getVideoStoriesRenderSignature(profiles, seen);
+  if (videoStoriesLastSignature === signature && row.childElementCount) return;
+
+  videoStoriesLastSignature = signature;
+  const previousScroll = row.scrollLeft;
   row.innerHTML = "";
 
   // Add story button
@@ -8751,7 +9126,7 @@ function renderVidStories() {
     row.appendChild(storyDiv);
   });
 
-  row.scrollLeft = 0;
+  row.scrollLeft = previousScroll;
 }
 function viewVidStory(i) {
   const profiles = SEED_VID_STORIES.map(resolveVidStoryProfile);
@@ -9163,7 +9538,10 @@ function toggleSVSound() {
 }
 
 let livePreviewObserver = null;
+let videoFeedPreviewObserver = null;
+let inlineVideoPreviewObserver = null;
 function setupLivePreviewPlayback(container) {
+  const isActive = curPage === "video" && document.visibilityState === "visible";
   if (livePreviewObserver) {
     livePreviewObserver.disconnect();
     livePreviewObserver = null;
@@ -9173,6 +9551,14 @@ function setupLivePreviewPlayback(container) {
     (container || document).querySelectorAll("[data-live-preview]")
   );
   if (!videos.length) return;
+  if (!isActive) {
+    videos.forEach((video) => {
+      try {
+        video.pause();
+      } catch (err) {}
+    });
+    return;
+  }
 
   if (typeof IntersectionObserver !== "function") {
     videos.slice(0, 2).forEach((video) => {
@@ -9201,6 +9587,204 @@ function setupLivePreviewPlayback(container) {
   );
 
   videos.forEach((video) => livePreviewObserver.observe(video));
+}
+
+function teardownVideoFeedPreviewPlayback() {
+  if (videoFeedPreviewObserver) {
+    videoFeedPreviewObserver.disconnect();
+    videoFeedPreviewObserver = null;
+  }
+  document
+    .querySelectorAll("#vidFeed video[data-feed-preview]")
+    .forEach((video) => {
+      try {
+        video.pause();
+      } catch (err) {}
+    });
+}
+
+function teardownInlineVideoPreviewFrames() {
+  if (inlineVideoPreviewObserver) {
+    inlineVideoPreviewObserver.disconnect();
+    inlineVideoPreviewObserver = null;
+  }
+  document
+    .querySelectorAll("#videoDetailContent video[data-frame-preview]")
+    .forEach((video) => {
+      try {
+        video.pause();
+      } catch (err) {}
+    });
+}
+
+function getVideoPreviewTargetTime(video) {
+  const duration = Number(video?.duration) || 0;
+  if (!duration) return 0.28;
+  return Math.max(0.14, Math.min(1.8, duration * 0.12));
+}
+
+function primeVideoPreviewFrame(video) {
+  if (!video) return;
+  if (video.dataset.previewReady === "1" || video.dataset.previewError === "1") return;
+  if (video.dataset.previewPriming === "1") return;
+
+  video.dataset.previewPriming = "1";
+  video.muted = true;
+  video.playsInline = true;
+  video.setAttribute("muted", "");
+  video.setAttribute("playsinline", "");
+  video.preload = "auto";
+
+  let finished = false;
+  let sought = false;
+  let seekTimeout = 0;
+
+  const cleanup = () => {
+    video.removeEventListener("loadedmetadata", handleMetadata);
+    video.removeEventListener("error", handleError);
+    if (seekTimeout) {
+      window.clearTimeout(seekTimeout);
+      seekTimeout = 0;
+    }
+  };
+
+  const finish = () => {
+    if (finished) return;
+    finished = true;
+    cleanup();
+    try {
+      video.pause();
+    } catch (err) {}
+    video.dataset.previewReady = "1";
+    video.dataset.previewPriming = "0";
+  };
+
+  const handleError = () => {
+    if (finished) return;
+    finished = true;
+    cleanup();
+    video.dataset.previewError = "1";
+    video.dataset.previewPriming = "0";
+    try {
+      video.pause();
+    } catch (err) {}
+  };
+
+  const seekFrame = () => {
+    if (finished || sought) return;
+    sought = true;
+    video.addEventListener("seeked", finish, { once: true });
+    seekTimeout = window.setTimeout(finish, 900);
+    try {
+      video.currentTime = getVideoPreviewTargetTime(video);
+    } catch (err) {
+      finish();
+    }
+  };
+
+  const handleMetadata = () => {
+    seekFrame();
+  };
+
+  video.addEventListener("loadedmetadata", handleMetadata, { once: true });
+  video.addEventListener("error", handleError, { once: true });
+
+  if (video.readyState >= 1) {
+    seekFrame();
+    return;
+  }
+
+  try {
+    video.load();
+  } catch (err) {
+    handleError();
+  }
+}
+
+function hydrateInlineVideoPreviewFrames(container, limit = 8) {
+  const host = container || document;
+  const videos = Array.from(host.querySelectorAll("video[data-frame-preview]")).slice(0, limit);
+  if (inlineVideoPreviewObserver) {
+    inlineVideoPreviewObserver.disconnect();
+    inlineVideoPreviewObserver = null;
+  }
+  if (!videos.length) return;
+
+  const isActive = curPage === "video" && document.visibilityState === "visible";
+  if (!isActive) return;
+
+  if (typeof IntersectionObserver !== "function") {
+    videos.slice(0, 3).forEach((video) => primeVideoPreviewFrame(video));
+    return;
+  }
+
+  inlineVideoPreviewObserver = new IntersectionObserver(
+    (entries) => {
+      entries.forEach((entry) => {
+        const video = entry.target;
+        if (entry.isIntersecting && entry.intersectionRatio >= 0.2) {
+          primeVideoPreviewFrame(video);
+          inlineVideoPreviewObserver?.unobserve(video);
+        }
+      });
+    },
+    {
+      root: null,
+      rootMargin: "180px 0px 180px 0px",
+      threshold: [0.1, 0.2, 0.45],
+    }
+  );
+
+  videos.forEach((video) => inlineVideoPreviewObserver.observe(video));
+}
+
+function setupVideoFeedPreviewPlayback(container) {
+  const isActive = curPage === "video" && document.visibilityState === "visible";
+  if (videoFeedPreviewObserver) {
+    videoFeedPreviewObserver.disconnect();
+    videoFeedPreviewObserver = null;
+  }
+
+  const videos = Array.from(
+    (container || document).querySelectorAll("video[data-feed-preview]")
+  );
+  if (!videos.length) return;
+
+  if (!isActive) {
+    videos.forEach((video) => {
+      try {
+        video.pause();
+      } catch (err) {}
+    });
+    return;
+  }
+
+  if (typeof IntersectionObserver !== "function") {
+    videos.slice(0, 4).forEach((video) => primeVideoPreviewFrame(video));
+    return;
+  }
+
+  videoFeedPreviewObserver = new IntersectionObserver(
+    (entries) => {
+      entries.forEach((entry) => {
+        const video = entry.target;
+        if (entry.isIntersecting && entry.intersectionRatio >= 0.35) {
+          primeVideoPreviewFrame(video);
+        } else {
+          try {
+            video.pause();
+          } catch (err) {}
+        }
+      });
+    },
+    {
+      root: null,
+      rootMargin: "120px 0px 120px 0px",
+      threshold: [0.2, 0.35, 0.65],
+    }
+  );
+
+  videos.forEach((video) => videoFeedPreviewObserver.observe(video));
 }
 
 function renderLiveSection() {
@@ -9259,9 +9843,17 @@ function renderLiveSectionFast() {
   if (!c) return;
   const lives = getLiveStreams();
   if (!lives.length) {
+    liveSectionLastSignature = "empty";
     if (wrap) wrap.style.display = "none";
+    teardownLivePreviewPlayback();
     return;
   }
+  const signature = getLiveSectionRenderSignature(lives);
+  if (liveSectionLastSignature === signature && c.childElementCount) {
+    syncTirthTubePerformanceState();
+    return;
+  }
+  liveSectionLastSignature = signature;
   if (wrap) wrap.style.display = "";
   c.innerHTML = lives
     .map((l) => {
@@ -9293,7 +9885,7 @@ function setVidTab(tab, el) {
 function renderVidFeed() {
   const c = document.getElementById("vidFeed");
   if (!c) return;
-  let vids = getVideos().sort((a, b) => b.ts - a.ts);
+  let vids = [...getVideos()].sort((a, b) => Number(b?.ts || 0) - Number(a?.ts || 0));
   if (curVidCat !== "All") vids = vids.filter((v) => v.cat === curVidCat);
   if (curVidTab === "trending")
     vids = [...vids].sort(
@@ -9301,16 +9893,82 @@ function renderVidFeed() {
     );
   if (curVidTab === "uploads") {
     if (!CU) {
-      c.innerHTML = `<div class="empty"><div class="empty-ico">📹</div><div class="empty-ttl">Sign in to see your uploads</div><button class="btn btn-p" style="margin-top:14px" onclick="openOvl('authOvl')">Sign In</button></div>`;
-      return;
+      const emptyKey = "uploads:guest";
+      if (videoFeedLastEmptyState === emptyKey && c.childElementCount) return;
+    if (videoFeedChunkFrame) {
+      window.cancelAnimationFrame(videoFeedChunkFrame);
+      videoFeedChunkFrame = 0;
+    }
+    teardownVideoFeedPreviewPlayback();
+    videoFeedLastSignature = "";
+    videoFeedLastEmptyState = emptyKey;
+    c.setAttribute("aria-busy", "false");
+    c.innerHTML = `<div class="empty"><div class="empty-ico">📹</div><div class="empty-ttl">Sign in to see your uploads</div><button class="btn btn-p" style="margin-top:14px" onclick="openOvl('authOvl')">Sign In</button></div>`;
+    return;
     }
     vids = vids.filter((v) => v.uid === CU.id);
   }
   if (!vids.length) {
+    const emptyKey = `empty:${curVidTab}:${curVidCat}:${(CU?.id || CU?._id || "guest").toString()}`;
+    if (videoFeedLastEmptyState === emptyKey && c.childElementCount) return;
+    if (videoFeedChunkFrame) {
+      window.cancelAnimationFrame(videoFeedChunkFrame);
+      videoFeedChunkFrame = 0;
+    }
+    teardownVideoFeedPreviewPlayback();
+    videoFeedLastSignature = "";
+    videoFeedLastEmptyState = emptyKey;
+    c.setAttribute("aria-busy", "false");
     c.innerHTML = `<div class="empty"><div class="empty-ico">🎬</div><div class="empty-ttl">No videos yet</div><div class="empty-sub">Upload your first video!</div><button class="btn btn-p" style="margin-top:14px" onclick="auth(()=>openOvl('uploadVidModal'))">Upload Video</button></div>`;
     return;
   }
-  c.innerHTML = vids.map((v) => mkVidCard(v)).join("");
+  const signature = getVidFeedRenderSignature(vids);
+  if (videoFeedLastSignature === signature && c.childElementCount) {
+    window.requestAnimationFrame(() => setupVideoFeedPreviewPlayback(c));
+    return;
+  }
+
+  videoFeedLastSignature = signature;
+  videoFeedLastEmptyState = "";
+  if (videoFeedChunkFrame) {
+    window.cancelAnimationFrame(videoFeedChunkFrame);
+    videoFeedChunkFrame = 0;
+  }
+
+  const renderToken = ++videoFeedRenderToken;
+  const initialChunkSize = window.matchMedia("(max-width: 900px)").matches ? 4 : 5;
+  const chunkSize = window.matchMedia("(max-width: 900px)").matches ? 4 : 6;
+
+  c.innerHTML = vids.slice(0, initialChunkSize).map((v) => mkVidCard(v)).join("");
+  c.setAttribute("aria-busy", vids.length > initialChunkSize ? "true" : "false");
+  window.requestAnimationFrame(() => setupVideoFeedPreviewPlayback(c));
+
+  let cursor = initialChunkSize;
+  const appendChunk = () => {
+    if (renderToken !== videoFeedRenderToken) return;
+    if (curPage !== "video") {
+      videoFeedChunkFrame = 0;
+      videoFeedLastSignature = "";
+      return;
+    }
+    if (cursor >= vids.length) {
+      videoFeedChunkFrame = 0;
+      c.setAttribute("aria-busy", "false");
+      return;
+    }
+
+    c.insertAdjacentHTML(
+      "beforeend",
+      vids.slice(cursor, cursor + chunkSize).map((v) => mkVidCard(v)).join(""),
+    );
+    window.requestAnimationFrame(() => setupVideoFeedPreviewPlayback(c));
+    cursor += chunkSize;
+    videoFeedChunkFrame = window.requestAnimationFrame(appendChunk);
+  };
+
+  if (cursor < vids.length) {
+    videoFeedChunkFrame = window.requestAnimationFrame(appendChunk);
+  }
 }
 function getVidCreator(v) {
   const u = getUser(v.uid) || v.user || {};
@@ -9362,6 +10020,25 @@ function fmtVideoAge(ts) {
   if (diff < 31536000000) return Math.max(1, Math.floor(diff / 2592000000)) + "mo ago";
   return Math.max(1, Math.floor(diff / 31536000000)) + "y ago";
 }
+function isLikelyObjectId(value) {
+  return /^[0-9a-fA-F]{24}$/.test((value || "").toString());
+}
+function fmtVideoDetailSyncStatus() {
+  if (videoDetailRealtimeStatus === "syncing") return "Refreshing live details...";
+  if (videoDetailRealtimeStatus === "error") return "Showing the latest saved snapshot";
+  if (!videoDetailRealtimeLastSyncedAt) return "Live updates active";
+
+  const diff = Math.max(0, Date.now() - videoDetailRealtimeLastSyncedAt);
+  if (diff < 10000) return "Synced just now";
+  if (diff < 60000) return `Synced ${Math.max(1, Math.floor(diff / 1000))}s ago`;
+  return `Synced ${Math.max(1, Math.floor(diff / 60000))}m ago`;
+}
+function syncVideoDetailRealtimeBadge() {
+  const copy = fmtVideoDetailSyncStatus();
+  document.querySelectorAll("[data-video-sync-label]").forEach((el) => {
+    el.textContent = copy;
+  });
+}
 function fmtVideoDesc(text, fallback = "") {
   const copy = (text || fallback || "").trim();
   return esc(copy).replace(/\n/g, "<br>");
@@ -9374,15 +10051,23 @@ function getVideoBrowseChips(v, u) {
   chips.push("Bhakti");
   return chips.slice(0, 5);
 }
+function getVideoThumbSource(video, creator) {
+  return (
+    video?.thumb ||
+    video?.thumbnail ||
+    video?.poster ||
+    creator?.banner ||
+    creator?.avatar ||
+    ""
+  );
+}
 function mkVidCard(v) {
   const u = getVidCreator(v);
   const ini = getIni(u.name);
   const avH = u.avatar ? `<img src="${u.avatar}" alt="">` : ini;
   const rx = getVidReactionState(v);
   const cmts = v.cmts || [];
-  const mediaH = v.thumb
-    ? `<img src="${v.thumb}" alt="${esc(v.title)}" style="width:100%;max-height:340px;object-fit:cover;background:#000">`
-    : `<video src="${v.src}" muted preload="metadata" playsinline style="width:100%;max-height:340px;object-fit:contain;background:#000" onmouseenter="this.play().catch(()=>{})" onmouseleave="this.pause();try{this.currentTime=0}catch(e){}" onerror="this.style.background='#1a1a1a'"></video>`;
+  const mediaH = `<video src="${v.src}" muted playsinline webkit-playsinline preload="none" data-feed-preview style="width:100%;max-height:340px;object-fit:contain;background:#000"></video>`;
   return `<div class="vid-card" id="vc_${v.id}"><div class="vid-card-thumb" onclick="openVideoWatch('${v.id}')">${mediaH}<div class="vid-overlay"><span class="vid-duration">${v.dur || "--:--"}</span></div><div class="vid-card-play">▶ Watch on Tirth Tube</div></div><div class="vid-card-body"><div class="vid-card-meta"><div class="av av40" onclick="openVideoChannel('${u.id}')" style="cursor:pointer">${avH}</div><div class="vid-card-info"><div class="vid-card-title" onclick="openVideoWatch('${v.id}')">${esc(v.title)}</div><div class="vid-card-channel" onclick="openVideoChannel('${u.id}')">${u.name}${u.verified ? " 🔱" : ""}</div><div class="vid-card-stats">${fmtV(v.views)} views · ${v.cat} · ${fmtVidSubs(u.id)}</div></div><div class="more-wrap"><button class="sb" style="width:26px;height:26px;border-radius:6px" onclick="toggleVidMore('${v.id}',event)"><svg style="width:15px;height:15px" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/><circle cx="5" cy="12" r="1"/></svg></button><div class="more-menu" id="vm_${v.id}">${CU && v.uid === CU.id ? `<button class="mi red" onclick="deleteVid('${v.id}')"><svg viewBox="0 0 24 24"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>Delete</button>` : ""}<button class="mi" onclick="shareVid('${v.id}')"><svg viewBox="0 0 24 24"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg>Share</button></div></div></div></div><div class="vid-card-actions"><button class="va${rx.liked ? " vliked" : ""}" onclick="toggleVidLike('${v.id}',this,event)"><svg viewBox="0 0 24 24" ${rx.liked ? 'style="fill:#e53935;stroke:#e53935"' : ""}><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg><span id="vlc_${v.id}">${(v.likes || []).length}</span></button><button class="va" onclick="openVideoWatch('${v.id}','comments')"><svg viewBox="0 0 24 24"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>${cmts.length}</button><button class="va" onclick="shareVid('${v.id}')"><svg viewBox="0 0 24 24"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg>Share</button></div></div>`;
 }
 async function syncVideoForDetail(id) {
@@ -9397,9 +10082,7 @@ async function syncVideoForDetail(id) {
 }
 function renderVidSideItem(v) {
   const u = getVidCreator(v);
-  const media = v.thumb
-    ? `<img src="${v.thumb}" alt="${esc(v.title)}">`
-    : `<video src="${v.src}" muted playsinline preload="metadata"></video>`;
+  const media = `<video src="${v.src}" muted playsinline preload="metadata" data-frame-preview></video>`;
   return `<div class="video-side-item" onclick="openVideoWatch('${v.id}')"><div class="video-side-thumb">${media}<span class="vid-duration">${v.dur || "--:--"}</span></div><div class="video-side-copy"><strong>${esc(v.title)}</strong><span class="video-side-channel">${u.name}${u.verified ? " 🔱" : ""}</span><span class="video-side-meta">${fmtV(v.views)} views · ${fmtVideoAge(v.ts)}</span></div></div>`;
 }
 function renderVidComment(videoId, ownerId, cm) {
@@ -9415,7 +10098,7 @@ function renderVidComment(videoId, ownerId, cm) {
   const isOwner = CU && (CU.id || CU._id) === ownerId;
   return `<div class="video-comment-card"><div class="video-comment-top"><div class="av av36">${av}</div><div class="video-comment-copy"><div class="video-comment-meta"><strong>${cu.name}</strong><span>@${cu.handle || "user"}</span><span>${cm.t || ""}</span>${cm.pinned ? '<span class="video-pinned-pill">Pinned</span>' : ""}</div><div class="video-comment-text">${esc(cm.txt || "")}</div><div class="video-comment-actions"><button class="video-text-btn" onclick="toggleVideoReplyBox('${videoId}','${cm.id}')">Reply</button>${isOwner ? `<button class="video-text-btn" onclick="pinVidComment('${videoId}','${cm.id}')">${cm.pinned ? "Unpin" : "Pin"}</button>` : ""}</div><div class="video-reply-box hide" id="vreply_${videoId}_${cm.id}"><input class="fi" id="vreplyin_${videoId}_${cm.id}" placeholder="Write a reply..." onkeydown="if(event.key==='Enter'){event.preventDefault();submitVidReply('${videoId}','${cm.id}')}"><button class="btn btn-p btn-sm" onclick="submitVidReply('${videoId}','${cm.id}')">Reply</button></div>${replies ? `<div class="video-replies">${replies}</div>` : ""}</div></div></div>`;
 }
-function renderVideoWatchModal(id, focus = "") {
+function renderVideoWatchModalLegacy(id, focus = "") {
   const c = document.getElementById("videoDetailContent");
   const v = getVideo(id);
   if (!c || !v) return;
@@ -9456,16 +10139,77 @@ function renderVideoWatchModal(id, focus = "") {
     }, 80);
   }
 }
+function renderVideoWatchModal(id, focus = "") {
+  const c = document.getElementById("videoDetailContent");
+  const v = getVideo(id);
+  if (!c || !v) return;
+
+  activeVidWatchId = id;
+  activeVidChannelId = null;
+
+  const u = getVidCreator(v);
+  const rx = getVidReactionState(v);
+  const comments = getVidComments(v);
+  const related = getVideos()
+    .filter((x) => x.id !== v.id)
+    .sort((a, b) => {
+      const catBoost = Number((b.cat || "") === (v.cat || "")) - Number((a.cat || "") === (v.cat || ""));
+      if (catBoost) return catBoost;
+      return b.views + (b.likes || []).length - (a.views + (a.likes || []).length);
+    })
+    .slice(0, 6);
+  const isOwnChannel =
+    !!CU && (CU.id || CU._id || "").toString() === (u.id || "").toString();
+  const published = fmtVideoAge(v.ts);
+  const chipHtml = getVideoBrowseChips(v, u)
+    .map(
+      (chip, idx) =>
+        `<button class="video-chip${idx === 0 ? " on" : ""}" type="button">${esc(chip)}</button>`,
+    )
+    .join("");
+  const descHtml = fmtVideoDesc(
+    v.desc,
+    `${u.name} shares ${String(v.cat || "devotional").toLowerCase()} moments, satsang clips, and spiritual stories on Tirth Tube.`,
+  );
+  const quickStats = [
+    { label: "Category", value: v.cat || "Spiritual" },
+    { label: "Likes", value: fmtV((v.likes || []).length) },
+    { label: "Comments", value: fmtV(comments.length) },
+    { label: "Channel", value: u.name.split(" ")[0] || "Creator" },
+  ];
+  const metaTags = [
+    v.cat || "Spiritual",
+    `${comments.length} comment${comments.length === 1 ? "" : "s"}`,
+    `${fmtV((v.likes || []).length)} likes`,
+  ];
+  const mediaH = `<video src="${v.src}" controls autoplay playsinline style="width:100%;max-height:520px;object-fit:contain;background:#000" onplay="trackVidView('${v.id}')"></video>`;
+
+  c.innerHTML = `<div class="video-watch-layout"><div class="video-watch-main"><div class="video-watch-player-shell"><div class="video-watch-player">${mediaH}</div><div class="video-live-sync-bar"><span class="video-live-sync-pill"><span class="video-live-sync-dot"></span>Live updates</span><span class="video-live-sync-copy" data-video-sync-label>${esc(fmtVideoDetailSyncStatus())}</span></div></div><div class="video-watch-meta"><div class="video-watch-topline"><div class="video-watch-heading"><div class="video-watch-title">${esc(v.title)}</div><div class="video-watch-sub">${fmtV(v.views)} views &middot; ${published}</div></div><div class="video-watch-mini-grid">${quickStats.map((item) => `<div class="video-mini-stat"><span>${esc(item.label)}</span><strong>${esc(item.value)}</strong></div>`).join("")}</div></div><div class="video-channel-row"><div class="video-channel-main"><div class="av av48" onclick="openVideoChannel('${u.id}')">${u.avatar ? `<img src="${u.avatar}" alt="">` : getIni(u.name)}</div><div class="video-channel-copy"><strong onclick="openVideoChannel('${u.id}')" style="cursor:pointer">${u.name}${u.verified ? " 🔱" : ""}</strong><span>@${u.handle} &middot; ${fmtVidSubs(u.id)}</span></div></div>${u.id ? `<button class="video-sub-btn${isVidSubscribed(u.id) || isOwnChannel ? " subbed" : ""}" ${isOwnChannel ? "disabled" : `onclick="toggleVideoSubscribe('${u.id}')"`}>${isOwnChannel ? "Your channel" : isVidSubscribed(u.id) ? "Subscribed" : "Subscribe"}</button>` : ""}</div><div class="video-react-row"><div class="video-pill-group"><button class="video-react-btn like${rx.liked ? " on" : ""}" onclick="toggleVidLike('${v.id}',this,event)"><svg viewBox="0 0 24 24"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg><span>${fmtV((v.likes || []).length)}</span></button><span class="video-pill-divider"></span><button class="video-react-btn dislike${rx.disliked ? " on" : ""}" onclick="toggleVidDislike('${v.id}',this,event)"><svg viewBox="0 0 24 24"><path d="M10 14V5a3 3 0 0 1 3-3h4a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2h-5l1 7-6-9z"/></svg><span>${fmtV((v.dislikes || []).length)}</span></button></div><button class="video-react-btn" onclick="openVideoWatch('${v.id}','comments')"><svg viewBox="0 0 24 24"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg><span>${comments.length} Comments</span></button><button class="video-react-btn" onclick="shareVid('${v.id}')"><svg viewBox="0 0 24 24"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg><span>Share</span></button><button class="video-react-btn" onclick="openVideoChannel('${u.id}')"><svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="15" rx="2"/><path d="M8 21h8"/><path d="M12 19v2"/></svg><span>Channel</span></button></div><div class="video-meta-card"><div class="video-meta-top"><strong>${fmtV(v.views)} views</strong><span>${published}</span><span class="video-meta-badge">${esc(v.cat)}</span></div><div class="video-meta-desc">${descHtml}</div><div class="video-meta-tags">${metaTags.map((tag) => `<span class="video-meta-tag">${esc(tag)}</span>`).join("")}</div></div><div class="video-comments-card" id="videoCommentsBlock"><div class="video-comments-head"><div class="video-section-title">${comments.length} comment${comments.length === 1 ? "" : "s"}</div><button class="video-chip on" type="button">Community</button></div>${comments.length ? comments.map((cm) => renderVidComment(v.id, u.id, cm)).join("") : `<div class="empty-sub">No comments yet. Start the conversation.</div>`}<div class="video-comment-box">${avHTML(CU ? CU.id : "u1", "av36")}<input class="fi" id="watchVidCommentIn" placeholder="Add a public comment..." onkeydown="if(event.key==='Enter'){event.preventDefault();submitVidCmt('${v.id}')}"><button class="btn btn-p btn-sm" onclick="submitVidCmt('${v.id}')">Comment</button></div></div></div></div><div class="video-watch-side"><div class="video-chip-row">${chipHtml}</div><div class="video-side-card video-side-channel-card"><div class="video-side-header"><div class="video-section-title">Channel pulse</div><span>${fmtVidSubs(u.id)}</span></div><div class="video-side-channel-copy"><strong onclick="openVideoChannel('${u.id}')">${u.name}${u.verified ? " 🔱" : ""}</strong><span>@${u.handle}</span><p>${esc(u.bio || `${u.name} is sharing spiritual talks, reflections, and devotional learning on Tirth Tube.`)}</p></div></div><div class="video-side-card"><div class="video-side-header"><div class="video-section-title">Up next</div><span>${u.name.split(" ")[0]} and similar</span></div><div class="video-side-list">${related.length ? related.map((rv) => renderVidSideItem(rv)).join("") : `<div class="empty-sub">More videos will appear here.</div>`}</div></div></div></div>`;
+  openOvl("videoDetailOvl");
+  syncVideoDetailRealtimeBadge();
+  window.requestAnimationFrame(() => hydrateInlineVideoPreviewFrames(c, 12));
+
+  if (focus === "comments") {
+    setTimeout(() => {
+      document.getElementById("videoCommentsBlock")?.scrollIntoView({
+        behavior: "smooth",
+        block: "start",
+      });
+    }, 80);
+  }
+}
 async function openVideoWatch(id, focus = "") {
-  await syncVideoForDetail(id);
+  if (!getVideo(id)) return;
   if (!document.getElementById("videoDetailOvl")?.classList.contains("show")) {
     videoDetailHistory = [];
   }
   stopVideoDetailPlayback();
   syncVideoDetailState({ type: "watch", id, focus });
+  videoDetailRealtimeStatus = "syncing";
   renderVideoWatchModal(id, focus);
+  refreshActiveVideoDetailRealtime({ render: true }).catch(() => {});
 }
-function renderVideoChannelModal(uid) {
+function renderVideoChannelModalLegacy(uid) {
   const c = document.getElementById("videoDetailContent");
   const u = getUser(uid);
   if (!c || !u) return;
@@ -9479,6 +10223,39 @@ function renderVideoChannelModal(uid) {
   c.innerHTML = `<div class="video-channel-hero"><div class="video-channel-banner" ${u.banner ? `style="background-image:url('${u.banner}');background-size:cover;background-position:center"` : ""}></div><div class="video-channel-body"><div class="video-channel-top"><div style="display:flex;gap:14px;align-items:flex-end"><div class="av av96">${u.avatar ? `<img src="${u.avatar}" alt="">` : getIni(u.name)}</div><div><div class="video-channel-name">${u.name}${u.verified ? " 🔱" : ""}</div><div class="video-channel-handle">@${u.handle}</div><div class="video-channel-stats">${fmtVidSubs(uid)} · ${fmtV(vids.length)} video${vids.length === 1 ? "" : "s"} · ${fmtV(totalViews)} views</div></div></div>${uid ? `<button class="video-sub-btn${isVidSubscribed(uid) || isOwnChannel ? " subbed" : ""}" ${isOwnChannel ? "disabled" : `onclick="toggleVideoSubscribe('${uid}')"`}>${isOwnChannel ? "Your channel" : isVidSubscribed(uid) ? "Subscribed" : "Subscribe"}</button>` : ""}</div><div class="video-channel-bio">${esc(u.bio || `${u.name} shares spiritual clips, yatra moments, and Tirth Tube updates for the community.`)}</div></div></div><div class="video-chip-row video-channel-tabs">${tabs.map((tab, idx) => `<button class="video-chip${idx === 0 ? " on" : ""}" type="button">${tab}</button>`).join("")}</div><div class="video-side-card video-channel-panel"><div class="video-side-header"><div class="video-section-title">Uploads</div><span>${fmtV(totalViews)} total views</span></div><div class="video-channel-list">${vids.length ? vids.map((video) => renderVidSideItem(video)).join("") : `<div class="empty-sub">No videos uploaded yet.</div>`}</div></div>`;
   openOvl("videoDetailOvl");
 }
+function renderVideoChannelModal(uid) {
+  const c = document.getElementById("videoDetailContent");
+  const uidStr = (uid || "").toString();
+  const u =
+    getUser(uidStr) ||
+    getVideos().find((video) => (video?.uid || "").toString() === uidStr)?.user;
+  if (!c || !u) return;
+
+  activeVidWatchId = null;
+  activeVidChannelId = uidStr;
+
+  const vids = getVideos()
+    .filter((video) => (video?.uid || "").toString() === uidStr)
+    .sort((a, b) => Number(b?.ts || 0) - Number(a?.ts || 0));
+  const isOwnChannel =
+    !!CU && (CU.id || CU._id || "").toString() === uidStr;
+  const totalViews = vids.reduce((sum, video) => sum + (video.views || 0), 0);
+  const totalLikes = vids.reduce(
+    (sum, video) => sum + ((video.likes || []).length || 0),
+    0,
+  );
+  const featured = vids[0] || null;
+  const bannerSource = u.banner || (featured ? getVideoThumbSource(featured, u) : "") || "";
+  const bannerStyle = bannerSource
+    ? `style="background-image:linear-gradient(135deg, rgba(73,35,29,.58), rgba(177,128,63,.18)),url('${bannerSource}');background-size:cover;background-position:center"`
+    : "";
+  const tabs = ["Home", "Videos", u.verified ? "Official" : "Community"];
+
+  c.innerHTML = `<div class="video-channel-hero"><div class="video-channel-banner" ${bannerStyle}></div><div class="video-channel-body"><div class="video-channel-top"><div class="video-channel-identity"><div class="av av96">${u.avatar ? `<img src="${u.avatar}" alt="">` : getIni(u.name)}</div><div class="video-channel-summary"><div class="video-channel-name">${esc(u.name)}${u.verified ? " 🔱" : ""}</div><div class="video-channel-handle">@${esc(u.handle || "channel")}</div><div class="video-channel-stats">${fmtVidSubs(uidStr)} &middot; ${fmtV(vids.length)} video${vids.length === 1 ? "" : "s"} &middot; ${fmtV(totalViews)} views</div></div></div><div class="video-channel-actions"><div class="video-channel-sync"><span class="video-live-sync-dot"></span><span data-video-sync-label>${esc(fmtVideoDetailSyncStatus())}</span></div>${uidStr ? `<button class="video-sub-btn${isVidSubscribed(uidStr) || isOwnChannel ? " subbed" : ""}" ${isOwnChannel ? "disabled" : `onclick="toggleVideoSubscribe('${uidStr}')"`}>${isOwnChannel ? "Your channel" : isVidSubscribed(uidStr) ? "Subscribed" : "Subscribe"}</button>` : ""}</div></div><div class="video-channel-bio">${esc(u.bio || `${u.name} shares spiritual clips, yatra moments, and Tirth Tube updates for the community.`)}</div><div class="video-channel-metrics"><div class="video-channel-metric"><span>Subscribers</span><strong>${fmtV((u.followers || []).length)}</strong></div><div class="video-channel-metric"><span>Uploads</span><strong>${fmtV(vids.length)}</strong></div><div class="video-channel-metric"><span>Total views</span><strong>${fmtV(totalViews)}</strong></div><div class="video-channel-metric"><span>Total likes</span><strong>${fmtV(totalLikes)}</strong></div></div></div></div><div class="video-chip-row video-channel-tabs">${tabs.map((tab, idx) => `<button class="video-chip${idx === 0 ? " on" : ""}" type="button">${tab}</button>`).join("")}</div>${featured ? `<div class="video-side-card video-channel-featured"><div class="video-side-header"><div class="video-section-title">Featured upload</div><span>${fmtVideoAge(featured.ts)}</span></div><div class="video-channel-featured-layout" onclick="openVideoWatch('${featured.id}')"><div class="video-channel-featured-thumb">${featured.thumb ? `<img src="${featured.thumb}" alt="${esc(featured.title)}">` : `<video src="${featured.src}" muted playsinline preload="metadata"></video>`}<span class="vid-duration">${featured.dur || "--:--"}</span></div><div class="video-channel-featured-copy"><strong>${esc(featured.title)}</strong><span>${fmtV(featured.views)} views &middot; ${esc(featured.cat || "Spiritual")}</span><p>${esc((featured.desc || `${u.name}'s latest spiritual upload on Tirth Tube.`).slice(0, 180))}</p></div></div></div>` : ""}<div class="video-side-card video-channel-panel"><div class="video-side-header"><div class="video-section-title">Uploads</div><span>${fmtV(totalViews)} total views</span></div><div class="video-channel-list">${vids.length ? vids.map((video) => renderVidSideItem(video)).join("") : `<div class="empty-sub">No videos uploaded yet.</div>`}</div></div>`;
+  openOvl("videoDetailOvl");
+  syncVideoDetailRealtimeBadge();
+  window.requestAnimationFrame(() => hydrateInlineVideoPreviewFrames(c, 12));
+}
 function openVideoChannel(uid) {
   if (!document.getElementById("videoDetailOvl")?.classList.contains("show")) {
     activeVidWatchId = null;
@@ -9486,12 +10263,115 @@ function openVideoChannel(uid) {
   }
   stopVideoDetailPlayback();
   syncVideoDetailState({ type: "channel", uid });
+  videoDetailRealtimeStatus = "syncing";
   renderVideoChannelModal(uid);
+  refreshActiveVideoDetailRealtime({ render: true }).catch(() => {});
+}
+function captureVideoDetailUiState() {
+  const detailBody = document.querySelector("#videoDetailOvl .video-detail-body");
+  const activePlayer = document.querySelector(
+    "#videoDetailContent .video-watch-player video",
+  );
+  const commentInput = document.getElementById("watchVidCommentIn");
+  const replyDrafts = Array.from(
+    document.querySelectorAll("#videoDetailContent .video-reply-box[id^='vreply_']"),
+  )
+    .map((box) => {
+      const input = box.querySelector("input[id^='vreplyin_']");
+      if (!input) return null;
+      const value = input.value || "";
+      const open = !box.classList.contains("hide");
+      if (!value && !open) return null;
+      return {
+        boxId: box.id,
+        inputId: input.id,
+        value,
+        open,
+      };
+    })
+    .filter(Boolean);
+  const focusedId = document.activeElement?.id || "";
+
+  return {
+    scrollTop: detailBody ? detailBody.scrollTop : 0,
+    commentDraft: commentInput?.value || "",
+    replyDrafts,
+    focusedId,
+    playback:
+      activePlayer && activeVidWatchId
+        ? {
+            currentTime: Number(activePlayer.currentTime) || 0,
+            paused: !!activePlayer.paused,
+            muted: !!activePlayer.muted,
+            volume: Number.isFinite(activePlayer.volume) ? activePlayer.volume : 1,
+            playbackRate: Number.isFinite(activePlayer.playbackRate)
+              ? activePlayer.playbackRate
+              : 1,
+          }
+        : null,
+  };
+}
+function restoreVideoDetailUiState(snapshot) {
+  if (!snapshot) return;
+
+  const detailBody = document.querySelector("#videoDetailOvl .video-detail-body");
+  if (detailBody && Number.isFinite(snapshot.scrollTop)) {
+    detailBody.scrollTop = snapshot.scrollTop;
+  }
+
+  const commentInput = document.getElementById("watchVidCommentIn");
+  if (commentInput && typeof snapshot.commentDraft === "string") {
+    commentInput.value = snapshot.commentDraft;
+  }
+
+  (snapshot.replyDrafts || []).forEach((draft) => {
+    const box = document.getElementById(draft.boxId);
+    const input = document.getElementById(draft.inputId);
+    if (box && draft.open) box.classList.remove("hide");
+    if (input && typeof draft.value === "string") input.value = draft.value;
+  });
+
+  if (snapshot.focusedId) {
+    requestAnimationFrame(() => {
+      const focusTarget = document.getElementById(snapshot.focusedId);
+      focusTarget?.focus?.({ preventScroll: true });
+    });
+  }
+
+  if (!snapshot.playback || !activeVidWatchId) return;
+
+  const activePlayer = document.querySelector(
+    "#videoDetailContent .video-watch-player video",
+  );
+  if (!activePlayer) return;
+
+  const applyPlaybackState = () => {
+    try {
+      activePlayer.muted = snapshot.playback.muted;
+      activePlayer.volume = snapshot.playback.volume;
+      activePlayer.playbackRate = snapshot.playback.playbackRate;
+      activePlayer.currentTime = snapshot.playback.currentTime;
+    } catch {}
+
+    if (!snapshot.playback.paused) {
+      activePlayer.play().catch(() => {});
+    }
+  };
+
+  if (activePlayer.readyState >= 1) {
+    applyPlaybackState();
+  } else {
+    activePlayer.addEventListener("loadedmetadata", applyPlaybackState, {
+      once: true,
+    });
+  }
 }
 function rerenderVideoDetail() {
   if (document.getElementById("videoDetailOvl")?.classList.contains("show")) {
+    const snapshot = captureVideoDetailUiState();
     if (activeVidChannelId) renderVideoChannelModal(activeVidChannelId);
     else if (activeVidWatchId) renderVideoWatchModal(activeVidWatchId);
+    restoreVideoDetailUiState(snapshot);
   }
 }
 async function toggleVidLike(id, btn, e) {

@@ -1,4 +1,5 @@
 const express = require("express");
+const User = require("../models/User");
 const Video = require("../models/Video");
 const { auth, optionalAuth } = require("../middleware/auth");
 const { recordAnalyticsEventSafe } = require("../services/analyticsService");
@@ -91,6 +92,23 @@ function mapVideo(v) {
   };
 }
 
+function mapChannelUser(user) {
+  if (!user) return null;
+
+  return {
+    id: user._id,
+    name: user.name,
+    handle: user.handle,
+    avatar: user.avatar || null,
+    banner: user.banner || null,
+    verified: !!user.verified,
+    bio: user.bio || "",
+    joined: user.joined || "",
+    followers: (user.followers || []).map((item) => item.toString()),
+    following: (user.following || []).map((item) => item.toString()),
+  };
+}
+
 // GET /api/videos - list videos
 router.get("/", optionalAuth, async (req, res) => {
   try {
@@ -175,6 +193,62 @@ router.get("/stories", optionalAuth, async (req, res) => {
     res.status(500).json({ error: "Server error" });
   }
 });
+
+// GET /api/videos/channel/:userId - focused channel snapshot for Tirth Tube detail view
+router.get(
+  "/channel/:userId([0-9a-fA-F]{24})",
+  validateObjectIdParam("userId"),
+  optionalAuth,
+  async (req, res, next) => {
+    try {
+      const cacheKey = buildRedisCacheKey("videos", "channel", req.params.userId);
+      const { status: cacheStatus, value } = await withRedisJsonCache(
+        cacheKey,
+        async () => {
+          const [channel, foundVideos] = await Promise.all([
+            User.findById(req.params.userId)
+              .select("name handle avatar banner verified bio joined followers following")
+              .lean(),
+            Video.find({ user: req.params.userId, isLive: false })
+              .sort({ createdAt: -1 })
+              .populate("user", "name handle avatar banner verified bio followers following joined")
+              .populate("comments.user", "name handle avatar verified")
+              .populate("comments.replies.user", "name handle avatar verified")
+              .lean(),
+          ]);
+
+          if (!channel) return null;
+
+          const videos = foundVideos.map(mapVideo);
+          const totalViews = videos.reduce((sum, video) => sum + (video.views || 0), 0);
+          const totalLikes = videos.reduce(
+            (sum, video) => sum + ((video.likes || []).length || 0),
+            0
+          );
+
+          return {
+            channel: mapChannelUser(channel),
+            stats: {
+              totalVideos: videos.length,
+              totalViews,
+              totalLikes,
+              latestVideoTs: videos[0]?.ts || 0,
+            },
+            videos,
+          };
+        },
+        { ttlSeconds: 30 }
+      );
+
+      applyRedisCacheHeader(res, cacheStatus);
+      if (!value) return res.status(404).json({ error: "Channel not found" });
+
+      res.json(value);
+    } catch (err) {
+      next(err);
+    }
+  }
+);
 
 // GET /api/videos/:id - get single video
 router.get("/:id", validateObjectIdParam("id"), optionalAuth, async (req, res, next) => {

@@ -9,9 +9,9 @@
   const PAGE_ID = "founderControl";
   const ROOT_ID = "pgFounderControl";
   const USER_PAGE_SIZE = 18;
-  const OVERVIEW_POLL_MS = 10000;
-  const DIRECTORY_POLL_MS = 12000;
-  const DETAIL_POLL_MS = 6000;
+  const OVERVIEW_POLL_MS = 14000;
+  const DIRECTORY_POLL_MS = 18000;
+  const DETAIL_POLL_MS = 8000;
 
   const state = {
     overview: null,
@@ -32,6 +32,10 @@
     currentProfileId: "",
     profileActionsObserver: null,
     founderLayoutSyncBound: false,
+    overviewSignature: "",
+    directorySignature: "",
+    detailSignature: "",
+    pendingDashboardRefresh: false,
   };
 
   function getCurrentUser() {
@@ -110,6 +114,14 @@
     return `${text.slice(0, Math.max(0, maxLength - 3)).trim()}...`;
   }
 
+  function buildPayloadSignature(payload) {
+    try {
+      return JSON.stringify(payload || {});
+    } catch {
+      return String(Date.now());
+    }
+  }
+
   function getBackendBase() {
     if (typeof global.getBackendBaseUrl === "function") {
       return global.getBackendBaseUrl();
@@ -164,6 +176,34 @@
 
   function getRoot() {
     return document.getElementById(ROOT_ID);
+  }
+
+  function isFounderControlVisible() {
+    return !document.hidden && global.curPage === PAGE_ID;
+  }
+
+  function getFounderPanelHost() {
+    return document.getElementById("founderUserPanelHost");
+  }
+
+  function captureFounderPanelScroll() {
+    const panel = document.querySelector(".founder-user-panel");
+    return panel
+      ? {
+          top: panel.scrollTop || 0,
+          left: panel.scrollLeft || 0,
+        }
+      : { top: 0, left: 0 };
+  }
+
+  function restoreFounderPanelScroll(position) {
+    if (!position) return;
+    global.requestAnimationFrame(() => {
+      const panel = document.querySelector(".founder-user-panel");
+      if (!panel) return;
+      panel.scrollTop = Number(position.top || 0);
+      panel.scrollLeft = Number(position.left || 0);
+    });
   }
 
   function ensureRootShell() {
@@ -251,6 +291,59 @@
         `
       )
       .join("");
+  }
+
+  function renderFounderIntelRail(snapshot) {
+    const topPage = Array.isArray(snapshot?.pageAnalytics?.byPage)
+      ? snapshot.pageAnalytics.byPage[0]
+      : null;
+    const topDropOff = Array.isArray(snapshot?.journey?.dropOffPages)
+      ? snapshot.journey.dropOffPages[0]
+      : null;
+    const topHashtag = Array.isArray(snapshot?.trending?.hashtags)
+      ? snapshot.trending.hashtags[0]
+      : null;
+    const topRecommendation = Array.isArray(snapshot?.recommendations)
+      ? snapshot.recommendations[0]
+      : "";
+    const cards = [
+      {
+        label: "Attention magnet",
+        value: topPage?.label || topPage?.page || "Waiting for signal",
+        hint: topPage ? `${formatCount(topPage.visits || 0)} visits in the current window` : "Live page intelligence builds as sessions arrive",
+      },
+      {
+        label: "Biggest drop-off",
+        value: topDropOff?.label || topDropOff?.page || "No friction hotspot yet",
+        hint: topDropOff ? `${formatCount(topDropOff.count || 0)} exits detected` : "No strong exit page pattern detected",
+      },
+      {
+        label: "Rising theme",
+        value: topHashtag?.label || topHashtag?.tag || "No hashtag spike yet",
+        hint: topHashtag ? `${formatCount(topHashtag.count || 0)} discovery signals` : "Trending insight will surface here",
+      },
+      {
+        label: "Founder next move",
+        value: compactText(topRecommendation || "Focus on the clearest repeated user pattern next.", 56),
+        hint: "System-curated recommendation from live platform behavior",
+      },
+    ];
+
+    return `
+      <section class="founder-intel-rail">
+        ${cards
+          .map(
+            (card) => `
+              <article class="founder-intel-card">
+                <span>${escapeHtml(card.label)}</span>
+                <strong>${escapeHtml(card.value)}</strong>
+                <small>${escapeHtml(card.hint)}</small>
+              </article>
+            `
+          )
+          .join("")}
+      </section>
+    `;
   }
 
   function renderActivityItem(item) {
@@ -533,6 +626,17 @@
     `;
   }
 
+  function syncFounderUserPanel(options = {}) {
+    const host = getFounderPanelHost();
+    if (!host) return false;
+    const scrollPosition = options.preserveScroll === false
+      ? { top: 0, left: 0 }
+      : captureFounderPanelScroll();
+    host.innerHTML = renderFounderUserPanel();
+    restoreFounderPanelScroll(scrollPosition);
+    return true;
+  }
+
   function renderTimelineFeedItem(item) {
     return `
       <div class="founder-activity-item founder-activity-item-plain">
@@ -574,6 +678,8 @@
       </section>
 
       <section class="founder-stat-grid">${renderStatCards(snapshot)}</section>
+
+      ${renderFounderIntelRail(snapshot)}
 
       <section class="founder-grid founder-grid-2 founder-grid-featured">
         ${renderUserDirectoryCard()}
@@ -691,7 +797,7 @@
         </article>
       </section>
 
-      ${renderFounderUserPanel()}
+      <div id="founderUserPanelHost">${renderFounderUserPanel()}</div>
     `;
   }
 
@@ -752,6 +858,7 @@
       renderState("locked", "Founder access only", "This control room is visible only to the founder account.");
       return;
     }
+    if (!options.initial && !isFounderControlVisible()) return;
     if (options.initial && !state.overview && !state.directory) {
       renderState("loading", "Loading founder control room", "Gathering live user, content, growth, and health signals...");
     }
@@ -759,7 +866,14 @@
     try {
       const snapshot = await fetchFounderOverview();
       if (requestId !== state.latestOverviewRequestId) return;
+      const signature = buildPayloadSignature(snapshot);
+      if (signature === state.overviewSignature && !options.force) return;
+      state.overviewSignature = signature;
       state.overview = snapshot;
+      if (state.selectedUserId && getRoot()) {
+        state.pendingDashboardRefresh = true;
+        return;
+      }
       renderFounderControl();
     } catch (error) {
       if (requestId !== state.latestOverviewRequestId) return;
@@ -774,6 +888,7 @@
 
   async function refreshFounderUsers(options = {}) {
     if (!isFounderOwner()) return;
+    if (!options.initial && !options.force && !isFounderControlVisible()) return;
     const nextPage = Number(options.page || state.userPage || 1);
     const requestPage = options.append ? nextPage : 1;
     const requestLimit = options.append ? USER_PAGE_SIZE : USER_PAGE_SIZE * nextPage;
@@ -801,22 +916,35 @@
             limit: USER_PAGE_SIZE,
             hasMore: nextPage * USER_PAGE_SIZE < Number(snapshot.total || 0),
           };
+      const signature = buildPayloadSignature(state.directory);
+      if (signature === state.directorySignature && !options.force) return;
+      state.directorySignature = signature;
+      if (state.selectedUserId && getRoot()) {
+        state.pendingDashboardRefresh = true;
+        return;
+      }
       renderFounderControl();
     } catch {}
   }
 
   async function refreshFounderUserIntelligence(options = {}) {
     if (!isFounderOwner() || !state.selectedUserId) return;
+    if (!options.force && !isFounderControlVisible()) return;
     const requestId = ++state.latestDetailRequestId;
     if (options.force) {
       state.selectedUser = null;
-      renderFounderControl();
+      syncFounderUserPanel({ preserveScroll: true });
     }
     try {
       const snapshot = await fetchFounderUserIntelligence(state.selectedUserId);
       if (requestId !== state.latestDetailRequestId) return;
+      const signature = buildPayloadSignature(snapshot);
+      if (signature === state.detailSignature && !options.force) return;
+      state.detailSignature = signature;
       state.selectedUser = snapshot;
-      renderFounderControl();
+      if (!syncFounderUserPanel({ preserveScroll: true })) {
+        renderFounderControl();
+      }
     } catch (error) {
       if (requestId !== state.latestDetailRequestId) return;
       if (error?.status === 404) {
@@ -844,7 +972,7 @@
       state.detailTimerId = 0;
     }
     if (!state.selectedUserId) return;
-    refreshFounderUserIntelligence();
+    refreshFounderUserIntelligence({ force: true });
     state.detailTimerId = global.setInterval(() => {
       refreshFounderUserIntelligence();
     }, DETAIL_POLL_MS);
@@ -868,18 +996,29 @@
     if (!nextId) return;
     state.selectedUserId = nextId;
     state.selectedUser = null;
-    renderFounderControl();
+    state.detailSignature = "";
+    if (!syncFounderUserPanel({ preserveScroll: false })) {
+      renderFounderControl();
+    }
     syncFounderDetailPolling();
   }
 
   function closeFounderUserPanel() {
     state.selectedUserId = "";
     state.selectedUser = null;
+    state.detailSignature = "";
     if (state.detailTimerId) {
       global.clearInterval(state.detailTimerId);
       state.detailTimerId = 0;
     }
-    renderFounderControl();
+    if (state.pendingDashboardRefresh) {
+      state.pendingDashboardRefresh = false;
+      renderFounderControl();
+      return;
+    }
+    if (!syncFounderUserPanel({ preserveScroll: false })) {
+      renderFounderControl();
+    }
   }
 
   function isViewingOwnProfile() {
