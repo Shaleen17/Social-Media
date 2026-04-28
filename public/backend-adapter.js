@@ -101,7 +101,7 @@
   let _videoRefreshTimer = null;
   let _videoRefreshInFlight = false;
   const BOOT_CACHE_KEY = "backendBootCache";
-  const BOOT_CACHE_VERSION = "20260428-tirth-tube-liveframes-18";
+  const BOOT_CACHE_VERSION = "20260429-video-detail-menu-19";
   const BOOT_CACHE_TTL = 1000 * 60 * 60 * 24 * 30;
   const LIVE_REFRESH_INTERVAL_MS = 15000;
   const VIDEO_REFRESH_INTERVAL_MS = 45000;
@@ -471,7 +471,7 @@
 
   let _chatPushSetupPromise = null;
   let _pendingOpenChatId = consumeOpenChatParam();
-const APP_ASSET_VERSION = "20260428-tirth-tube-liveframes-18";
+const APP_ASSET_VERSION = "20260429-video-detail-menu-19";
   let _appSwPromise = null;
   let _deferredInstallPrompt = null;
   let _installPromptBound = false;

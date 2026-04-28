@@ -1,5 +1,5 @@
 (function initEnhancementBootstrap(global) {
-const VERSION = "20260428-tirth-tube-liveframes-18";
+const VERSION = "20260429-video-detail-menu-19";
   const SCRIPT_ID = "ts-noncritical-enhancements";
   let started = false;
 

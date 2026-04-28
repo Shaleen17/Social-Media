@@ -6297,25 +6297,47 @@ function gp(page) {
 
 /* ── MOBILE DRAWER ── */
 function openDrawer() {
-  document.getElementById("mobileDrawer").classList.add("open");
-  document.getElementById("drawerOverlay").classList.add("open");
-  document.getElementById("hamburgerBtn").classList.add("open");
-  document.getElementById("hamburgerBtn").setAttribute("aria-expanded", "true");
+  const drawer = document.getElementById("mobileDrawer");
+  const overlay = document.getElementById("drawerOverlay");
+  const trigger = document.getElementById("hamburgerBtn");
+  if (!drawer || !overlay || !trigger) return;
+
+  const detailOpen = document.getElementById("videoDetailOvl")?.classList.contains("show");
+  if (detailOpen) {
+    overlay.style.zIndex = "1200";
+    drawer.style.zIndex = "1210";
+  } else {
+    overlay.style.zIndex = "";
+    drawer.style.zIndex = "";
+  }
+
+  drawer.classList.add("open");
+  overlay.classList.add("open");
+  trigger.classList.add("open");
+  trigger.setAttribute("aria-expanded", "true");
   document.body.style.overflow = "hidden";
 }
 function closeDrawer() {
-  document.getElementById("mobileDrawer").classList.remove("open");
-  document.getElementById("drawerOverlay").classList.remove("open");
-  document.getElementById("hamburgerBtn").classList.remove("open");
-  document
-    .getElementById("hamburgerBtn")
-    .setAttribute("aria-expanded", "false");
+  const drawer = document.getElementById("mobileDrawer");
+  const overlay = document.getElementById("drawerOverlay");
+  const trigger = document.getElementById("hamburgerBtn");
+  if (!drawer || !overlay || !trigger) return;
+
+  drawer.classList.remove("open");
+  overlay.classList.remove("open");
+  trigger.classList.remove("open");
+  trigger.setAttribute("aria-expanded", "false");
+  drawer.style.zIndex = "";
+  overlay.style.zIndex = "";
   document.body.style.overflow = "";
 }
 function toggleDrawer() {
   if (document.getElementById("mobileDrawer").classList.contains("open"))
     closeDrawer();
   else openDrawer();
+}
+function toggleVideoDetailMenu() {
+  toggleDrawer();
 }
 function gpAndClose(page) {
   gp(page);
