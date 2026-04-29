@@ -32,7 +32,8 @@ const { scheduleDatabaseBackups } = require("./services/backupService");
 const {
   verifyEmailTransport,
   isEmailDeliveryConfigured,
-  assertEmailDeliveryConfigured,
+  getEmailDeliveryProvider,
+  getEmailTransportSettings,
   shouldVerifyBeforeSend,
 } = require("./utils/sendEmail");
 
@@ -250,74 +251,107 @@ app.get("/api/health/metrics", (req, res) => {
   });
 });
 
-// Email SMTP diagnostic endpoint — visit this URL on Render to instantly check if email works
+// Email delivery diagnostic endpoint — useful locally and in production to instantly check if OTP email works
 // URL: https://tirth-sutra-backend.onrender.com/api/health/email
 app.get("/api/health/email", async (req, res) => {
+  const provider = getEmailDeliveryProvider();
+  const { fromAddress, host, port, secure } = getEmailTransportSettings();
+
   if (!isEmailDeliveryConfigured()) {
-    const missing = ["SMTP_HOST","SMTP_PORT","SMTP_SECURE","SMTP_USER","SMTP_PASS","EMAIL_FROM"]
-      .filter((k) => !process.env[k]);
+    const missing = [];
+    if (!fromAddress) missing.push("EMAIL_FROM");
+    if (!String(process.env.BREVO_API_KEY || "").trim()) {
+      ["SMTP_HOST", "SMTP_PORT", "SMTP_SECURE", "SMTP_USER", "SMTP_PASS"]
+        .filter((k) => !process.env[k])
+        .forEach((key) => missing.push(key));
+      missing.push("BREVO_API_KEY");
+    }
     return res.status(503).json({
       status: "error",
-      message: "SMTP is NOT configured. OTP emails will fail.",
+      provider,
+      message: "Email delivery is not configured. OTP emails will fail.",
       missingEnvVars: missing,
-      fix: "Add these environment variables in your Render dashboard under Environment tab.",
+      fix: "Add BREVO_API_KEY and EMAIL_FROM, or complete the SMTP environment variables in your backend environment settings.",
     });
   }
-  // Build a temporary transporter to test the REAL connection directly
-  const nodemailer = require("nodemailer");
-  const parsedPort = Number(process.env.SMTP_PORT || 0);
-  const secure = process.env.SMTP_SECURE ? process.env.SMTP_SECURE === "true" : parsedPort === 465;
-  const port = parsedPort || (secure ? 465 : 587);
-  const smtpUser = process.env.SMTP_USER || process.env.EMAIL_USER || "";
-  const smtpPass = process.env.SMTP_PASS || process.env.EMAIL_PASS || "";
-  const smtpHost = process.env.SMTP_HOST || "smtp.gmail.com";
-
-  const testTransporter = nodemailer.createTransport({
-    host: smtpHost,
-    port,
-    secure,
-    requireTLS: !secure,
-    auth: { user: smtpUser, pass: smtpPass },
-    tls: { minVersion: "TLSv1.2", rejectUnauthorized: false },
-    connectionTimeout: 15000,
-    greetingTimeout: 15000,
-    socketTimeout: 20000,
-  });
 
   try {
-    await testTransporter.verify();
-    res.json({
+    await verifyEmailTransport();
+    return res.json({
       status: "ok",
-      message: "SMTP connection verified. OTP emails should work.",
-      smtpHost,
-      smtpPort: port,
-      smtpUser,
+      provider,
+      message:
+        provider === "brevo"
+          ? "Brevo API verified. OTP emails should work."
+          : "SMTP connection verified. OTP emails should work.",
+      fromAddress,
+      ...(provider === "smtp"
+        ? {
+            smtpHost: host,
+            smtpPort: port,
+            smtpSecure: secure,
+          }
+        : {}),
     });
   } catch (err) {
-    res.status(500).json({
+    const providerMessage = String(
+      err.details?.providerMessage || err.rawErrorMessage || err.message || ""
+    );
+    const isBrevoSmtpHost = /smtp-relay\.brevo\.com/i.test(String(host || ""));
+    const isBrevoSmtpUnauthorizedIp =
+      provider === "smtp" &&
+      isBrevoSmtpHost &&
+      /unauthorized ip address/i.test(providerMessage);
+
+    return res.status(500).json({
       status: "error",
-      message: "SMTP credentials are set but the connection FAILED.",
+      provider,
+      message:
+        provider === "brevo"
+          ? "Brevo API is configured but the connection FAILED."
+          : "SMTP credentials are set but the connection FAILED.",
       rawErrorCode: err.code || "UNKNOWN",
       rawErrorMessage: err.message,
-      rawErrorResponse: err.response || null,
-      smtpHost,
-      smtpPort: port,
-      smtpSecure: secure,
-      smtpUser,
-      smtpPassLength: smtpPass.length,
-      smtpPassPreview: smtpPass.substring(0, 4) + "****",
+      providerMessage: providerMessage || null,
+      responseStatus: err.responseStatus || err.details?.responseStatus || null,
+      rawErrorResponse: err.responseBody || err.details?.responseBody || null,
+      fromAddress,
+      ...(provider === "smtp"
+        ? {
+            smtpHost: host,
+            smtpPort: port,
+            smtpSecure: secure,
+          }
+        : {}),
       diagnosis:
-        err.code === "EAUTH"
-          ? "Gmail REJECTED the password. Either: (1) the App Password is wrong/revoked, (2) 2-Step Verification is OFF on the Gmail account, or (3) the Gmail account is locked/suspended."
-          : err.code === "ECONNECTION" || err.code === "ETIMEDOUT" || err.code === "ENOTFOUND"
-            ? "Cannot reach smtp.gmail.com from this server. The hosting provider may be blocking outgoing SMTP connections on port " + port + "."
-            : err.code === "ESOCKET"
-              ? "TLS/SSL handshake failed. Try setting SMTP_SECURE=true and SMTP_PORT=465."
-              : "Unexpected error. Check rawErrorCode and rawErrorMessage for details.",
-      fix: "Check that SMTP_PASS is a valid Gmail App Password (16 chars, no spaces). Ensure 2-Step Verification is ON for the Gmail account.",
+        provider === "brevo"
+          ? err.code === "EAUTH"
+            ? "Brevo rejected the API key. The BREVO_API_KEY may be invalid, revoked, or entered incorrectly."
+            : err.code === "ECONNECTION" || err.code === "ETIMEDOUT" || err.code === "ENOTFOUND"
+              ? "Cannot reach the Brevo API from this server."
+              : err.code === "EBREVO"
+                ? "Brevo rejected the request. The sender email may not be verified, or the payload may be invalid."
+                : "Unexpected Brevo error. Check the response payload for details."
+          : err.code === "EAUTH"
+            ? isBrevoSmtpUnauthorizedIp
+              ? "Brevo SMTP rejected this server IP address. Add the IP to Brevo's authorized IP list, or switch to a valid BREVO_API_KEY."
+              : isBrevoSmtpHost
+                ? "Brevo SMTP rejected the login. Check the SMTP login/password, and verify that Brevo has not restricted this IP."
+                : "Gmail rejected the password. The App Password may be wrong or 2-Step Verification may be off."
+            : err.code === "ECONNECTION" || err.code === "ETIMEDOUT" || err.code === "ENOTFOUND"
+              ? `Cannot reach ${host} from this server. The hosting provider may be blocking outgoing SMTP on port ${port}.`
+              : err.code === "ESOCKET"
+                ? "TLS/SSL handshake failed. Try SMTP_SECURE=true with SMTP_PORT=465."
+                : "Unexpected SMTP error. Check rawErrorCode and rawErrorMessage for details.",
+      fix:
+        provider === "brevo"
+          ? "Check BREVO_API_KEY, set EMAIL_FROM to a Brevo-verified sender, and confirm the sender is verified in Brevo."
+          : isBrevoSmtpUnauthorizedIp
+            ? "Authorize this machine/server IP in Brevo Security settings, or remove Brevo SMTP and use a valid BREVO_API_KEY instead."
+            : isBrevoSmtpHost
+              ? "Check the Brevo SMTP login/password and confirm this IP is allowed in Brevo."
+              : "Check that SMTP_PASS is a valid Gmail App Password and ensure the hosting provider allows outbound SMTP.",
     });
-  } finally {
-    testTransporter.close();
   }
 });
 
@@ -402,8 +436,8 @@ if (!process.env.VERCEL) {
           console.error(
             "❌ SMTP startup check FAILED — OTP emails will NOT be delivered.\n" +
             "   Error:", err.message, "\n" +
-            "   Fix: Check SMTP_USER / SMTP_PASS in Render Environment Variables.\n" +
-            "   Gmail requires a 16-char App Password (Google Account → Security → App Passwords)."
+            "   Fix: Check the backend email environment variables for the active provider.\n" +
+            "   Gmail requires a valid App Password, and Brevo SMTP may require the current IP to be authorized."
           );
         });
     } else {
@@ -416,7 +450,7 @@ if (!process.env.VERCEL) {
     console.error(
       "❌ SMTP is NOT configured — OTP emails will NOT be delivered.\n" +
       "   Missing: SMTP_HOST, SMTP_PORT, SMTP_SECURE, SMTP_USER, SMTP_PASS, EMAIL_FROM\n" +
-      "   Fix: Add these in your Render dashboard → Environment tab."
+      "   Fix: Add these to the backend environment, or set BREVO_API_KEY + EMAIL_FROM."
     );
   }
 }

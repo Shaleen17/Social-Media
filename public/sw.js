@@ -1,4 +1,4 @@
-self.__TS_SW_VERSION__ = "20260429-video-detail-menu-19";
+self.__TS_SW_VERSION__ = "20260429-founder-directory-ui-24";
 const TS_STATIC_CACHE = `ts-static-${self.__TS_SW_VERSION__}`;
 const TS_API_CACHE = `ts-api-${self.__TS_SW_VERSION__}`;
 
@@ -12,16 +12,16 @@ const CORE_ASSETS = [
   "/pwa-512.png",
   "/Brand_Logo.jpg",
   "/Style.css",
-  "/Style.css?v=20260429-video-detail-menu-19",
-  "/Script.js?v=20260429-video-detail-menu-19",
-  "/api.js?v=20260429-video-detail-menu-19",
-  "/backend-adapter.js?v=20260429-video-detail-menu-19",
-  "/founder-control.js?v=20260429-video-detail-menu-19",
+  "/Style.css?v=20260429-founder-directory-ui-24",
+  "/Script.js?v=20260429-founder-directory-ui-24",
+  "/api.js?v=20260429-founder-directory-ui-24",
+  "/backend-adapter.js?v=20260429-founder-directory-ui-24",
+  "/founder-control.js?v=20260429-founder-directory-ui-24",
   "/appwrite-auth.js?v=20260425-scale-search-oauth-1",
   "/config.js?v=20260420-advanced-search-1",
   "/socket-client.js?v=20260425-scale-search-oauth-1",
   "/webrtc-client.js?v=20260422-webrtc-socket-signaling-1",
-  "/enhancements-bootstrap.js?v=20260429-video-detail-menu-19",
+  "/enhancements-bootstrap.js?v=20260429-founder-directory-ui-24",
   "/noncritical-enhancements.js?v=20260428-tirth-tube-detail-live-2",
 ];
 

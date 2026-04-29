@@ -1,7 +1,7 @@
+const https = require("https");
 const nodemailer = require("nodemailer");
 const AppError = require("./appError");
 
-// Singleton transporter — reset on failure so bad credentials don't stay cached
 let transporter = null;
 let verifyPromise = null;
 
@@ -33,44 +33,197 @@ function getEmailTransportSettings() {
   };
 }
 
+function getBrevoSettings() {
+  return {
+    apiKey: String(process.env.BREVO_API_KEY || "").trim(),
+    baseUrl: String(process.env.BREVO_API_BASE || "https://api.brevo.com").trim(),
+  };
+}
+
+function getConfiguredEmailProviderPreference() {
+  const preferred = String(process.env.EMAIL_DELIVERY_PROVIDER || "auto")
+    .trim()
+    .toLowerCase();
+
+  if (preferred === "smtp" || preferred === "brevo") {
+    return preferred;
+  }
+
+  return "auto";
+}
+
+function getEmailDeliveryProvider() {
+  const preferred = getConfiguredEmailProviderPreference();
+  const { apiKey } = getBrevoSettings();
+  const { authUser, authPass } = getEmailTransportSettings();
+  const hasBrevo = !!apiKey;
+  const hasSmtp = !!(authUser && authPass);
+
+  if (preferred === "brevo") {
+    return hasBrevo ? "brevo" : "smtp";
+  }
+
+  if (preferred === "smtp") {
+    return hasSmtp ? "smtp" : "brevo";
+  }
+
+  return hasBrevo ? "brevo" : "smtp";
+}
+
 function isEmailDeliveryConfigured() {
   const { authUser, authPass, fromAddress } = getEmailTransportSettings();
-  return !!(authUser && authPass && fromAddress);
+  const { apiKey } = getBrevoSettings();
+  return !!(fromAddress && (apiKey || (authUser && authPass)));
 }
 
 function assertEmailDeliveryConfigured() {
-  if (isEmailDeliveryConfigured()) {
-    return;
-  }
+  if (isEmailDeliveryConfigured()) return;
 
-  // Log exactly which variables are missing to help with debugging on Render
-  const keys = ["SMTP_HOST", "SMTP_PORT", "SMTP_SECURE", "SMTP_USER", "SMTP_PASS", "EMAIL_FROM"];
-  const missing = keys.filter((k) => !process.env[k]);
-  console.error("❌ SMTP not configured. Missing env vars:", missing.join(", "));
+  const missing = [];
+  const { fromAddress } = getEmailTransportSettings();
+  const { apiKey } = getBrevoSettings();
+  const hasSmtpCreds = !!(process.env.SMTP_USER || process.env.EMAIL_USER) &&
+    !!(process.env.SMTP_PASS || process.env.EMAIL_PASS);
+
+  if (!fromAddress) missing.push("EMAIL_FROM");
+  if (!apiKey && !hasSmtpCreds) missing.push("BREVO_API_KEY or SMTP_USER + SMTP_PASS");
+
+  console.error("Email delivery is not configured. Missing:", missing.join(", "));
 
   throw new AppError(
-    "OTP email delivery is not configured on the server. Add SMTP_HOST, SMTP_PORT, SMTP_SECURE, SMTP_USER, SMTP_PASS, and EMAIL_FROM in your Render environment variables.",
-    503
+    "OTP email delivery is not configured on the server. Add BREVO_API_KEY and EMAIL_FROM, or configure SMTP_HOST, SMTP_PORT, SMTP_SECURE, SMTP_USER, SMTP_PASS, and EMAIL_FROM.",
+    503,
   );
 }
 
-// BUG FIX: Reset transporter on failure so stale broken transport is never reused.
-// Previously, a failed transport was cached and all future emails also failed silently.
 function resetTransporter() {
   transporter = null;
   verifyPromise = null;
 }
 
-function createTransporter() {
-  if (transporter) {
-    return transporter;
+function buildEmailSender() {
+  const { fromAddress } = getEmailTransportSettings();
+  return {
+    name: process.env.EMAIL_FROM_NAME || "Tirth Sutra",
+    email: fromAddress,
+  };
+}
+
+function createRequestError(message, code, details = null) {
+  const error = new Error(message);
+  error.code = code;
+  if (details) Object.assign(error, details);
+  return error;
+}
+
+function isBrevoSmtpUnauthorizedIpError(error, host = "") {
+  return /smtp-relay\.brevo\.com/i.test(String(host || "")) &&
+    /unauthorized ip address/i.test(String(error?.message || ""));
+}
+
+function requestBrevo(pathname, { method = "GET", body = null, timeoutMs = 15000 } = {}) {
+  const { apiKey, baseUrl } = getBrevoSettings();
+  if (!apiKey) {
+    throw createRequestError("BREVO_API_KEY is missing.", "ENOCONFIG");
   }
 
-  const { authUser, authPass, host, port, secure } = getEmailTransportSettings();
+  const url = new URL(pathname, baseUrl);
+  const payload = body ? JSON.stringify(body) : "";
 
+  return new Promise((resolve, reject) => {
+    const request = https.request(
+      url,
+      {
+        method,
+        headers: {
+          Accept: "application/json",
+          "Content-Type": "application/json",
+          "api-key": apiKey,
+          ...(payload ? { "Content-Length": Buffer.byteLength(payload) } : {}),
+        },
+      },
+      (response) => {
+        let raw = "";
+        response.setEncoding("utf8");
+        response.on("data", (chunk) => {
+          raw += chunk;
+        });
+        response.on("end", () => {
+          let parsed = null;
+          if (raw) {
+            try {
+              parsed = JSON.parse(raw);
+            } catch {
+              parsed = raw;
+            }
+          }
+
+          const statusCode = response.statusCode || 500;
+          if (statusCode >= 200 && statusCode < 300) {
+            resolve({ statusCode, data: parsed });
+            return;
+          }
+
+          const message =
+            parsed?.message ||
+            parsed?.error ||
+            parsed?.code ||
+            `Brevo API request failed with status ${statusCode}.`;
+
+          reject(
+            createRequestError(message, statusCode === 401 || statusCode === 403 ? "EAUTH" : "EBREVO", {
+              responseStatus: statusCode,
+              responseBody: parsed,
+            }),
+          );
+        });
+      },
+    );
+
+    request.setTimeout(timeoutMs, () => {
+      request.destroy(createRequestError("Brevo API connection timeout", "ETIMEDOUT"));
+    });
+    request.on("error", (error) => reject(error));
+    if (payload) request.write(payload);
+    request.end();
+  });
+}
+
+async function sendViaBrevo({ email, subject, html, text, replyTo, headers }) {
+  const payload = {
+    sender: buildEmailSender(),
+    to: [{ email }],
+    subject,
+    ...(html ? { htmlContent: html } : {}),
+    ...(text ? { textContent: text } : {}),
+    ...(replyTo ? { replyTo: { email: replyTo } } : {}),
+    ...(headers ? { headers } : {}),
+  };
+
+  const result = await requestBrevo("/v3/smtp/email", {
+    method: "POST",
+    body: payload,
+    timeoutMs: 15000,
+  });
+
+  const messageId = result?.data?.messageId || result?.data?.messageIds?.[0] || "Brevo";
+  console.log(`Email sent to ${email} via Brevo - messageId: ${messageId}`);
+  return result?.data || { messageId };
+}
+
+async function verifyBrevoApi() {
+  await requestBrevo("/v3/account", { method: "GET", timeoutMs: 12000 });
+  console.log("Brevo API verified successfully.");
+  return true;
+}
+
+function createTransporter() {
+  if (transporter) return transporter;
+
+  const { authUser, authPass, host, port, secure } = getEmailTransportSettings();
   assertEmailDeliveryConfigured();
 
-  console.log(`📧 Creating SMTP transporter — host:${host} port:${port} secure:${secure} user:${authUser}`);
+  console.log(`Creating SMTP transporter - host:${host} port:${port} secure:${secure} user:${authUser}`);
 
   transporter = nodemailer.createTransport({
     host,
@@ -83,11 +236,9 @@ function createTransporter() {
     },
     tls: {
       minVersion: "TLSv1.2",
-      // BUG FIX: Do not reject self-signed certs in staging, but enforce in prod
       rejectUnauthorized: process.env.NODE_ENV === "production",
     },
-    // BUG FIX: Add connection timeout so email never hangs the request indefinitely
-    connectionTimeout: 10000,  // 10 seconds
+    connectionTimeout: 10000,
     greetingTimeout: 10000,
     socketTimeout: 15000,
   });
@@ -96,17 +247,22 @@ function createTransporter() {
 }
 
 async function sendEmail({ email, subject, html, text, replyTo, headers }) {
-  const { fromAddress } = getEmailTransportSettings();
-
   assertEmailDeliveryConfigured();
+  const { host } = getEmailTransportSettings();
 
   try {
+    if (getEmailDeliveryProvider() === "brevo") {
+      return await sendViaBrevo({ email, subject, html, text, replyTo, headers });
+    }
+
     const transport = createTransporter();
     if (shouldVerifyBeforeSend()) {
       await verifyEmailTransport();
     }
+
+    const sender = buildEmailSender();
     const info = await transport.sendMail({
-      from: `Tirth Sutra <${fromAddress}>`,
+      from: `${sender.name} <${sender.email}>`,
       to: email,
       ...(replyTo ? { replyTo } : {}),
       ...(headers ? { headers } : {}),
@@ -115,20 +271,27 @@ async function sendEmail({ email, subject, html, text, replyTo, headers }) {
       text,
     });
 
-    console.log(`✅ Email sent to ${email} — messageId: ${info.messageId}`);
+    console.log(`Email sent to ${email} - messageId: ${info.messageId}`);
     return info;
   } catch (error) {
-    // BUG FIX: Reset transporter on ANY failure.
-    // Previously a failed/stale transporter was cached and ALL future OTP emails also failed.
-    console.error("❌ Email delivery failed:", error.message, "| code:", error.code || "N/A");
+    console.error("Email delivery failed:", error.message, "| code:", error.code || "N/A");
     resetTransporter();
 
-    // Give a helpful message based on error type
     let userMessage = "Unable to send the OTP email right now. Please try again shortly.";
     if (error.code === "EAUTH") {
-      userMessage = "Email authentication failed. Check SMTP_USER and SMTP_PASS environment variables on the server.";
+      userMessage =
+        getEmailDeliveryProvider() === "brevo"
+          ? "Email API authentication failed. Check BREVO_API_KEY on the server."
+          : isBrevoSmtpUnauthorizedIpError(error, host)
+            ? "Brevo SMTP blocked this local IP address. Authorize this IP in Brevo Security > Authorized IPs, or switch the backend to a valid BREVO_API_KEY."
+          : "Email authentication failed. Check SMTP_USER and SMTP_PASS environment variables on the server.";
     } else if (error.code === "ECONNECTION" || error.code === "ETIMEDOUT" || error.code === "ENOTFOUND") {
-      userMessage = "Could not connect to the email server. Check SMTP_HOST and SMTP_PORT environment variables.";
+      userMessage =
+        getEmailDeliveryProvider() === "brevo"
+          ? "Could not connect to the Brevo email API. Check network access from the backend and the Brevo API settings."
+          : "Could not connect to the email server. Check SMTP_HOST and SMTP_PORT environment variables.";
+    } else if (error.code === "EBREVO") {
+      userMessage = "Brevo rejected the email request. Check EMAIL_FROM and confirm the sender is verified in Brevo.";
     }
 
     throw new AppError(userMessage, 502);
@@ -136,26 +299,41 @@ async function sendEmail({ email, subject, html, text, replyTo, headers }) {
 }
 
 async function verifyEmailTransport() {
-  if (verifyPromise) {
-    return verifyPromise;
-  }
+  if (verifyPromise) return verifyPromise;
+  const { host } = getEmailTransportSettings();
 
-  verifyPromise = createTransporter()
-    .verify()
-    .then(() => {
-      console.log("✅ SMTP transporter verified successfully.");
-      return true;
-    })
-    .catch((error) => {
-      // BUG FIX: Reset both transporter AND verifyPromise on failure
-      // Previously only verifyPromise was reset, leaving broken transporter cached
-      console.error("❌ SMTP verification failed:", error.message, "| code:", error.code || "N/A");
-      resetTransporter();
-      throw new AppError(
-        "Email delivery is configured incorrectly on the server. Check SMTP credentials in Render environment variables.",
-        500
-      );
-    });
+  verifyPromise = (
+    getEmailDeliveryProvider() === "brevo"
+      ? verifyBrevoApi()
+      : createTransporter().verify().then(() => {
+          console.log("SMTP transporter verified successfully.");
+          return true;
+        })
+  ).catch((error) => {
+    console.error(
+      `${getEmailDeliveryProvider() === "brevo" ? "Brevo" : "SMTP"} verification failed:`,
+      error.message,
+      "| code:",
+      error.code || "N/A",
+    );
+    resetTransporter();
+    const wrappedError = new AppError(
+      getEmailDeliveryProvider() === "brevo"
+        ? "Email delivery is configured incorrectly on the server. Check BREVO_API_KEY and the verified sender in Brevo."
+        : isBrevoSmtpUnauthorizedIpError(error, host)
+          ? "Brevo SMTP blocked this server IP address. Authorize the IP in Brevo Security > Authorized IPs, or use a valid BREVO_API_KEY instead."
+        : "Email delivery is configured incorrectly on the server. Check SMTP credentials in the backend environment variables.",
+      500,
+      {
+        code: error.code || "UNKNOWN",
+        responseStatus: error.responseStatus || null,
+        responseBody: error.responseBody || null,
+        providerMessage: error.message || "",
+      },
+    );
+    wrappedError.code = error.code || "UNKNOWN";
+    throw wrappedError;
+  });
 
   return verifyPromise;
 }
@@ -166,4 +344,7 @@ module.exports = {
   isEmailDeliveryConfigured,
   assertEmailDeliveryConfigured,
   shouldVerifyBeforeSend,
+  getEmailDeliveryProvider,
+  getEmailTransportSettings,
+  getBrevoSettings,
 };

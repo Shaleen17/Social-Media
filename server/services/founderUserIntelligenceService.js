@@ -57,6 +57,18 @@ function formatRelativeTime(dateValue) {
   return `${Math.floor(diffSeconds / 86400)}d ago`;
 }
 
+function formatLastSeenLabel(dateValue) {
+  const date = toDateValue(dateValue);
+  if (!date) return "No recent activity";
+  const year = date.getUTCFullYear();
+  if (year < 2022) return "No recent activity";
+  const diffMs = Math.max(0, Date.now() - date.getTime());
+  const diffDays = Math.floor(diffMs / DAY_MS);
+  if (diffDays >= 365) return "Inactive";
+  if (diffDays >= 45) return `${Math.floor(diffDays / 30)}mo ago`;
+  return formatRelativeTime(date);
+}
+
 function humanizeEventName(name = "") {
   return String(name || "")
     .replace(/[_-]+/g, " ")
@@ -1011,6 +1023,105 @@ function buildContentSnapshot({ postsSummary = {}, videosSummary = {}, messageCo
   };
 }
 
+function buildReplayLite({ sessions = [], events = [] }) {
+  const primarySession = sessions[0] || null;
+  if (!primarySession) {
+    return {
+      summary: "No replayable session yet.",
+      frames: [],
+      hotspots: [],
+      actionTrail: [],
+    };
+  }
+
+  const sessionStart = toDateValue(primarySession.startedAt);
+  const sessionEnd = toDateValue(primarySession.lastSeenAt);
+  const sessionEvents = events
+    .filter((event) => {
+      const createdAt = toDateValue(event.createdAt);
+      return createdAt && sessionStart && sessionEnd && createdAt >= sessionStart && createdAt <= sessionEnd;
+    })
+    .slice()
+    .reverse();
+
+  const frames = (primarySession.steps || []).map((step, index) => {
+    const enteredAt = toDateValue(step.enteredAt);
+    const endedAt = toDateValue(step.endedAt);
+    const frameEvents = sessionEvents.filter((event) => {
+      const createdAt = toDateValue(event.createdAt);
+      return createdAt && enteredAt && endedAt && createdAt >= enteredAt && createdAt <= endedAt;
+    });
+    const highlight =
+      frameEvents.find((event) =>
+        ["video_completed", "chat_message_sent", "post_commented", "user_followed"].includes(
+          String(event?.name || "")
+        )
+      ) || frameEvents[0];
+
+    return {
+      id: `${step.page || "step"}-${index}`,
+      page: step.page,
+      label: step.label,
+      dwellSeconds: durationSeconds(step.enteredAt, step.endedAt),
+      eventCount: frameEvents.length,
+      highlight: highlight ? humanizeEventName(highlight.name || "Activity") : "Browsing",
+      scrollDepth: Math.max(
+        0,
+        ...frameEvents.map((event) =>
+          Number(event?.meta?.maxScrollDepth || event?.meta?.currentScrollDepth || 0)
+        )
+      ),
+    };
+  });
+
+  const actionTrail = sessionEvents
+    .filter((event) =>
+      [
+        "search_used",
+        "chat_opened",
+        "chat_message_sent",
+        "post_liked",
+        "post_commented",
+        "video_started",
+        "video_completed",
+        "user_followed",
+      ].includes(String(event?.name || ""))
+    )
+    .slice(0, 12)
+    .map((event) => ({
+      id: toIdString(event),
+      label: humanizeEventName(event.name || "Activity"),
+      pageLabel: formatPageLabel(pageFromEvent(event)),
+      ageLabel: formatRelativeTime(event.createdAt),
+      detail: compactText(
+        event?.meta?.videoTitle ||
+          event?.meta?.preview ||
+          event?.meta?.targetHandle ||
+          event?.meta?.query ||
+          "",
+        80
+      ),
+    }));
+
+  const hotspots = frames
+    .filter((frame) => frame.dwellSeconds >= 6 || frame.scrollDepth >= 50)
+    .sort((left, right) => right.dwellSeconds - left.dwellSeconds || right.scrollDepth - left.scrollDepth)
+    .slice(0, 4)
+    .map((frame) => ({
+      label: frame.label,
+      dwellSeconds: frame.dwellSeconds,
+      scrollDepth: frame.scrollDepth,
+      highlight: frame.highlight,
+    }));
+
+  return {
+    summary: `${frames.length} steps captured across the latest session.`,
+    frames,
+    hotspots,
+    actionTrail,
+  };
+}
+
 async function getConversationSnapshot(userId) {
   const [conversationCount, messageAggregate] = await Promise.all([
     Conversation.countDocuments({ participants: userId }),
@@ -1248,7 +1359,7 @@ async function getFounderUserDirectory({
         createdAt: user.createdAt,
         joinedLabel: formatRelativeTime(user.createdAt),
         lastSeenAt: summary.lastEventAt || user.lastSeen || user.updatedAt || null,
-        lastSeenLabel: formatRelativeTime(summary.lastEventAt || user.lastSeen || user.updatedAt || null),
+        lastSeenLabel: formatLastSeenLabel(summary.lastEventAt || user.lastSeen || user.updatedAt || null),
         currentPage: String(summary.lastPage || "").trim(),
         currentPageLabel: formatPageLabel(summary.lastPage || ""),
         activityLabel: deriveCurrentAction(
@@ -1370,6 +1481,7 @@ async function getFounderUserIntelligence({ app, userId } = {}) {
     messageCount: conversationSnapshot.messageCount,
     conversationCount: conversationSnapshot.conversationCount,
   });
+  const replayLite = buildReplayLite({ sessions, events });
 
   return {
     generatedAt: new Date().toISOString(),
@@ -1403,6 +1515,7 @@ async function getFounderUserIntelligence({ app, userId } = {}) {
     segmentTags,
     context,
     content,
+    replayLite,
     sessions: sessions.slice(0, 10).map((session) => ({
       key: session.key,
       startedAt: session.startedAt,
@@ -1434,6 +1547,7 @@ module.exports = {
     buildInterestProfile,
     buildMicroBehavior,
     buildJourneyView,
+    buildReplayLite,
     getUsageBand,
   },
 };

@@ -101,7 +101,7 @@
   let _videoRefreshTimer = null;
   let _videoRefreshInFlight = false;
   const BOOT_CACHE_KEY = "backendBootCache";
-  const BOOT_CACHE_VERSION = "20260429-video-detail-menu-19";
+  const BOOT_CACHE_VERSION = "20260429-founder-directory-ui-24";
   const BOOT_CACHE_TTL = 1000 * 60 * 60 * 24 * 30;
   const LIVE_REFRESH_INTERVAL_MS = 15000;
   const VIDEO_REFRESH_INTERVAL_MS = 45000;
@@ -471,7 +471,7 @@
 
   let _chatPushSetupPromise = null;
   let _pendingOpenChatId = consumeOpenChatParam();
-const APP_ASSET_VERSION = "20260429-video-detail-menu-19";
+const APP_ASSET_VERSION = "20260429-founder-directory-ui-24";
   let _appSwPromise = null;
   let _deferredInstallPrompt = null;
   let _installPromptBound = false;
@@ -1237,6 +1237,51 @@ const APP_ASSET_VERSION = "20260429-video-detail-menu-19";
       : fallbackSeconds;
   }
 
+  function applyDevelopmentOtpAssist(payload, options = {}) {
+    const otp = String(payload?.developmentOtp || "").trim();
+    if (!payload?.developmentFallback || !/^\d{6}$/.test(otp)) {
+      return false;
+    }
+
+    const mode = String(options.mode || "").toLowerCase();
+    let autofilled = false;
+
+    if (mode === "signup") {
+      if (typeof window.setOtpValue === "function") {
+        window.setOtpValue(otp, { focusFirstEmpty: false });
+        autofilled = true;
+      } else {
+        const hidden = document.getElementById("suOtp");
+        if (hidden) {
+          hidden.value = otp;
+          autofilled = true;
+        }
+      }
+
+      if (autofilled) {
+        window.setTimeout(() => document.getElementById("verifyOtpBtn")?.focus(), 30);
+      }
+    }
+
+    if (mode === "reset") {
+      const otpInput = document.getElementById("fpOtp");
+      if (otpInput) {
+        otpInput.value = otp;
+        autofilled = true;
+      }
+      if (autofilled) {
+        window.setTimeout(() => document.getElementById("fpPw")?.focus(), 30);
+      }
+    }
+
+    MC.info(
+      autofilled
+        ? "Development mode: the OTP has been auto-filled because email delivery is unavailable locally."
+        : `Development mode: use OTP ${otp} because email delivery is unavailable locally.`
+    );
+    return true;
+  }
+
   function getBackendTargetLabel() {
     const backendBase =
       typeof window.getBackendBaseUrl === "function"
@@ -1316,11 +1361,39 @@ const APP_ASSET_VERSION = "20260429-video-detail-menu-19";
     }
 
     if (
+      status === 502 &&
+      /brevo smtp blocked this (local|server) ip address/i.test(baseMessage)
+    ) {
+      return `OTP email sending is blocked on the ${backendTarget} because Brevo SMTP has not authorized this IP address yet. Add the current IP in Brevo Security settings, or switch the backend to a valid Brevo API key.`;
+    }
+
+    if (
+      status === 502 &&
+      /email api authentication failed/i.test(baseMessage)
+    ) {
+      return `OTP email sending is not working on the ${backendTarget} because the Brevo API key is invalid, missing, or revoked. Check BREVO_API_KEY on that backend.`;
+    }
+
+    if (
+      status === 502 &&
+      /could not connect to the email server/i.test(baseMessage)
+    ) {
+      return `OTP email sending is not working on the ${backendTarget} because the backend could not connect to its SMTP server. Check the SMTP host/port and confirm your hosting provider allows outbound SMTP connections.`;
+    }
+
+    if (
+      status === 502 &&
+      /email authentication failed/i.test(baseMessage)
+    ) {
+      return `OTP email sending is not working on the ${backendTarget} because SMTP authentication failed. Check SMTP_USER, SMTP_PASS, and your Gmail App Password.`;
+    }
+
+    if (
       status === 500 ||
       status === 502 ||
       /email delivery|send the email|configured incorrectly/i.test(baseMessage)
     ) {
-      return `OTP email sending is not working on the ${backendTarget}. Add or fix the SMTP environment variables on that backend first.`;
+      return `OTP email sending is not working on the ${backendTarget}. Check the backend email configuration and mail delivery setup first.`;
     }
 
     return baseMessage;
@@ -1501,6 +1574,7 @@ const APP_ASSET_VERSION = "20260429-video-detail-menu-19";
       syncOtpPendingState(data.email || email, {
         cooldownSeconds: getOtpCooldownSeconds(data),
       });
+      applyDevelopmentOtpAssist(data, { mode: "signup" });
 
       if (passwordInput) passwordInput.value = "";
 
@@ -1610,6 +1684,7 @@ const APP_ASSET_VERSION = "20260429-video-detail-menu-19";
       syncOtpPendingState(data.email || email, {
         cooldownSeconds: getOtpCooldownSeconds(data),
       });
+      applyDevelopmentOtpAssist(data, { mode: "signup" });
       setOtpAuthFieldError("suOtpErr", false);
       MC.success(data.message || "A fresh OTP has been sent to your email.");
     } catch (err) {
@@ -1654,6 +1729,7 @@ const APP_ASSET_VERSION = "20260429-video-detail-menu-19";
       syncOtpPendingState(data.email || email, {
         cooldownSeconds: getOtpCooldownSeconds(data),
       });
+      applyDevelopmentOtpAssist(data, { mode: "signup" });
       if (typeof authToggle === "function") {
         authToggle("signup");
       }
@@ -1671,6 +1747,55 @@ const APP_ASSET_VERSION = "20260429-video-detail-menu-19";
       if (resendBtn) {
         resendBtn.disabled = false;
         resendBtn.textContent = "Resend OTP";
+      }
+    }
+  };
+
+  window.requestPasswordResetOtp = async function () {
+    const email = (document.getElementById("fpEml")?.value || "").trim().toLowerCase();
+    const sendBtn = document.getElementById("fpSendBtn");
+    if (typeof clearForgotPasswordErrors === "function") {
+      clearForgotPasswordErrors();
+    }
+
+    if (!email || !email.includes("@")) {
+      setOtpAuthFieldError("fpEE", true, "Valid email required");
+      return;
+    }
+
+    try {
+      if (typeof setAuthResetButtonBusy === "function") {
+        setAuthResetButtonBusy(sendBtn, true, "Sending OTP...");
+      }
+      const data = await API.requestPasswordReset(email);
+      const resetFields = document.getElementById("resetPasswordFields");
+      if (resetFields) {
+        resetFields.classList.remove("hide");
+        resetFields.style.display = "block";
+      }
+      if (sendBtn) {
+        sendBtn.dataset.defaultText = "Resend Reset OTP";
+        sendBtn.textContent = "Resend Reset OTP";
+      }
+
+      applyDevelopmentOtpAssist(data, { mode: "reset" });
+      MC.success(
+        data.message || "If this email is registered, we sent a password reset OTP."
+      );
+
+      if (!data?.developmentFallback) {
+        window.setTimeout(() => document.getElementById("fpOtp")?.focus(), 30);
+      }
+    } catch (err) {
+      setOtpAuthFieldError(
+        "fpErr",
+        true,
+        String.fromCodePoint(0x274c) + " " + (err.message || "Could not send reset OTP")
+      );
+      MC.error(err.message || "Could not send reset OTP");
+    } finally {
+      if (typeof setAuthResetButtonBusy === "function") {
+        setAuthResetButtonBusy(sendBtn, false, "Sending OTP...");
       }
     }
   };

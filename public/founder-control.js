@@ -12,6 +12,12 @@
   const OVERVIEW_POLL_MS = 14000;
   const DIRECTORY_POLL_MS = 18000;
   const DETAIL_POLL_MS = 8000;
+  const BUTTON_POLL_MS = 45000;
+  const BUTTON_FETCH_MIN_GAP_MS = 15000;
+  const BUTTON_FETCH_BACKOFF_MS = 60000;
+  const BUTTON_PULSE_KEY = "tsFounderButtonPulseV2";
+  const SAVED_VIEWS_KEY = "tsFounderSavedViewsV2";
+  const MAX_SAVED_VIEWS = 8;
 
   const state = {
     overview: null,
@@ -36,6 +42,25 @@
     directorySignature: "",
     detailSignature: "",
     pendingDashboardRefresh: false,
+    streamAbortController: null,
+    detailStreamAbortController: null,
+    usingOverviewStream: false,
+    usingDetailStream: false,
+    buttonPulse: null,
+    buttonTimerId: 0,
+    latestButtonRequestId: 0,
+    buttonFetchInFlight: false,
+    buttonFetchQueued: false,
+    buttonNextAllowedAt: 0,
+    buttonSyncRafId: 0,
+    savedViews: [],
+    activeSavedViewId: "",
+    selectedFunnelKey: "home_to_video_complete",
+    selectedFunnelSteps: ["home", "tirth_tube", "video_started", "video_completed"],
+    customFunnel: null,
+    customFunnelSignature: "",
+    latestFunnelRequestId: 0,
+    releaseWindow: "24h",
   };
 
   function getCurrentUser() {
@@ -108,6 +133,35 @@
     return `${Number(value || 0).toFixed(1)}%`;
   }
 
+  function formatSignedPercent(value) {
+    const safe = Number(value || 0);
+    return `${safe > 0 ? "+" : ""}${safe.toFixed(1)}%`;
+  }
+
+  function formatFounderDirectoryLastSeen(value) {
+    const safe = String(value || "").trim();
+    if (!safe) return "Inactive";
+    const staleDays = safe.match(/^(\d+)d ago$/i);
+    if (staleDays && Number(staleDays[1]) > 365) return "No recent activity";
+    return safe;
+  }
+
+  function formatFounderDirectoryHandle(value) {
+    const safe = String(value || "").trim().replace(/^@+/, "");
+    return safe ? `@${safe}` : "@no-handle";
+  }
+
+  function formatFounderDirectoryUsage(value) {
+    const safe = String(value || "").trim();
+    return safe || "Varied usage";
+  }
+
+  function formatFounderDirectorySignal(value) {
+    const safe = String(value || "").trim();
+    if (!safe || /^unknown$/i.test(safe)) return "";
+    return safe;
+  }
+
   function compactText(value, maxLength = 120) {
     const text = String(value || "").replace(/\s+/g, " ").trim();
     if (text.length <= maxLength) return text;
@@ -172,6 +226,117 @@
 
   function fetchFounderUserIntelligence(userId) {
     return fetchFounderJson(`/api/founder/users/${encodeURIComponent(userId)}/intelligence`);
+  }
+
+  function fetchFounderButtonPulse() {
+    return fetchFounderJson("/api/founder/button");
+  }
+
+  function fetchFounderFunnel(steps = []) {
+    const params = new URLSearchParams();
+    const safeSteps = Array.isArray(steps)
+      ? steps.map((step) => String(step || "").trim()).filter(Boolean)
+      : [];
+    if (safeSteps.length) {
+      params.set("steps", safeSteps.join(","));
+    }
+    return fetchFounderJson(`/api/founder/funnel?${params.toString()}`);
+  }
+
+  function buildStreamRequest(path, signal) {
+    const token = global.API?.getToken?.() || "";
+    return fetch(`${getBackendBase()}${path}`, {
+      method: "GET",
+      headers: {
+        Accept: "application/x-ndjson, application/json",
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
+      credentials: "include",
+      cache: "no-store",
+      signal,
+    });
+  }
+
+  function getStoredButtonPulse() {
+    try {
+      const raw = localStorage.getItem(BUTTON_PULSE_KEY);
+      return raw ? JSON.parse(raw) : null;
+    } catch {
+      return null;
+    }
+  }
+
+  function setStoredButtonPulse(value) {
+    state.buttonPulse = value || null;
+    try {
+      if (value) localStorage.setItem(BUTTON_PULSE_KEY, JSON.stringify(value));
+    } catch {}
+  }
+
+  function loadSavedViews() {
+    try {
+      const raw = localStorage.getItem(SAVED_VIEWS_KEY);
+      const parsed = raw ? JSON.parse(raw) : [];
+      state.savedViews = Array.isArray(parsed) ? parsed.slice(0, MAX_SAVED_VIEWS) : [];
+    } catch {
+      state.savedViews = [];
+    }
+  }
+
+  function persistSavedViews() {
+    try {
+      localStorage.setItem(
+        SAVED_VIEWS_KEY,
+        JSON.stringify((state.savedViews || []).slice(0, MAX_SAVED_VIEWS))
+      );
+    } catch {}
+  }
+
+  function toViewRecord(name = "") {
+    return {
+      id: `view-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`,
+      name: String(name || `Founder view ${(state.savedViews?.length || 0) + 1}`).trim(),
+      userSort: state.userSort,
+      userQuery: state.userQuery,
+      funnelKey: state.selectedFunnelKey,
+      funnelSteps: [...(state.selectedFunnelSteps || [])],
+      releaseWindow: state.releaseWindow,
+      createdAt: new Date().toISOString(),
+    };
+  }
+
+  function saveCurrentFounderView() {
+    loadSavedViews();
+    const next = toViewRecord();
+    state.savedViews = [next, ...(state.savedViews || [])].slice(0, MAX_SAVED_VIEWS);
+    state.activeSavedViewId = next.id;
+    persistSavedViews();
+    renderFounderControl();
+    global.MC?.success?.("Founder view saved.");
+  }
+
+  function deleteFounderView(viewId) {
+    state.savedViews = (state.savedViews || []).filter((view) => view.id !== viewId);
+    if (state.activeSavedViewId === viewId) {
+      state.activeSavedViewId = "";
+    }
+    persistSavedViews();
+    renderFounderControl();
+  }
+
+  function applyFounderView(view) {
+    if (!view) return;
+    state.activeSavedViewId = view.id || "";
+    state.userSort = String(view.userSort || "active");
+    state.userQuery = String(view.userQuery || "");
+    state.selectedFunnelKey = String(view.funnelKey || "home_to_video_complete");
+    state.selectedFunnelSteps = Array.isArray(view.funnelSteps) && view.funnelSteps.length
+      ? view.funnelSteps.slice(0, 5)
+      : ["home", "tirth_tube", "video_started", "video_completed"];
+    state.releaseWindow = String(view.releaseWindow || "24h");
+    refreshFounderUsers({ initial: true, force: true });
+    refreshFounderFunnel({ force: true });
+    renderFounderControl();
   }
 
   function getRoot() {
@@ -346,6 +511,252 @@
     `;
   }
 
+  function renderSavedViewChips(snapshot) {
+    const presets = Array.isArray(snapshot?.savedViewPresets) ? snapshot.savedViewPresets : [];
+    const savedViews = Array.isArray(state.savedViews) ? state.savedViews : [];
+    return `
+      <section class="founder-viewbar founder-card">
+        <div class="founder-card-head">
+          <h2>Saved founder views</h2>
+          <span>Presets + your saved lenses</span>
+        </div>
+        <div class="founder-viewbar-row">
+          ${presets
+            .map(
+              (view) => `
+                <button
+                  class="founder-view-chip ${state.activeSavedViewId === view.id ? "is-active" : ""}"
+                  type="button"
+                  data-founder-apply-preset="${escapeHtml(view.id)}"
+                >
+                  ${escapeHtml(view.label)}
+                </button>
+              `
+            )
+            .join("")}
+          ${savedViews
+            .map(
+              (view) => `
+                <div class="founder-view-chip-shell">
+                  <button
+                    class="founder-view-chip ${state.activeSavedViewId === view.id ? "is-active" : ""}"
+                    type="button"
+                    data-founder-apply-view="${escapeHtml(view.id)}"
+                  >
+                    ${escapeHtml(view.name)}
+                  </button>
+                  <button class="founder-view-delete" type="button" data-founder-delete-view="${escapeHtml(view.id)}" aria-label="Delete saved founder view">×</button>
+                </div>
+              `
+            )
+            .join("")}
+          <button class="btn btn-w founder-view-save" type="button" data-founder-save-view="true">Save current view</button>
+        </div>
+      </section>
+    `;
+  }
+
+  function renderAnomalyDeck(snapshot) {
+    const items = Array.isArray(snapshot?.anomalies) ? snapshot.anomalies : [];
+    return `
+      <article class="founder-card">
+        <div class="founder-card-head">
+          <h2>Live anomaly radar</h2>
+          <span>${formatCount(items.length)} active founder alerts</span>
+        </div>
+        <div class="founder-alert-grid">
+          ${
+            items.length
+              ? items
+                  .map(
+                    (item) => `
+                      <div class="founder-alert-card founder-alert-${escapeHtml(item.severity || "watch")}">
+                        <div class="founder-alert-top">
+                          <strong>${escapeHtml(item.title || "Alert")}</strong>
+                          <span>${escapeHtml(item.metric || "")}</span>
+                        </div>
+                        <p>${escapeHtml(item.summary || "")}</p>
+                        <div class="founder-alert-meta">
+                          <small>${formatCount(item.current || 0)} now vs ${formatCount(item.previous || 0)} before</small>
+                          <small>${formatSignedPercent(item.deltaPercent || 0)}</small>
+                        </div>
+                        <em>${escapeHtml(item.nextMove || "")}</em>
+                      </div>
+                    `
+                  )
+                  .join("")
+              : '<div class="founder-empty">No active anomaly spike right now.</div>'
+          }
+        </div>
+      </article>
+    `;
+  }
+
+  function renderCohorts(snapshot) {
+    const cohorts = snapshot?.cohorts || {};
+    const audienceMix = Array.isArray(cohorts.audienceMix) ? cohorts.audienceMix : [];
+    const behaviorSegments = Array.isArray(cohorts.behaviorSegments)
+      ? cohorts.behaviorSegments
+      : [];
+    return `
+      <article class="founder-card">
+        <div class="founder-card-head">
+          <h2>Cohorts & segments</h2>
+          <span>Compare who is active right now</span>
+        </div>
+        <div class="founder-grid founder-grid-2 founder-grid-no-margin">
+          <div class="founder-subcard">
+            <h3>Audience mix</h3>
+            ${renderMiniBars(audienceMix, "count")}
+          </div>
+          <div class="founder-subcard">
+            <h3>Behavior segments</h3>
+            ${renderMiniBars(behaviorSegments, "count")}
+          </div>
+          <div class="founder-subcard">
+            <h3>Devices</h3>
+            ${renderMiniBars(cohorts.devices || [], "count")}
+          </div>
+          <div class="founder-subcard">
+            <h3>Time bands</h3>
+            ${renderMiniBars(cohorts.timeBands || [], "count")}
+          </div>
+        </div>
+      </article>
+    `;
+  }
+
+  function renderFunnelSection(snapshot) {
+    const funnelData = state.customFunnel || {};
+    const presets = Array.isArray(snapshot?.funnels?.presets) ? snapshot.funnels.presets : [];
+    const stepCatalog = Array.isArray(snapshot?.funnels?.stepCatalog) ? snapshot.funnels.stepCatalog : [];
+    const selectedPreset = presets.find((item) => item.key === state.selectedFunnelKey) || presets[0] || null;
+    const activeFunnel = funnelData.steps?.length ? funnelData : selectedPreset;
+    const steps = Array.isArray(activeFunnel?.steps) ? activeFunnel.steps : [];
+    return `
+      <article class="founder-card">
+        <div class="founder-card-head">
+          <h2>Funnel builder</h2>
+          <span>${escapeHtml(activeFunnel?.label || "Founder journey funnel")}</span>
+        </div>
+        <div class="founder-funnel-toolbar">
+          <div class="founder-segmented" role="tablist" aria-label="Founder funnel presets">
+            ${presets
+              .map(
+                (preset) => `
+                  <button
+                    class="founder-segmented-btn ${state.selectedFunnelKey === preset.key ? "is-active" : ""}"
+                    type="button"
+                    data-founder-funnel-preset="${escapeHtml(preset.key)}"
+                  >
+                    ${escapeHtml(preset.label)}
+                  </button>
+                `
+              )
+              .join("")}
+          </div>
+          <div class="founder-funnel-builder">
+            ${Array.from({ length: 4 }).map((_, index) => `
+              <label class="founder-funnel-select-shell">
+                <span>Step ${index + 1}</span>
+                <select data-founder-funnel-step="${index}">
+                  ${stepCatalog
+                    .map(
+                      (option) => `
+                        <option value="${escapeHtml(option.key)}" ${
+                          state.selectedFunnelSteps[index] === option.key ? "selected" : ""
+                        }>${escapeHtml(option.label)}</option>
+                      `
+                    )
+                    .join("")}
+                </select>
+              </label>
+            `).join("")}
+            <button class="btn btn-p" type="button" data-founder-run-funnel="true">Analyze funnel</button>
+          </div>
+        </div>
+        <div class="founder-funnel-steps">
+          ${
+            steps.length
+              ? steps
+                  .map(
+                    (step) => `
+                      <div class="founder-funnel-step">
+                        <strong>${escapeHtml(step.label || "Step")}</strong>
+                        <span>${formatCount(step.count || 0)} sessions</span>
+                        <small>${formatPercent(step.conversionFromStart || 0)} from start</small>
+                      </div>
+                    `
+                  )
+                  .join("")
+              : '<div class="founder-empty">Choose funnel steps to see the live conversion path.</div>'
+          }
+        </div>
+        ${
+          activeFunnel?.topDrop
+            ? `<div class="founder-funnel-drop">Biggest drop: ${escapeHtml(activeFunnel.topDrop.from)} -> ${escapeHtml(activeFunnel.topDrop.to)} (${formatCount(activeFunnel.topDrop.lost || 0)} lost)</div>`
+            : ""
+        }
+      </article>
+    `;
+  }
+
+  function renderReleaseImpact(snapshot) {
+    const impact = snapshot?.releaseImpact || {};
+    const metrics = Array.isArray(impact.metrics) ? impact.metrics : [];
+    return `
+      <article class="founder-card">
+        <div class="founder-card-head">
+          <h2>Release impact mode</h2>
+          <span>${escapeHtml(impact.label || "Recent release motion")}</span>
+        </div>
+        <div class="founder-impact-grid">
+          ${metrics
+            .map(
+              (metric) => `
+                <div class="founder-impact-card founder-impact-${escapeHtml(metric.direction || "flat")}">
+                  <strong>${escapeHtml(metric.label || "Metric")}</strong>
+                  <span>${formatCount(metric.current || 0)} now</span>
+                  <small>${formatCount(metric.previous || 0)} before</small>
+                  <em>${formatSignedPercent(metric.deltaPercent || 0)}</em>
+                </div>
+              `
+            )
+            .join("")}
+        </div>
+      </article>
+    `;
+  }
+
+  function renderDecisionEngine(snapshot) {
+    const items = Array.isArray(snapshot?.decisionEngine) ? snapshot.decisionEngine : [];
+    return `
+      <article class="founder-card">
+        <div class="founder-card-head">
+          <h2>Founder decision engine</h2>
+          <span>What to improve next</span>
+        </div>
+        <div class="founder-recommendations founder-decision-list">
+          ${
+            items.length
+              ? items
+                  .map(
+                    (item) => `
+                      <div class="founder-decision-card founder-decision-${escapeHtml(item.severity || "info")}">
+                        <strong>${escapeHtml(item.title || "Decision")}</strong>
+                        <span>${escapeHtml(item.evidence || "")}</span>
+                        <small>${escapeHtml(item.action || "")}</small>
+                      </div>
+                    `
+                  )
+                  .join("")
+              : '<div class="founder-empty">Decision suggestions will appear as behavior patterns sharpen.</div>'
+          }
+        </div>
+      </article>
+    `;
+  }
+
   function renderActivityItem(item) {
     const userId = item?.actor?.isGuest ? "" : String(item?.actor?.id || "").trim();
     const actionAttrs = userId ? `data-founder-open="${escapeHtml(userId)}"` : "";
@@ -410,24 +821,56 @@
               ? '<div class="founder-empty">Loading live user directory...</div>'
               : items.length
               ? items
-                  .map(
-                    (user) => `
+                  .map((user) => {
+                    const name = String(user.name || "Unknown").trim() || "Unknown";
+                    const handle = formatFounderDirectoryHandle(user.handle);
+                    const activityLabel =
+                      String(user.activityLabel || user.currentPageLabel || "").trim() ||
+                      "No live activity yet";
+                    const statusLabel = user.online
+                      ? "Live now"
+                      : formatFounderDirectoryLastSeen(user.lastSeenLabel);
+                    const currentPageLabel = formatFounderDirectorySignal(user.currentPageLabel);
+                    const presenceLabel = currentPageLabel
+                      ? `${user.online ? "Currently in" : "Last page"} ${currentPageLabel}`
+                      : "";
+                    const chips = [
+                      `Score ${formatCount(user.engagementScore)}`,
+                      formatFounderDirectoryUsage(user.usageBand),
+                      currentPageLabel,
+                    ]
+                      .filter(Boolean)
+                      .map(
+                        (chip) =>
+                          `<span class="founder-user-chip">${escapeHtml(chip)}</span>`
+                      )
+                      .join("");
+                    return `
                       <button class="founder-user-item founder-click-card" type="button" data-founder-open="${escapeHtml(user.id)}">
-                        <div class="founder-user-item-main">
-                          <div class="founder-avatar-badge">${escapeHtml((user.name || "U").slice(0, 2).toUpperCase())}</div>
-                          <div class="founder-user-copy">
-                            <strong>${escapeHtml(user.name || "Unknown")}</strong>
-                            <span>@${escapeHtml(user.handle || "")}</span>
-                            <small>${escapeHtml(user.activityLabel || user.currentPageLabel || "No live activity yet")}</small>
+                        <div class="founder-user-item-top">
+                          <div class="founder-user-item-main">
+                            <div class="founder-avatar-badge">${escapeHtml((name || "U").slice(0, 2).toUpperCase())}</div>
+                            <div class="founder-user-copy">
+                              <strong title="${escapeHtml(name)}">${escapeHtml(name)}</strong>
+                              <span class="founder-user-handle" title="${escapeHtml(handle)}">${escapeHtml(handle)}</span>
+                              <small class="founder-user-activity">${escapeHtml(activityLabel)}</small>
+                            </div>
                           </div>
-                        </div>
-                        <div class="founder-user-meta">
-                          <div class="founder-user-status ${user.online ? "is-online" : "is-offline"}">${user.online ? "Live now" : escapeHtml(user.lastSeenLabel || "Inactive")}</div>
+                          <div class="founder-user-meta">
+                            <div class="founder-user-status ${user.online ? "is-online" : "is-offline"}">${escapeHtml(statusLabel)}</div>
+                            ${
+                              presenceLabel
+                                ? `<small class="founder-user-presence">${escapeHtml(presenceLabel)}</small>`
+                                : ""
+                            }
                           <small>${formatCount(user.engagementScore)} score · ${escapeHtml(user.usageBand || "Varied usage")}</small>
                         </div>
+                        <div class="founder-user-item-bottom">
+                          <div class="founder-user-chip-row">${chips}</div>
+                        </div>
                       </button>
-                    `
-                  )
+                    `;
+                  })
                   .join("")
               : '<div class="founder-empty">No users matched this founder search.</div>'
           }
@@ -473,6 +916,7 @@
     const engagement = detail.engagement || {};
     const context = detail.context || {};
     const content = detail.content || {};
+    const replayLite = detail.replayLite || {};
     const sessions = Array.isArray(detail.sessions) ? detail.sessions : [];
     const liveFeed = Array.isArray(detail.liveFeed) ? detail.liveFeed : [];
     const timeline = Array.isArray(detail.timeline) ? detail.timeline : [];
@@ -553,6 +997,20 @@
               <div class="founder-timeline-list">
                 ${timeline.slice(0, 18).map(renderTimelineFeedItem).join("") || '<div class="founder-empty">No timeline yet.</div>'}
               </div>
+              <div class="founder-card-head"><h2>Session replay-lite</h2><span>${escapeHtml(replayLite.summary || "Latest session focus")}</span></div>
+              <div class="founder-replay-strip">
+                ${(replayLite.frames || [])
+                  .map(
+                    (frame) => `
+                      <div class="founder-replay-frame">
+                        <strong>${escapeHtml(frame.label || "Step")}</strong>
+                        <span>${formatDurationSeconds(frame.dwellSeconds || 0)} dwell</span>
+                        <small>${escapeHtml(frame.highlight || "Browsing")} Â· ${formatCount(frame.scrollDepth || 0)}% depth</small>
+                      </div>
+                    `
+                  )
+                  .join("") || '<div class="founder-empty">Replay frames will appear after a full session path is captured.</div>'}
+              </div>
             </section>
             <section class="founder-card founder-user-side">
               <div class="founder-card-head"><h2>Insights & Predictions</h2><span>Decision support</span></div>
@@ -619,6 +1077,26 @@
                     .join("") || '<div class="founder-empty">No completed sessions yet.</div>'}
                 </div>
               </div>
+              <div class="founder-insight-block">
+                <h3>Replay hotspots</h3>
+                <div class="founder-recommendations">
+                  ${(replayLite.hotspots || [])
+                    .map(
+                      (item) => `
+                        <div class="founder-recommendation">
+                          ${escapeHtml(item.label)} Â· ${formatDurationSeconds(item.dwellSeconds || 0)} Â· ${formatCount(item.scrollDepth || 0)}% depth
+                        </div>
+                      `
+                    )
+                    .join("") || '<div class="founder-empty">Hotspots will surface as dwell and depth signals accumulate.</div>'}
+                </div>
+              </div>
+              <div class="founder-insight-block">
+                <h3>Action trail</h3>
+                <div class="founder-timeline-list">
+                  ${(replayLite.actionTrail || []).map(renderTimelineFeedItem).join("") || '<div class="founder-empty">No action trail yet.</div>'}
+                </div>
+              </div>
             </section>
           </div>
         </aside>
@@ -680,6 +1158,8 @@
       <section class="founder-stat-grid">${renderStatCards(snapshot)}</section>
 
       ${renderFounderIntelRail(snapshot)}
+      ${renderSavedViewChips(snapshot)}
+      ${renderAnomalyDeck(snapshot)}
 
       <section class="founder-grid founder-grid-2 founder-grid-featured">
         ${renderUserDirectoryCard()}
@@ -689,6 +1169,16 @@
             ${activity.map(renderActivityItem).join("") || '<div class="founder-empty">No recent platform activity yet.</div>'}
           </div>
         </article>
+      </section>
+
+      <section class="founder-grid founder-grid-2">
+        ${renderCohorts(snapshot)}
+        ${renderFunnelSection(snapshot)}
+      </section>
+
+      <section class="founder-grid founder-grid-2">
+        ${renderReleaseImpact(snapshot)}
+        ${renderDecisionEngine(snapshot)}
       </section>
 
       <section class="founder-grid founder-grid-2">
@@ -835,7 +1325,72 @@
 
       if (event.target.closest("[data-founder-refresh-user]")) {
         refreshFounderUserIntelligence({ force: true });
+        return;
       }
+
+      if (event.target.closest("[data-founder-save-view]")) {
+        saveCurrentFounderView();
+        return;
+      }
+
+      const presetTrigger = event.target.closest("[data-founder-apply-preset]");
+      if (presetTrigger) {
+        const presetId = String(presetTrigger.getAttribute("data-founder-apply-preset") || "");
+        const preset = (state.overview?.savedViewPresets || []).find((item) => item.id === presetId);
+        if (preset) {
+          applyFounderView({
+            id: preset.id,
+            name: preset.label,
+            userSort: preset.userSort,
+            userQuery: "",
+            funnelKey: preset.funnelKey,
+            funnelSteps:
+              (state.overview?.funnels?.presets || []).find((item) => item.key === preset.funnelKey)?.steps?.map((step) => step.key) ||
+              state.selectedFunnelSteps,
+            releaseWindow: preset.releaseWindow,
+          });
+        }
+        return;
+      }
+
+      const savedViewTrigger = event.target.closest("[data-founder-apply-view]");
+      if (savedViewTrigger) {
+        const viewId = String(savedViewTrigger.getAttribute("data-founder-apply-view") || "");
+        const view = (state.savedViews || []).find((item) => item.id === viewId);
+        if (view) applyFounderView(view);
+        return;
+      }
+
+      const deleteViewTrigger = event.target.closest("[data-founder-delete-view]");
+      if (deleteViewTrigger) {
+        deleteFounderView(String(deleteViewTrigger.getAttribute("data-founder-delete-view") || ""));
+        return;
+      }
+
+      const funnelPresetTrigger = event.target.closest("[data-founder-funnel-preset]");
+      if (funnelPresetTrigger) {
+        const key = String(funnelPresetTrigger.getAttribute("data-founder-funnel-preset") || "");
+        const preset = (state.overview?.funnels?.presets || []).find((item) => item.key === key);
+        state.selectedFunnelKey = key;
+        if (preset?.steps?.length) {
+          state.selectedFunnelSteps = preset.steps.map((step) => step.key).slice(0, 5);
+        }
+        state.customFunnel = preset || null;
+        renderFounderControl();
+        return;
+      }
+
+      if (event.target.closest("[data-founder-run-funnel]")) {
+        refreshFounderFunnel({ force: true });
+      }
+    });
+
+    root.addEventListener("change", (event) => {
+      const select = event.target.closest("[data-founder-funnel-step]");
+      if (!select) return;
+      const index = Number(select.getAttribute("data-founder-funnel-step"));
+      if (!Number.isFinite(index)) return;
+      state.selectedFunnelSteps[index] = String(select.value || "").trim();
     });
 
     root.addEventListener("input", (event) => {
@@ -921,6 +1476,26 @@
       state.directorySignature = signature;
       if (state.selectedUserId && getRoot()) {
         state.pendingDashboardRefresh = true;
+        if (state.usingOverviewStream) startFounderDashboardStream();
+        return;
+      }
+      if (state.usingOverviewStream) startFounderDashboardStream();
+      renderFounderControl();
+    } catch {}
+  }
+
+  async function refreshFounderFunnel(options = {}) {
+    if (!isFounderOwner()) return;
+    const requestId = ++state.latestFunnelRequestId;
+    try {
+      const snapshot = await fetchFounderFunnel(state.selectedFunnelSteps);
+      if (requestId !== state.latestFunnelRequestId) return;
+      const signature = buildPayloadSignature(snapshot);
+      if (signature === state.customFunnelSignature && !options.force) return;
+      state.customFunnelSignature = signature;
+      state.customFunnel = snapshot;
+      if (state.selectedUserId && getRoot()) {
+        state.pendingDashboardRefresh = true;
         return;
       }
       renderFounderControl();
@@ -953,16 +1528,197 @@
     }
   }
 
+  async function refreshFounderButton(options = {}) {
+    if (!isFounderOwner()) return;
+    const now = Date.now();
+    if (state.buttonFetchInFlight) {
+      state.buttonFetchQueued = true;
+      return;
+    }
+    if (!options.force && state.buttonNextAllowedAt && now < state.buttonNextAllowedAt) {
+      return;
+    }
+    const requestId = ++state.latestButtonRequestId;
+    state.buttonFetchInFlight = true;
+    state.buttonNextAllowedAt = now + BUTTON_FETCH_MIN_GAP_MS;
+    try {
+      const snapshot = await fetchFounderButtonPulse();
+      if (requestId !== state.latestButtonRequestId) return;
+      setStoredButtonPulse(snapshot);
+      if (!options.silent) ensureFounderButton();
+    } catch (error) {
+      if (Number(error?.status || 0) === 429) {
+        state.buttonNextAllowedAt = Date.now() + BUTTON_FETCH_BACKOFF_MS;
+      }
+      if (!state.buttonPulse) {
+        state.buttonPulse = getStoredButtonPulse();
+      }
+    } finally {
+      state.buttonFetchInFlight = false;
+      if (state.buttonFetchQueued) {
+        state.buttonFetchQueued = false;
+        global.setTimeout(() => {
+          refreshFounderButton({ silent: true });
+        }, 250);
+      }
+    }
+  }
+
+  async function consumeFounderStream(path, onMessage, options = {}) {
+    const response = await buildStreamRequest(path, options.signal);
+    if (!response.ok) {
+      const text = await response.text().catch(() => "");
+      let message = "Founder live stream unavailable.";
+      try {
+        const data = text ? JSON.parse(text) : {};
+        message = data.error || message;
+      } catch {}
+      const error = new Error(message);
+      error.status = response.status;
+      throw error;
+    }
+    if (!response.body?.getReader) {
+      throw new Error("Streaming is not supported in this browser.");
+    }
+
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = "";
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split("\n");
+      buffer = lines.pop() || "";
+      lines.forEach((line) => {
+        const trimmed = String(line || "").trim();
+        if (!trimmed) return;
+        try {
+          const chunk = JSON.parse(trimmed);
+          onMessage?.(chunk, options);
+        } catch {}
+      });
+    }
+  }
+
+  function updateOverviewSnapshot(snapshot, options = {}) {
+    const signature = buildPayloadSignature(snapshot);
+    if (signature === state.overviewSignature && !options.force) return;
+    state.overviewSignature = signature;
+    state.overview = snapshot;
+    if (snapshot?.founderBadge) {
+      setStoredButtonPulse(snapshot.founderBadge);
+      ensureFounderButton();
+    }
+    if (state.selectedUserId && getRoot()) {
+      state.pendingDashboardRefresh = true;
+      return;
+    }
+    renderFounderControl();
+  }
+
+  function updateDirectorySnapshot(snapshot, options = {}) {
+    const signature = buildPayloadSignature(snapshot);
+    if (signature === state.directorySignature && !options.force) return;
+    state.directorySignature = signature;
+    state.directory = {
+      ...snapshot,
+      page: state.userPage,
+      limit: USER_PAGE_SIZE,
+      hasMore:
+        Number(state.userPage || 1) * USER_PAGE_SIZE < Number(snapshot?.total || 0),
+    };
+    if (state.selectedUserId && getRoot()) {
+      state.pendingDashboardRefresh = true;
+      return;
+    }
+    renderFounderControl();
+  }
+
+  function startFounderDashboardStream() {
+    if (state.streamAbortController) {
+      state.streamAbortController.abort();
+      state.streamAbortController = null;
+    }
+    const params = new URLSearchParams({
+      page: String(state.userPage || 1),
+      limit: String(Math.max(USER_PAGE_SIZE, (state.userPage || 1) * USER_PAGE_SIZE)),
+      sort: String(state.userSort || "active"),
+    });
+    if (state.userQuery) params.set("q", state.userQuery);
+    const path = `/api/founder/stream?${params.toString()}`;
+    const controller = new AbortController();
+    state.streamAbortController = controller;
+    state.usingOverviewStream = true;
+
+    consumeFounderStream(
+      path,
+      (chunk) => {
+        if (controller.signal.aborted) return;
+        if (chunk.type === "overview") {
+          updateOverviewSnapshot(chunk.payload || {});
+        } else if (chunk.type === "directory") {
+          updateDirectorySnapshot(chunk.payload || {});
+        } else if (chunk.type === "button") {
+          setStoredButtonPulse(chunk.payload || null);
+          ensureFounderButton();
+        }
+      },
+      { signal: controller.signal }
+    ).catch(() => {
+      if (controller.signal.aborted) return;
+      state.usingOverviewStream = false;
+      state.streamAbortController = null;
+      state.overviewTimerId = global.setInterval(() => refreshFounderOverview(), OVERVIEW_POLL_MS);
+      state.directoryTimerId = global.setInterval(() => refreshFounderUsers(), DIRECTORY_POLL_MS);
+      refreshFounderOverview({ initial: true, force: true });
+      refreshFounderUsers({ initial: true, force: true });
+    });
+  }
+
+  function startFounderDetailStream() {
+    if (state.detailStreamAbortController) {
+      state.detailStreamAbortController.abort();
+      state.detailStreamAbortController = null;
+    }
+    if (!state.selectedUserId) return;
+    const controller = new AbortController();
+    state.detailStreamAbortController = controller;
+    state.usingDetailStream = true;
+
+    consumeFounderStream(`/api/founder/users/${encodeURIComponent(state.selectedUserId)}/stream`, (chunk) => {
+      if (controller.signal.aborted) return;
+      if (chunk.type === "detail") {
+        const signature = buildPayloadSignature(chunk.payload || {});
+        if (signature === state.detailSignature) return;
+        state.detailSignature = signature;
+        state.selectedUser = chunk.payload || null;
+        if (!syncFounderUserPanel({ preserveScroll: true })) {
+          renderFounderControl();
+        }
+      } else if (chunk.type === "error" && Number(chunk.payload?.status || 0) === 404) {
+        closeFounderUserPanel();
+      }
+    }, {
+      signal: controller.signal,
+    }).catch(() => {
+      if (controller.signal.aborted) return;
+      state.usingDetailStream = false;
+      state.detailStreamAbortController = null;
+      refreshFounderUserIntelligence({ force: true });
+      state.detailTimerId = global.setInterval(() => {
+        refreshFounderUserIntelligence();
+      }, DETAIL_POLL_MS);
+    });
+  }
+
   function startFounderRealtime() {
     stopFounderRealtime();
-    refreshFounderOverview({ initial: true });
-    refreshFounderUsers({ initial: true });
-    state.overviewTimerId = global.setInterval(() => {
-      refreshFounderOverview();
-    }, OVERVIEW_POLL_MS);
-    state.directoryTimerId = global.setInterval(() => {
-      refreshFounderUsers();
-    }, DIRECTORY_POLL_MS);
+    loadSavedViews();
+    refreshFounderButton({ silent: true });
+    startFounderDashboardStream();
+    refreshFounderFunnel({ force: true });
     syncFounderDetailPolling();
   }
 
@@ -972,10 +1728,7 @@
       state.detailTimerId = 0;
     }
     if (!state.selectedUserId) return;
-    refreshFounderUserIntelligence({ force: true });
-    state.detailTimerId = global.setInterval(() => {
-      refreshFounderUserIntelligence();
-    }, DETAIL_POLL_MS);
+    startFounderDetailStream();
   }
 
   function stopFounderRealtime() {
@@ -989,6 +1742,16 @@
         state[key] = 0;
       }
     });
+    if (state.streamAbortController) {
+      state.streamAbortController.abort();
+      state.streamAbortController = null;
+    }
+    if (state.detailStreamAbortController) {
+      state.detailStreamAbortController.abort();
+      state.detailStreamAbortController = null;
+    }
+    state.usingOverviewStream = false;
+    state.usingDetailStream = false;
   }
 
   function openFounderUserPanel(userId) {
@@ -1000,7 +1763,7 @@
     if (!syncFounderUserPanel({ preserveScroll: false })) {
       renderFounderControl();
     }
-    syncFounderDetailPolling();
+    startFounderDetailStream();
   }
 
   function closeFounderUserPanel() {
@@ -1010,6 +1773,10 @@
     if (state.detailTimerId) {
       global.clearInterval(state.detailTimerId);
       state.detailTimerId = 0;
+    }
+    if (state.detailStreamAbortController) {
+      state.detailStreamAbortController.abort();
+      state.detailStreamAbortController = null;
     }
     if (state.pendingDashboardRefresh) {
       state.pendingDashboardRefresh = false;
@@ -1055,6 +1822,38 @@
     if (slot && !slot.childElementCount) slot.remove();
   }
 
+  function syncFounderButtonContent(button) {
+    if (!button) return;
+    const pulse = state.buttonPulse || getStoredButtonPulse() || {};
+    const badge = Number(pulse.activeUsers || 0);
+    const alertCount = Number(pulse.alertCount || 0);
+    button.classList.toggle("has-alert", alertCount > 0);
+    button.innerHTML = `
+      <span class="founder-entry-copy">
+        <strong>Founder Control</strong>
+        <small>${escapeHtml(pulse.pulseLabel || "Live founder pulse")}</small>
+      </span>
+      <span class="founder-entry-metrics">
+        <span class="founder-entry-badge">${formatCount(badge)}</span>
+        ${alertCount ? `<span class="founder-entry-alert">${formatCount(alertCount)}</span>` : ""}
+      </span>
+    `;
+  }
+
+  function syncFounderButtonPulseLoop(shouldRun) {
+    if (!shouldRun) {
+      if (state.buttonTimerId) {
+        global.clearInterval(state.buttonTimerId);
+        state.buttonTimerId = 0;
+      }
+      return;
+    }
+    if (state.buttonTimerId) return;
+    state.buttonTimerId = global.setInterval(() => {
+      refreshFounderButton({ silent: true });
+    }, BUTTON_POLL_MS);
+  }
+
   function ensureFounderButton() {
     const prActions = document.getElementById("prActions");
     if (!prActions) return;
@@ -1066,6 +1865,8 @@
     if (!shouldShow) {
       existing?.remove();
       cleanupFounderMobileSlot();
+      syncFounderButtonPulseLoop(false);
+      state.buttonFetchQueued = false;
       return;
     }
 
@@ -1074,13 +1875,17 @@
       button.type = "button";
       button.className = "btn btn-p founder-entry-btn";
       button.dataset.founderControlBtn = "true";
-      button.textContent = "Founder Control";
       button.onclick = () => {
         if (typeof global.gp === "function") {
           global.gp(PAGE_ID);
         }
       };
     }
+    if (!state.buttonPulse) {
+      state.buttonPulse = getStoredButtonPulse();
+      refreshFounderButton({ silent: true, force: true });
+    }
+    syncFounderButtonContent(button);
 
     const mobileTarget =
       isMobileFounderLayout() ? getFounderMobileSlot() || prActions : prActions;
@@ -1090,12 +1895,17 @@
     if (!isMobileFounderLayout()) {
       cleanupFounderMobileSlot();
     }
+    syncFounderButtonPulseLoop(true);
   }
 
   function observeProfileActions() {
     if (state.profileActionsObserver || !document.body) return;
     state.profileActionsObserver = new MutationObserver(() => {
-      ensureFounderButton();
+      if (state.buttonSyncRafId) return;
+      state.buttonSyncRafId = global.requestAnimationFrame(() => {
+        state.buttonSyncRafId = 0;
+        ensureFounderButton();
+      });
     });
     state.profileActionsObserver.observe(document.body, {
       childList: true,
@@ -1163,6 +1973,7 @@
       renderState("locked", "Founder access only", "This control room is hidden from every non-owner account.");
       return;
     }
+    loadSavedViews();
     if (state.overview || state.directory) {
       renderFounderControl();
     } else {

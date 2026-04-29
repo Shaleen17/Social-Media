@@ -1,5 +1,5 @@
 (function initEnhancementBootstrap(global) {
-const VERSION = "20260429-video-detail-menu-19";
+const VERSION = "20260429-founder-directory-ui-23";
   const SCRIPT_ID = "ts-noncritical-enhancements";
   let started = false;
 

@@ -182,21 +182,25 @@ function clearPendingOtpState(pendingSignup) {
   pendingSignup.lastOtpAttemptAt = null;
 }
 
-function buildOtpResponse(email, message) {
+function isDevelopmentOtpFallbackEnabled() {
+  return process.env.NODE_ENV !== "production" &&
+    String(process.env.DEV_OTP_FALLBACK || "true").toLowerCase() !== "false";
+}
+
+function createDevelopmentOtpFallback(rawOtp, error, contextLabel) {
+  const reason = String(error?.message || "Email delivery failed");
+  console.warn(
+    `[DEV OTP FALLBACK] ${contextLabel} OTP generated locally: ${rawOtp} | reason: ${reason}`
+  );
+
   return {
-    success: true,
-    otpRequired: true,
-    email,
-    message,
-    verification: {
-      method: "otp",
-      otpLength: EMAIL_OTP_LENGTH,
-      resendAfterSeconds: Math.ceil(OTP_RESEND_COOLDOWN_MS / 1000),
-    },
+    developmentFallback: true,
+    developmentOtp: rawOtp,
+    deliveryError: reason,
   };
 }
 
-function buildPasswordResetResponse(email, message) {
+function buildOtpResponse(email, message, extras = {}) {
   return {
     success: true,
     otpRequired: true,
@@ -207,6 +211,22 @@ function buildPasswordResetResponse(email, message) {
       otpLength: EMAIL_OTP_LENGTH,
       resendAfterSeconds: Math.ceil(OTP_RESEND_COOLDOWN_MS / 1000),
     },
+    ...extras,
+  };
+}
+
+function buildPasswordResetResponse(email, message, extras = {}) {
+  return {
+    success: true,
+    otpRequired: true,
+    email,
+    message,
+    verification: {
+      method: "otp",
+      otpLength: EMAIL_OTP_LENGTH,
+      resendAfterSeconds: Math.ceil(OTP_RESEND_COOLDOWN_MS / 1000),
+    },
+    ...extras,
   };
 }
 
@@ -315,7 +335,15 @@ async function deliverSignupOtpEmail(pendingSignup, templateBuilder) {
         EMAIL_OTP_TTL_MS / 60000
       )} minutes.`,
     });
+    return { delivered: true };
   } catch (error) {
+    if (isDevelopmentOtpFallbackEnabled()) {
+      return createDevelopmentOtpFallback(
+        otpBundle.rawOtp,
+        error,
+        `Signup (${pendingSignup.email})`
+      );
+    }
     clearPendingOtpState(pendingSignup);
     pendingSignup.otpSendCount = Math.max(0, (pendingSignup.otpSendCount || 1) - 1);
     await pendingSignup.save({ validateBeforeSave: false }).catch(() => {});
@@ -348,7 +376,15 @@ async function deliverPasswordResetOtpEmail(user) {
         EMAIL_OTP_TTL_MS / 60000
       )} minutes.`,
     });
+    return { delivered: true };
   } catch (error) {
+    if (isDevelopmentOtpFallbackEnabled()) {
+      return createDevelopmentOtpFallback(
+        otpBundle.rawOtp,
+        error,
+        `Password reset (${user.email})`
+      );
+    }
     clearPasswordResetState(user);
     await user.save({ validateBeforeSave: false }).catch(() => {});
     throw error;
@@ -512,11 +548,17 @@ async function createOrUpdatePendingSignup(
     );
   }
 
-  await deliverSignupOtpEmail(pendingSignup, signupOtpEmailTemplate);
+  const delivery = await deliverSignupOtpEmail(
+    pendingSignup,
+    signupOtpEmailTemplate
+  );
 
   return buildOtpResponse(
     pendingSignup.email,
-    "We sent a 6-digit OTP to your email. Enter it to finish creating your account."
+    delivery?.developmentFallback
+      ? "Development mode: email delivery is unavailable, so your signup OTP was prepared locally. Use the auto-filled OTP to finish creating your account."
+      : "We sent a 6-digit OTP to your email. Enter it to finish creating your account.",
+    delivery?.developmentFallback ? delivery : {}
   );
 }
 
@@ -611,7 +653,9 @@ async function signupLocalUser(payload = {}, context = {}) {
     throw new AppError("Username must be at least 3 characters.", 400);
   }
 
-  assertEmailDeliveryConfigured();
+  if (!isDevelopmentOtpFallbackEnabled()) {
+    assertEmailDeliveryConfigured();
+  }
 
   return createOrUpdatePendingSignup(
     {
@@ -796,7 +840,9 @@ async function resendSignupOtp(payload = {}, context = {}) {
   const email = normalizeEmail(payload.email);
   const ip = normalizeIp(context.ip);
 
-  assertEmailDeliveryConfigured();
+  if (!isDevelopmentOtpFallbackEnabled()) {
+    assertEmailDeliveryConfigured();
+  }
 
   assertRateLimit({
     key: `auth:resend:ip:${ip}`,
@@ -843,11 +889,17 @@ async function resendSignupOtp(payload = {}, context = {}) {
   pendingSignup.lastRequestIp = ip;
   pendingSignup.userAgent = context.userAgent || pendingSignup.userAgent;
 
-  await deliverSignupOtpEmail(pendingSignup, resendSignupOtpEmailTemplate);
+  const delivery = await deliverSignupOtpEmail(
+    pendingSignup,
+    resendSignupOtpEmailTemplate
+  );
 
   return buildOtpResponse(
     pendingSignup.email,
-    "A fresh OTP has been sent to your email."
+    delivery?.developmentFallback
+      ? "Development mode: email delivery is unavailable, so a fresh OTP was prepared locally. Use the auto-filled OTP to continue."
+      : "A fresh OTP has been sent to your email.",
+    delivery?.developmentFallback ? delivery : {}
   );
 }
 
@@ -879,7 +931,9 @@ async function requestPasswordReset(payload = {}, context = {}) {
       "Too many password reset requests for this email. Please wait a few minutes and try again.",
   });
 
-  assertEmailDeliveryConfigured();
+  if (!isDevelopmentOtpFallbackEnabled()) {
+    assertEmailDeliveryConfigured();
+  }
 
   const genericResponse = buildPasswordResetResponse(
     email,
@@ -892,8 +946,14 @@ async function requestPasswordReset(payload = {}, context = {}) {
   }
 
   assertPasswordResetResendAllowed(user);
-  await deliverPasswordResetOtpEmail(user);
-  return genericResponse;
+  const delivery = await deliverPasswordResetOtpEmail(user);
+  return delivery?.developmentFallback
+    ? buildPasswordResetResponse(
+        email,
+        "Development mode: email delivery is unavailable, so your reset OTP was prepared locally. Use the auto-filled OTP to continue.",
+        delivery
+      )
+    : genericResponse;
 }
 
 async function resetPasswordWithOtp(payload = {}, context = {}) {
