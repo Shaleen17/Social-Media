@@ -263,24 +263,61 @@ app.get("/api/health/email", async (req, res) => {
       fix: "Add these environment variables in your Render dashboard under Environment tab.",
     });
   }
+  // Build a temporary transporter to test the REAL connection directly
+  const nodemailer = require("nodemailer");
+  const parsedPort = Number(process.env.SMTP_PORT || 0);
+  const secure = process.env.SMTP_SECURE ? process.env.SMTP_SECURE === "true" : parsedPort === 465;
+  const port = parsedPort || (secure ? 465 : 587);
+  const smtpUser = process.env.SMTP_USER || process.env.EMAIL_USER || "";
+  const smtpPass = process.env.SMTP_PASS || process.env.EMAIL_PASS || "";
+  const smtpHost = process.env.SMTP_HOST || "smtp.gmail.com";
+
+  const testTransporter = nodemailer.createTransport({
+    host: smtpHost,
+    port,
+    secure,
+    requireTLS: !secure,
+    auth: { user: smtpUser, pass: smtpPass },
+    tls: { minVersion: "TLSv1.2", rejectUnauthorized: false },
+    connectionTimeout: 15000,
+    greetingTimeout: 15000,
+    socketTimeout: 20000,
+  });
+
   try {
-    await verifyEmailTransport();
+    await testTransporter.verify();
     res.json({
       status: "ok",
       message: "SMTP connection verified. OTP emails should work.",
-      smtpHost: process.env.SMTP_HOST,
-      smtpPort: process.env.SMTP_PORT,
-      smtpUser: process.env.SMTP_USER,
+      smtpHost,
+      smtpPort: port,
+      smtpUser,
     });
   } catch (err) {
     res.status(500).json({
       status: "error",
       message: "SMTP credentials are set but the connection FAILED.",
-      error: err.message,
-      smtpHost: process.env.SMTP_HOST,
-      smtpUser: process.env.SMTP_USER,
+      rawErrorCode: err.code || "UNKNOWN",
+      rawErrorMessage: err.message,
+      rawErrorResponse: err.response || null,
+      smtpHost,
+      smtpPort: port,
+      smtpSecure: secure,
+      smtpUser,
+      smtpPassLength: smtpPass.length,
+      smtpPassPreview: smtpPass.substring(0, 4) + "****",
+      diagnosis:
+        err.code === "EAUTH"
+          ? "Gmail REJECTED the password. Either: (1) the App Password is wrong/revoked, (2) 2-Step Verification is OFF on the Gmail account, or (3) the Gmail account is locked/suspended."
+          : err.code === "ECONNECTION" || err.code === "ETIMEDOUT" || err.code === "ENOTFOUND"
+            ? "Cannot reach smtp.gmail.com from this server. The hosting provider may be blocking outgoing SMTP connections on port " + port + "."
+            : err.code === "ESOCKET"
+              ? "TLS/SSL handshake failed. Try setting SMTP_SECURE=true and SMTP_PORT=465."
+              : "Unexpected error. Check rawErrorCode and rawErrorMessage for details.",
       fix: "Check that SMTP_PASS is a valid Gmail App Password (16 chars, no spaces). Ensure 2-Step Verification is ON for the Gmail account.",
     });
+  } finally {
+    testTransporter.close();
   }
 });
 
