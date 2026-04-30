@@ -1,7 +1,7 @@
 /**
  * Appwrite Google OAuth bridge.
  * Appwrite owns the Google OAuth session; our backend exchanges the Appwrite JWT
- * for the existing Tirth Sutra API token so the rest of the app stays unchanged.
+ * for a backend cookie-based session so the rest of the app stays unchanged.
  */
 (function initAppwriteAuthBridge(global) {
   const APPWRITE_AUTH_SOURCE = "appwrite-oauth";
@@ -210,12 +210,10 @@
   }
 
   function saveBackendSession(data) {
-    if (!data?.token || !data?.user) return;
+    if (!data?.user) return;
 
     if (typeof global.API?.setToken === "function") {
-      global.API.setToken(data.token);
-    } else {
-      global.localStorage?.setItem("ts_token", data.token);
+      global.API.setToken();
     }
 
     if (typeof global.API?.setUser === "function") {
@@ -268,6 +266,7 @@
     const response = await fetch(`${getBackendBase()}/api/auth/appwrite/google`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
+      credentials: "include",
       body: JSON.stringify({
         jwt: appwriteJwt,
         referralCode: authParams.referralCode,

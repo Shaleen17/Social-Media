@@ -1,4 +1,4 @@
-self.__TS_SW_VERSION__ = "20260429-founder-directory-ui-24";
+self.__TS_SW_VERSION__ = "20260430-deleted-chat-cleanup-1";
 const TS_STATIC_CACHE = `ts-static-${self.__TS_SW_VERSION__}`;
 const TS_API_CACHE = `ts-api-${self.__TS_SW_VERSION__}`;
 
@@ -12,16 +12,20 @@ const CORE_ASSETS = [
   "/pwa-512.png",
   "/Brand_Logo.jpg",
   "/Style.css",
-  "/Style.css?v=20260429-founder-directory-ui-24",
-  "/Script.js?v=20260429-founder-directory-ui-24",
-  "/api.js?v=20260429-founder-directory-ui-24",
-  "/backend-adapter.js?v=20260429-founder-directory-ui-24",
-  "/founder-control.js?v=20260429-founder-directory-ui-24",
-  "/appwrite-auth.js?v=20260425-scale-search-oauth-1",
+  "/Style.css?v=20260430-chat-suite-1",
+  "/Script.js?v=20260430-profile-qr-1",
+  "/auth.js?v=20260430-profile-qr-1",
+  "/api.js?v=20260430-chat-suite-1",
+  "/feed.js?v=20260430-profile-qr-1",
+  "/search.js?v=20260430-profile-qr-1",
+  "/profile.js?v=20260430-profile-qr-1",
+  "/backend-adapter.js?v=20260430-deleted-chat-cleanup-1",
+  "/founder-control.js?v=20260430-profile-qr-1",
+  "/appwrite-auth.js?v=20260430-profile-qr-1",
   "/config.js?v=20260420-advanced-search-1",
-  "/socket-client.js?v=20260425-scale-search-oauth-1",
+  "/socket-client.js?v=20260430-deleted-chat-cleanup-1",
   "/webrtc-client.js?v=20260422-webrtc-socket-signaling-1",
-  "/enhancements-bootstrap.js?v=20260429-founder-directory-ui-24",
+  "/enhancements-bootstrap.js?v=20260430-profile-qr-1",
   "/noncritical-enhancements.js?v=20260428-tirth-tube-detail-live-2",
 ];
 
@@ -65,7 +69,7 @@ async function networkFirst(request, cacheName, fallbackRequest) {
   const cache = await caches.open(cacheName);
   try {
     const response = await fetch(request);
-    if (response && response.ok) {
+    if (response && response.ok && shouldCacheResponse(response)) {
       cache.put(request, response.clone());
     }
     return response;
@@ -81,7 +85,7 @@ async function staleWhileRevalidate(request, cacheName) {
   const cached = await cache.match(request);
   const networkPromise = fetch(request)
     .then((response) => {
-      if (response && response.ok) {
+      if (response && response.ok && shouldCacheResponse(response)) {
         cache.put(request, response.clone());
       }
       return response;
@@ -95,10 +99,25 @@ async function staleWhileRevalidate(request, cacheName) {
   throw new Error("offline");
 }
 
+function shouldCacheResponse(response) {
+  const cacheControl = String(response?.headers?.get("cache-control") || "");
+  return !/(?:^|,)\s*(?:private|no-store)\b/i.test(cacheControl);
+}
+
 function isApiReadEligible(url) {
-  return /^\/api\/(posts|videos|users\/all|search\/hashtags\/trending|notifications|messages)/i.test(
-    url.pathname
-  );
+  if (/^\/api\/search\/hashtags\/trending$/i.test(url.pathname)) {
+    return true;
+  }
+
+  if (/^\/api\/posts$/i.test(url.pathname)) {
+    return !/^following$/i.test(String(url.searchParams.get("tab") || ""));
+  }
+
+  if (/^\/api\/videos$/i.test(url.pathname)) {
+    return !/^live$/i.test(String(url.searchParams.get("tab") || ""));
+  }
+
+  return false;
 }
 
 self.addEventListener("fetch", (event) => {

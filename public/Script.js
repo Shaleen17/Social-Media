@@ -2090,10 +2090,10 @@ async function verifySignupOtp() {
 
   try {
     const data = await API.verifySignupOtp(email, otp);
-    const { user, token } = data;
+    const { user } = data;
     CU = user;
     Store.s("currentUser", user);
-    Store.s("token", token);
+    localStorage.setItem("ts_session", "1");
     clearPendingSignupOtp();
     clearPendingReferralCode();
     ["suNm", "suEml", "suHdl", "suPw", "suOtp"].forEach((id) => {
@@ -2279,6 +2279,7 @@ async function doLogin() {
     const res = await fetch(backendBase + "/api/auth/login", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
+      credentials: "include",
       body: JSON.stringify({ email: em, password: pw }),
     });
     const data = await res.json();
@@ -2300,10 +2301,10 @@ async function doLogin() {
 
     if (e) e.style.display = "none";
     if (resendBtn) resendBtn.style.display = "none";
-    const { user, token } = data;
+    const { user } = data;
     CU = user;
     Store.s("currentUser", user);
-    Store.s("token", token);
+    localStorage.setItem("ts_session", "1");
     clearPendingReferralCode();
     ["liEml", "liPw"].forEach((id) => {
       const el = document.getElementById(id);
@@ -2374,7 +2375,7 @@ function logout() {
   CU = null;
   curProfId = null;
   Store.d("currentUser");
-  // Also clear the JWT token so stale auth doesn't persist
+  localStorage.removeItem("ts_session");
   localStorage.removeItem("ts_token");
   localStorage.removeItem("ts_currentUser");
   initUI();
@@ -6241,7 +6242,7 @@ function gp(page) {
       notifs: () => renderNotifs(),
       bookmarks: () => renderBM(),
       inviteFriends: () => renderInviteFriendsPage(),
-      profile: () => renderProfile(CU ? CU.id : curProfId),
+      profile: () => renderProfile(curProfId || getCurrentUserId()),
       chats: () => renderChatsPage(),
       about: () => {},
       authenticBrands: () => renderAuthenticBrandsPage(),
@@ -6580,7 +6581,14 @@ function renderFeed() {
     return;
   }
 
-  let posts = filterVisiblePosts(allPosts).sort((a, b) => b.ts - a.ts);
+  const preserveServerOrder =
+    typeof window !== "undefined" &&
+    window.TSFeedPager &&
+    String(curFTab || "").toLowerCase() === "foryou";
+  let posts = filterVisiblePosts(allPosts);
+  if (!preserveServerOrder) {
+    posts = posts.sort((a, b) => b.ts - a.ts);
+  }
   let feedHtml = "";
   if (curFTab === "following" && CU) {
     const fl = CU.following || [];
@@ -12451,9 +12459,14 @@ async function init() {
       try { return JSON.parse(localStorage.getItem("ts_currentUser")); }
       catch { return null; }
     })();
-    const backendToken = localStorage.getItem("ts_token");
+    const backendSessionHint = localStorage.getItem("ts_session");
 
-    if (backendUser && backendToken && backendToken !== "undefined" && backendToken !== "null") {
+    if (
+      backendUser &&
+      backendSessionHint &&
+      backendSessionHint !== "undefined" &&
+      backendSessionHint !== "null"
+    ) {
       // Real authenticated user — use directly without matching against seed data
       CU = backendUser;
       // Also persist into Store so the rest of the app can find them
@@ -12685,7 +12698,7 @@ window.addEventListener("DOMContentLoaded", init);
       notifs: () => renderNotifs(),
       messages: () => renderConvs(),
       bookmarks: () => renderBM(),
-      profile: () => renderProfile(CU ? CU.id : curProfId),
+      profile: () => renderProfile(curProfId || getCurrentUserId()),
       chats: () => renderChatsPage(),
     };
 

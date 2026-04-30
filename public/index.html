@@ -35,7 +35,7 @@
     <link rel="preconnect" href="https://videos-o57d.vercel.app" crossorigin>
     <link rel="dns-prefetch" href="//videos-o57d.vercel.app">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
- <link href="Style.css?v=20260429-founder-directory-ui-24" rel="stylesheet" type="text/css" />
+ <link href="Style.css?v=20260430-chat-suite-1" rel="stylesheet" type="text/css" />
     <script src="https://checkout.razorpay.com/v1/checkout.js"></script>
     <!-- Google tag (gtag.js) -->
     <script
@@ -3045,8 +3045,19 @@
                     <polyline points="15 18 9 12 15 6" />
                   </svg>
                 </button>
-                <div class="chat-win-av" id="chatWinAv"></div>
-                <div class="chat-win-info">
+                <div
+                  class="chat-win-av chat-win-profile-hit"
+                  id="chatWinAv"
+                  onclick="viewChatInfo()"
+                  role="button"
+                  tabindex="0"
+                ></div>
+                <div
+                  class="chat-win-info chat-win-profile-hit"
+                  onclick="viewChatInfo()"
+                  role="button"
+                  tabindex="0"
+                >
                   <div class="chat-win-name" id="chatWinName"></div>
                   <div class="chat-win-sub" id="chatWinSub"></div>
                 </div>
@@ -3112,6 +3123,9 @@
                     <button class="chat-win-mi" onclick="viewChatInfo()">
                       View info
                     </button>
+                    <button class="chat-win-mi" onclick="openChatSearchModal()">
+                      Search chat
+                    </button>
                     <button class="chat-win-mi" onclick="clearChatMessages()">
                       Clear messages
                     </button>
@@ -3124,6 +3138,7 @@
                   </div>
                 </div>
               </div>
+              <div class="chat-pinned-banner hide" id="chatPinnedBanner"></div>
               <div class="chat-win-msgs" id="chatWinMsgs">
                 <div class="chat-empty-state" id="chatEmptyState">
                   <div style="font-size: 48px; margin-bottom: 12px">💬</div>
@@ -3285,10 +3300,165 @@
                       oninput="filterChatForwardTargets(this.value)"
                     />
                   </div>
+                  <div class="chat-forward-meta" id="chatForwardMeta">
+                    Select up to 5 chats
+                  </div>
                   <div id="chatForwardList"></div>
+                  <div class="chat-forward-footer">
+                    <button
+                      class="btn btn-p"
+                      id="chatForwardSubmitBtn"
+                      onclick="submitForwardedMessages()"
+                      disabled
+                    >
+                      Forward
+                    </button>
+                  </div>
                 </div>
               </div>
             </div>
+
+            <div class="ovl" id="chatInfoModal">
+              <div class="modal chat-full-modal">
+                <div class="chat-full-topbar">
+                  <button class="xbtn" onclick="closeOvl('chatInfoModal')">
+                    <svg viewBox="0 0 24 24">
+                      <line x1="18" y1="6" x2="6" y2="18" />
+                      <line x1="6" y1="6" x2="18" y2="18" />
+                    </svg>
+                  </button>
+                  <div class="chat-full-title">Chat Info</div>
+                  <button class="chats-icon-btn" onclick="openChatSearchModal()">
+                    <svg viewBox="0 0 24 24">
+                      <circle cx="11" cy="11" r="8" />
+                      <line x1="21" y1="21" x2="16.65" y2="16.65" />
+                    </svg>
+                  </button>
+                </div>
+                <div class="chat-full-body" id="chatInfoContent"></div>
+              </div>
+            </div>
+
+            <div class="ovl" id="chatMediaGalleryModal">
+              <div class="modal chat-full-modal chat-gallery-modal">
+                <div class="chat-full-topbar">
+                  <button class="xbtn" onclick="closeOvl('chatMediaGalleryModal')">
+                    <svg viewBox="0 0 24 24">
+                      <line x1="18" y1="6" x2="6" y2="18" />
+                      <line x1="6" y1="6" x2="18" y2="18" />
+                    </svg>
+                  </button>
+                  <div class="chat-full-title">All media</div>
+                  <div></div>
+                </div>
+                <div class="chat-gallery-tabs" id="chatGalleryTabs">
+                  <button class="chat-gallery-tab active" onclick="setChatGalleryTab('media')">
+                    Media
+                  </button>
+                  <button class="chat-gallery-tab" onclick="setChatGalleryTab('docs')">
+                    Docs
+                  </button>
+                  <button class="chat-gallery-tab" onclick="setChatGalleryTab('links')">
+                    Links
+                  </button>
+                </div>
+                <div class="chat-full-body" id="chatMediaGalleryContent"></div>
+              </div>
+            </div>
+
+            <div class="ovl" id="chatStarredModal">
+              <div class="modal chat-full-modal">
+                <div class="chat-full-topbar">
+                  <button class="xbtn" onclick="closeOvl('chatStarredModal')">
+                    <svg viewBox="0 0 24 24">
+                      <line x1="18" y1="6" x2="6" y2="18" />
+                      <line x1="6" y1="6" x2="18" y2="18" />
+                    </svg>
+                  </button>
+                  <div class="chat-full-title">Starred messages</div>
+                  <div></div>
+                </div>
+                <div class="chat-full-body" id="chatStarredContent"></div>
+              </div>
+            </div>
+
+            <div class="ovl" id="chatSearchModal">
+              <div class="modal chat-full-modal">
+                <div class="chat-full-topbar">
+                  <button class="xbtn" onclick="closeOvl('chatSearchModal')">
+                    <svg viewBox="0 0 24 24">
+                      <line x1="18" y1="6" x2="6" y2="18" />
+                      <line x1="6" y1="6" x2="18" y2="18" />
+                    </svg>
+                  </button>
+                  <div class="chat-full-title">Search chat</div>
+                  <div></div>
+                </div>
+                <div class="chat-search-panel">
+                  <div class="chats-search-box">
+                    <svg viewBox="0 0 24 24">
+                      <circle cx="11" cy="11" r="8" />
+                      <line x1="21" y1="21" x2="16.65" y2="16.65" />
+                    </svg>
+                    <input
+                      type="text"
+                      id="chatSearchInput"
+                      placeholder="Search text, people, files, links…"
+                      oninput="renderChatSearchResults()"
+                    />
+                  </div>
+                  <div class="chat-search-filters">
+                    <button class="chat-search-chip active" data-kind="all" onclick="setChatSearchKind('all')">
+                      All
+                    </button>
+                    <button class="chat-search-chip" data-kind="text" onclick="setChatSearchKind('text')">
+                      Text
+                    </button>
+                    <button class="chat-search-chip" data-kind="media" onclick="setChatSearchKind('media')">
+                      Media
+                    </button>
+                    <button class="chat-search-chip" data-kind="links" onclick="setChatSearchKind('links')">
+                      Links
+                    </button>
+                    <button class="chat-search-chip" data-kind="files" onclick="setChatSearchKind('files')">
+                      Files
+                    </button>
+                  </div>
+                  <div class="chat-search-date-row">
+                    <label for="chatSearchDate">Date</label>
+                    <input type="date" id="chatSearchDate" onchange="renderChatSearchResults()" />
+                  </div>
+                </div>
+                <div class="chat-full-body" id="chatSearchResults"></div>
+              </div>
+            </div>
+
+            <div class="ovl" id="chatEditModal">
+              <div class="modal" style="max-width: 420px">
+                <div class="mhdr">
+                  <button class="xbtn" onclick="closeChatEditModal()">
+                    <svg viewBox="0 0 24 24">
+                      <line x1="18" y1="6" x2="6" y2="18" />
+                      <line x1="6" y1="6" x2="18" y2="18" />
+                    </svg>
+                  </button>
+                  <h3>Edit Message</h3>
+                  <button class="btn btn-p btn-sm" onclick="saveEditedChatMessage()">
+                    Save
+                  </button>
+                </div>
+                <div class="mpad">
+                  <textarea
+                    class="fi"
+                    id="chatEditInput"
+                    rows="5"
+                    placeholder="Edit your message"
+                  ></textarea>
+                </div>
+              </div>
+            </div>
+
+            <div class="chat-undo-toast hide" id="chatUndoToast"></div>
           </div>
           <!-- END CHATS PAGE -->
 
@@ -3309,31 +3479,34 @@
           <!-- PROFILE PAGE -->
           <div class="page hide" id="pgProfile">
             <div class="fhdr" style="padding: 10px 14px">
-              <div style="display: flex; align-items: center; gap: 10px">
-                <button onclick="gp('home')" style="color: var(--t2)">
-                  <svg
-                    style="
-                      width: 20px;
-                      height: 20px;
-                      stroke: currentColor;
-                      fill: none;
-                      stroke-width: 2;
-                      stroke-linecap: round;
-                      stroke-linejoin: round;
-                    "
-                    viewBox="0 0 24 24"
-                  >
-                    <polyline points="15 18 9 12 15 6" />
-                  </svg>
-                </button>
-                <div>
-                  <div style="font-weight: 700; font-size: 16px" id="phName">
-                    Profile
-                  </div>
-                  <div style="font-size: 12px; color: var(--t3)" id="phPosts">
-                    0 posts
+              <div class="profile-page-header">
+                <div class="profile-page-header-main">
+                  <button onclick="gp('home')" style="color: var(--t2)">
+                    <svg
+                      style="
+                        width: 20px;
+                        height: 20px;
+                        stroke: currentColor;
+                        fill: none;
+                        stroke-width: 2;
+                        stroke-linecap: round;
+                        stroke-linejoin: round;
+                      "
+                      viewBox="0 0 24 24"
+                    >
+                      <polyline points="15 18 9 12 15 6" />
+                    </svg>
+                  </button>
+                  <div>
+                    <div style="font-weight: 700; font-size: 16px" id="phName">
+                      Profile
+                    </div>
+                    <div style="font-size: 12px; color: var(--t3)" id="phPosts">
+                      0 posts
+                    </div>
                   </div>
                 </div>
+                <div class="profile-action-slot profile-header-action-slot" id="profileHeaderActionSlot"></div>
               </div>
             </div>
             <div class="prof-banner" id="prBanner">
@@ -4650,7 +4823,7 @@
     </script>
     <script>
       (function () {
-const runtimeVersion = "20260429-video-detail-menu-19";
+const runtimeVersion = "20260430-deleted-chat-cleanup-1";
         const refreshKey = "ts_frontendRuntimeRefresh_" + runtimeVersion;
         try {
           const storedVersion = localStorage.getItem("ts_frontendRuntimeVersion");
@@ -4706,18 +4879,22 @@ const runtimeVersion = "20260429-video-detail-menu-19";
         } catch {}
       })();
     </script>
- <script src="Script.js?v=20260429-founder-directory-ui-24"></script>
+ <script src="Script.js?v=20260430-profile-qr-1"></script>
     <script src="https://cdn.socket.io/4.7.4/socket.io.min.js"></script>
     <!-- Vercel Config & API Backend Scripts -->
-    <script src="config.js?v=20260420-advanced-search-1"></script>
- <script src="api.js?v=20260429-founder-directory-ui-24"></script>
-    <script src="socket-client.js?v=20260425-scale-search-oauth-1"></script>
+     <script src="config.js?v=20260420-advanced-search-1"></script>
+ <script src="auth.js?v=20260430-profile-qr-1"></script>
+ <script src="api.js?v=20260430-chat-suite-1"></script>
+ <script src="feed.js?v=20260430-profile-qr-1"></script>
+ <script src="search.js?v=20260430-profile-qr-1"></script>
+ <script src="profile.js?v=20260430-profile-qr-1"></script>
+    <script src="socket-client.js?v=20260430-deleted-chat-cleanup-1"></script>
     <script src="webrtc-client.js?v=20260422-webrtc-socket-signaling-1"></script>
     <script src="https://cdn.jsdelivr.net/npm/appwrite@19.0.0"></script>
-    <script src="appwrite-auth.js?v=20260425-scale-search-oauth-1"></script>
- <script src="backend-adapter.js?v=20260429-founder-directory-ui-24"></script>
- <script src="founder-control.js?v=20260429-founder-directory-ui-24"></script>
- <script src="enhancements-bootstrap.js?v=20260429-founder-directory-ui-24"></script>
+    <script src="appwrite-auth.js?v=20260430-profile-qr-1"></script>
+ <script src="backend-adapter.js?v=20260430-deleted-chat-cleanup-1"></script>
+ <script src="founder-control.js?v=20260430-profile-qr-1"></script>
+ <script src="enhancements-bootstrap.js?v=20260430-profile-qr-1"></script>
     <script src="donation-module.js?v=20260420-advanced-search-1"></script>
   </body>
 </html>

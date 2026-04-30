@@ -78,6 +78,197 @@ function sanitizeNotificationSettings(input = {}) {
   };
 }
 
+function toIdString(value) {
+  if (!value) return "";
+  return (value._id || value.id || value).toString();
+}
+
+function pruneObjectIdList(values = [], removedUserId) {
+  const removedId = removedUserId ? removedUserId.toString() : "";
+  const nextValues = (Array.isArray(values) ? values : []).filter(
+    (value) => value && value.toString() !== removedId
+  );
+  return {
+    values: nextValues,
+    changed: nextValues.length !== (Array.isArray(values) ? values.length : 0),
+  };
+}
+
+function getConversationAttachmentLabel(attachment) {
+  if (!attachment) return "Attachment";
+  switch (attachment.kind) {
+    case "image":
+      return "Photo";
+    case "video":
+      return "Video";
+    case "audio":
+      return "Audio";
+    default:
+      return attachment.name || "Document";
+  }
+}
+
+function buildConversationMessagePreview(message) {
+  if (!message) return "";
+  if (message.deletedForEveryone) return "This message was deleted";
+  if (message.text) return message.text;
+  if (message.attachments?.length) {
+    return `Attachment: ${getConversationAttachmentLabel(message.attachments[0])}`;
+  }
+  return "Message";
+}
+
+function sortConversationMessages(messages = []) {
+  return [...messages].sort((left, right) => {
+    const leftSeq = Number(left?.seq) || 0;
+    const rightSeq = Number(right?.seq) || 0;
+    if (leftSeq && rightSeq && leftSeq !== rightSeq) {
+      return leftSeq - rightSeq;
+    }
+    return (
+      new Date(left?.createdAt || 0).getTime() -
+      new Date(right?.createdAt || 0).getTime()
+    );
+  });
+}
+
+function cleanupDeletedUserConversation(conversation, userId, deletedAt) {
+  const removedUserId = userId ? userId.toString() : "";
+  let changed = false;
+  const participantIds = (conversation.participants || []).map((participant) =>
+    participant?.toString()
+  );
+  const removedMessageIds = new Set(
+    (conversation.messages || [])
+      .filter((message) => message.sender?.toString() === removedUserId)
+      .map((message) => toIdString(message))
+      .filter(Boolean)
+  );
+
+  if (!conversation.isGroup) {
+    return {
+      deleteConversation:
+        participantIds.includes(removedUserId) || removedMessageIds.size > 0,
+      changed: false,
+      notifyUserIds: participantIds.filter((participantId) => participantId && participantId !== removedUserId),
+    };
+  }
+
+  const nextParticipants = (conversation.participants || []).filter(
+    (participant) => participant && participant.toString() !== removedUserId
+  );
+  if (nextParticipants.length !== (conversation.participants || []).length) {
+    conversation.participants = nextParticipants;
+    changed = true;
+  }
+
+  if (removedMessageIds.size) {
+    conversation.messages = (conversation.messages || []).filter((message) => {
+      const keep = message.sender?.toString() !== removedUserId;
+      if (!keep) changed = true;
+      return keep;
+    });
+  }
+
+  (conversation.messages || []).forEach((message) => {
+    if (
+      message.replyTo &&
+      (toIdString(message.replyTo.sender) === removedUserId ||
+        removedMessageIds.has(toIdString(message.replyTo.messageId)))
+    ) {
+      message.replyTo = null;
+      changed = true;
+    }
+
+    if (message.deletedBy?.toString() === removedUserId) {
+      message.deletedBy = null;
+      changed = true;
+    }
+
+    [
+      "deliveredTo",
+      "readBy",
+      "deletedFor",
+      "starredBy",
+    ].forEach((field) => {
+      const pruned = pruneObjectIdList(message[field], removedUserId);
+      if (pruned.changed) {
+        message[field] = pruned.values;
+        changed = true;
+      }
+    });
+
+    const nextDeleteUndoEntries = (message.deleteUndoEntries || []).filter(
+      (entry) => entry?.actor?.toString() !== removedUserId
+    );
+    if (nextDeleteUndoEntries.length !== (message.deleteUndoEntries || []).length) {
+      message.deleteUndoEntries = nextDeleteUndoEntries;
+      changed = true;
+    }
+
+    const nextReactions = (message.reactions || [])
+      .map((reaction) => {
+        const prunedUsers = pruneObjectIdList(reaction.users, removedUserId);
+        if (prunedUsers.changed) changed = true;
+        return {
+          emoji: reaction.emoji,
+          users: prunedUsers.values,
+        };
+      })
+      .filter((reaction) => reaction.emoji && reaction.users.length);
+
+    if (nextReactions.length !== (message.reactions || []).length) {
+      changed = true;
+    }
+    message.reactions = nextReactions;
+  });
+
+  if (
+    conversation.pinnedMessageId &&
+    removedMessageIds.has(toIdString(conversation.pinnedMessageId))
+  ) {
+    conversation.pinnedMessageId = null;
+    conversation.pinnedAt = null;
+    conversation.pinnedBy = null;
+    changed = true;
+  } else if (conversation.pinnedBy?.toString() === removedUserId) {
+    conversation.pinnedBy = null;
+    changed = true;
+  }
+
+  const latestVisibleMessage = [...sortConversationMessages(conversation.messages || [])]
+    .reverse()
+    .find((message) => !message.deletedForEveryone);
+  const nextLastMessage = latestVisibleMessage
+    ? buildConversationMessagePreview(latestVisibleMessage)
+    : "";
+  const nextLastMessageAt =
+    latestVisibleMessage?.createdAt ||
+    conversation.updatedAt ||
+    deletedAt;
+
+  if ((conversation.lastMessage || "") !== nextLastMessage) {
+    conversation.lastMessage = nextLastMessage;
+    changed = true;
+  }
+  if (
+    !conversation.lastMessageAt ||
+    new Date(conversation.lastMessageAt).getTime() !==
+      new Date(nextLastMessageAt).getTime()
+  ) {
+    conversation.lastMessageAt = nextLastMessageAt;
+    changed = true;
+  }
+
+  return {
+    deleteConversation: !(conversation.participants || []).length,
+    changed,
+    notifyUserIds: (conversation.participants || [])
+      .map((participant) => participant?.toString())
+      .filter(Boolean),
+  };
+}
+
 function escapeRegex(value = "") {
   return String(value).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
@@ -142,7 +333,7 @@ router.get("/search", optionalAuth, async (req, res, next) => {
             [field]: { $regex: safeRegex, $options: "i" },
           })),
         })
-          .select(`name handle avatar bio location website verified followers privateAccount blockedUsers notificationSettings ${PROFILE_EXTRA_SELECT}`)
+          .select("name handle avatar bio verified followers")
           .limit(limit)
           .lean();
 
@@ -152,12 +343,6 @@ router.get("/search", optionalAuth, async (req, res, next) => {
           handle: u.handle,
           avatar: u.avatar,
           bio: u.bio,
-          location: u.location || "",
-          website: u.website || "",
-          ...pickProfileExtras(u),
-          privateAccount: !!u.privateAccount,
-          blockedUsers: (u.blockedUsers || []).map((item) => item.toString()),
-          notificationSettings: sanitizeNotificationSettings(u.notificationSettings),
           verified: u.verified,
           followersCount: (u.followers || []).length,
         }));
@@ -171,12 +356,12 @@ router.get("/search", optionalAuth, async (req, res, next) => {
   }
 });
 
-// GET /api/users/all — list all users (for suggestions)
-router.get("/all", optionalAuth, async (req, res, next) => {
+// GET /api/users/all — safe user directory for authenticated discovery only
+router.get("/all", auth, async (req, res, next) => {
   try {
     const { page, limit, skip } = getPagination(req.query, {
-      defaultLimit: 100,
-      maxLimit: 100,
+      defaultLimit: 20,
+      maxLimit: 40,
     });
     const cacheKey = buildRedisCacheKey(
       "users",
@@ -191,7 +376,7 @@ router.get("/all", optionalAuth, async (req, res, next) => {
         const users = await User.find(getVisibleAccountStatusFilter())
           .sort({ createdAt: -1 })
           .skip(skip)
-          .select(`name handle avatar bio verified followers following followedMandirs followedSants location website joined privateAccount blockedUsers notificationSettings ${PROFILE_EXTRA_SELECT}`)
+          .select("name handle avatar bio verified followers following")
           .limit(limit)
           .lean();
 
@@ -201,18 +386,8 @@ router.get("/all", optionalAuth, async (req, res, next) => {
           handle: u.handle,
           avatar: u.avatar,
           bio: u.bio,
-          location: u.location || "",
-          website: u.website || "",
-          ...pickProfileExtras(u),
           verified: u.verified,
-          followers: (u.followers || []).map((f) => f.toString()),
-          following: (u.following || []).map((f) => f.toString()),
-          followedMandirs: normalizeStringList(u.followedMandirs),
-          followedSants: normalizeStringList(u.followedSants),
-          privateAccount: !!u.privateAccount,
-          blockedUsers: (u.blockedUsers || []).map((item) => item.toString()),
-          notificationSettings: sanitizeNotificationSettings(u.notificationSettings),
-          joined: u.joined || "",
+          followersCount: (u.followers || []).length,
         }));
       },
       { ttlSeconds: 120 }
@@ -246,7 +421,6 @@ router.get("/:id([0-9a-fA-F]{24})", validateObjectIdParam("id"), optionalAuth, a
           id: found._id,
           name: found.name,
           handle: found.handle,
-          email: found.email,
           bio: found.bio,
           location: found.location,
           website: found.website,
@@ -260,8 +434,8 @@ router.get("/:id([0-9a-fA-F]{24})", validateObjectIdParam("id"), optionalAuth, a
           followedMandirs: normalizeStringList(found.followedMandirs),
           followedSants: normalizeStringList(found.followedSants),
           privateAccount: !!found.privateAccount,
-          blockedUsers: (found.blockedUsers || []).map((item) => item.toString()),
-          notificationSettings: sanitizeNotificationSettings(found.notificationSettings),
+          followersCount: (found.followers || []).length,
+          followingCount: (found.following || []).length,
           postsCount,
         };
       },
@@ -403,23 +577,53 @@ router.delete("/account", auth, async (req, res, next) => {
       ),
     ]);
 
-    const conversations = await Conversation.find({ "messages.sender": userId });
+    const io = req.app.get("io");
+    const notifyConversationUserIds = new Set();
+    const conversations = await Conversation.find({
+      $or: [
+        { participants: userId },
+        { "messages.sender": userId },
+        { "messages.replyTo.sender": userId },
+        { "messages.reactions.users": userId },
+        { "messages.starredBy": userId },
+        { "messages.readBy": userId },
+        { "messages.deliveredTo": userId },
+        { "messages.deletedFor": userId },
+        { "messages.deleteUndoEntries.actor": userId },
+        { pinnedBy: userId },
+      ],
+    });
+
     for (const conversation of conversations) {
-      let changed = false;
-      (conversation.messages || []).forEach((message) => {
-        if (message.sender?.toString() !== userId.toString()) return;
-        message.text = "";
-        message.attachments = [];
-        message.replyTo = null;
-        message.forwarded = false;
-        message.deletedForEveryone = true;
-        message.deletedAt = deletedAt;
-        message.deletedBy = userId;
-        changed = true;
+      const cleanup = cleanupDeletedUserConversation(
+        conversation,
+        userId,
+        deletedAt
+      );
+
+      cleanup.notifyUserIds.forEach((participantId) => {
+        if (participantId && participantId !== userId.toString()) {
+          notifyConversationUserIds.add(participantId);
+        }
       });
-      if (changed) {
+
+      if (cleanup.deleteConversation) {
+        await Conversation.deleteOne({ _id: conversation._id });
+        continue;
+      }
+
+      if (cleanup.changed) {
         await conversation.save();
       }
+    }
+
+    if (io && notifyConversationUserIds.size) {
+      notifyConversationUserIds.forEach((participantId) => {
+        io.to(participantId).emit("conversationsInvalidated", {
+          reason: "participant_removed",
+          userId: userId.toString(),
+        });
+      });
     }
 
     const user = await User.findById(userId).select("+password");

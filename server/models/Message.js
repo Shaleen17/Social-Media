@@ -28,6 +28,34 @@ const replyToSchema = new mongoose.Schema(
   { _id: false }
 );
 
+const reactionSchema = new mongoose.Schema(
+  {
+    emoji: { type: String, required: true },
+    users: [{ type: mongoose.Schema.Types.ObjectId, ref: "User" }],
+  },
+  { _id: false }
+);
+
+const deleteUndoEntrySchema = new mongoose.Schema(
+  {
+    actor: { type: mongoose.Schema.Types.ObjectId, ref: "User", required: true },
+    scope: {
+      type: String,
+      enum: ["me", "everyone"],
+      required: true,
+    },
+    expiresAt: { type: Date, required: true },
+    text: { type: String, default: "" },
+    attachments: { type: [attachmentSchema], default: [] },
+    replyTo: { type: replyToSchema, default: null },
+    forwarded: { type: Boolean, default: false },
+    reactions: { type: [reactionSchema], default: [] },
+    editedAt: { type: Date, default: null },
+    wasPinned: { type: Boolean, default: false },
+  },
+  { _id: false }
+);
+
 const messageSchema = new mongoose.Schema({
   sender: { type: mongoose.Schema.Types.ObjectId, ref: "User", required: true },
   clientId: { type: String, default: "" },
@@ -36,6 +64,9 @@ const messageSchema = new mongoose.Schema({
   attachments: { type: [attachmentSchema], default: [] },
   replyTo: { type: replyToSchema, default: null },
   forwarded: { type: Boolean, default: false },
+  reactions: { type: [reactionSchema], default: [] },
+  starredBy: [{ type: mongoose.Schema.Types.ObjectId, ref: "User" }],
+  editedAt: { type: Date, default: null },
   moderationStatus: {
     type: String,
     enum: ["approved", "needs_review"],
@@ -48,6 +79,7 @@ const messageSchema = new mongoose.Schema({
   deletedForEveryone: { type: Boolean, default: false },
   deletedAt: { type: Date, default: null },
   deletedBy: { type: mongoose.Schema.Types.ObjectId, ref: "User", default: null },
+  deleteUndoEntries: { type: [deleteUndoEntrySchema], default: [] },
   read: { type: Boolean, default: false },
   createdAt: { type: Date, default: Date.now },
 });
@@ -62,6 +94,16 @@ const conversationSchema = new mongoose.Schema(
     lastMessage: { type: String, default: "" },
     lastMessageAt: { type: Date, default: Date.now },
     messageSequence: { type: Number, default: 0 },
+    pinnedMessageId: {
+      type: mongoose.Schema.Types.ObjectId,
+      default: null,
+    },
+    pinnedAt: { type: Date, default: null },
+    pinnedBy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+      default: null,
+    },
   },
   { timestamps: true }
 );

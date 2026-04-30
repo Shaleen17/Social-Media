@@ -187,12 +187,10 @@
   }
 
   async function fetchFounderJson(path) {
-    const token = global.API?.getToken?.() || "";
     const response = await fetch(`${getBackendBase()}${path}`, {
       method: "GET",
       headers: {
         Accept: "application/json",
-        ...(token ? { Authorization: `Bearer ${token}` } : {}),
       },
       credentials: "include",
       cache: "no-store",
@@ -244,12 +242,10 @@
   }
 
   function buildStreamRequest(path, signal) {
-    const token = global.API?.getToken?.() || "";
     return fetch(`${getBackendBase()}${path}`, {
       method: "GET",
       headers: {
         Accept: "application/x-ndjson, application/json",
-        ...(token ? { Authorization: `Bearer ${token}` } : {}),
       },
       credentials: "include",
       cache: "no-store",

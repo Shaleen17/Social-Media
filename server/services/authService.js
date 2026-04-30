@@ -1618,13 +1618,12 @@ async function exchangeGoogleCode(req, { code, state }) {
   };
 }
 
-function buildGoogleSuccessRedirect(req, returnTo, token) {
+function buildGoogleSuccessRedirect(req, returnTo) {
   const parsedReturnTo = normalizeUrl(returnTo);
   const target = parsedReturnTo
     ? parsedReturnTo.toString()
     : getFallbackClientUrl(req);
   return buildRedirectWithHash(target, {
-    authToken: token,
     authSource: "google",
     status: "success",
   });

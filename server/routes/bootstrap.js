@@ -12,35 +12,22 @@ const { getVisibleAccountStatusFilter } = require("../utils/userVisibility");
 const router = express.Router();
 
 const BOOTSTRAP_CACHE_VERSION = "feed-v1";
-const MAX_BOOTSTRAP_USERS = Math.max(100, Number(process.env.BOOTSTRAP_MAX_USERS) || 5000);
-const MAX_BOOTSTRAP_POSTS = Math.max(100, Number(process.env.BOOTSTRAP_MAX_POSTS) || 4000);
-const MAX_BOOTSTRAP_VIDEOS = Math.max(100, Number(process.env.BOOTSTRAP_MAX_VIDEOS) || 3000);
-const MAX_BOOTSTRAP_VIDEO_STORIES = Math.max(
-  20,
-  Number(process.env.BOOTSTRAP_MAX_VIDEO_STORIES) || 60
+const MAX_BOOTSTRAP_USERS = Math.min(
+  40,
+  Math.max(10, Number(process.env.BOOTSTRAP_MAX_USERS) || 20)
 );
-
-function normalizeStringList(values) {
-  if (!Array.isArray(values)) return [];
-  return [...new Set(
-    values
-      .map((value) => String(value || "").trim().toLowerCase())
-      .filter(Boolean)
-  )];
-}
-
-function sanitizeNotificationSettings(input = {}) {
-  const current = input && typeof input === "object" ? input : {};
-  const read = (key, fallback = true) =>
-    typeof current[key] === "boolean" ? current[key] : fallback;
-
-  return {
-    festivalReminders: read("festivalReminders", true),
-    chatMessages: read("chatMessages", true),
-    communityHighlights: read("communityHighlights", true),
-    donationUpdates: read("donationUpdates", true),
-  };
-}
+const MAX_BOOTSTRAP_POSTS = Math.min(
+  40,
+  Math.max(10, Number(process.env.BOOTSTRAP_MAX_POSTS) || 20)
+);
+const MAX_BOOTSTRAP_VIDEOS = Math.min(
+  40,
+  Math.max(10, Number(process.env.BOOTSTRAP_MAX_VIDEOS) || 20)
+);
+const MAX_BOOTSTRAP_VIDEO_STORIES = Math.min(
+  20,
+  Math.max(6, Number(process.env.BOOTSTRAP_MAX_VIDEO_STORIES) || 12)
+);
 
 function pickProfileExtras(user) {
   return {
@@ -80,13 +67,9 @@ function mapUser(user) {
     website: user.website || "",
     ...pickProfileExtras(user),
     verified: user.verified,
-    followers: (user.followers || []).map((f) => f.toString()),
-    following: (user.following || []).map((f) => f.toString()),
-    followedMandirs: normalizeStringList(user.followedMandirs),
-    followedSants: normalizeStringList(user.followedSants),
     privateAccount: !!user.privateAccount,
-    blockedUsers: (user.blockedUsers || []).map((item) => item.toString()),
-    notificationSettings: sanitizeNotificationSettings(user.notificationSettings),
+    followersCount: (user.followers || []).length,
+    followingCount: (user.following || []).length,
     joined: user.joined || "",
   };
 }
@@ -196,7 +179,7 @@ router.get("/feed", async (req, res, next) => {
             .sort({ createdAt: -1 })
             .limit(MAX_BOOTSTRAP_USERS)
             .select(
-              "name handle avatar bio verified followers following followedMandirs followedSants location website joined privateAccount blockedUsers notificationSettings spiritualName homeMandir favoriteDeity spiritualPath interests spokenLanguages seva yatraWishlist sankalp"
+              "name handle avatar bio verified followers following location website joined privateAccount spiritualName homeMandir favoriteDeity spiritualPath interests spokenLanguages seva yatraWishlist sankalp"
             )
             .lean(),
           Post.find({})

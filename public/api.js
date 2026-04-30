@@ -1,9 +1,10 @@
 /**
- * API Client — replaces LocalStorage data layer with real HTTP calls
- * All functions return promises. JWT token is stored in localStorage.
+ * API Client — cookie-first auth with a small non-sensitive session hint.
+ * All authenticated requests rely on the backend's httpOnly auth cookie.
  */
 const API = (() => {
   const PENDING_CHAT_QUEUE_KEY = "ts_pending_chat_messages";
+  const SESSION_HINT_KEY = "ts_session";
   const MAX_PENDING_CHAT_MESSAGES = 40;
   const CSRF_COOKIE_NAME = "ts_csrf";
   let csrfBootstrapPromise = null;
@@ -36,19 +37,35 @@ const API = (() => {
   }
 
   function getToken() {
-    return localStorage.getItem("ts_token");
+    try {
+      return localStorage.getItem(SESSION_HINT_KEY) || "";
+    } catch {
+      return "";
+    }
   }
 
-  function setToken(token) {
-    localStorage.setItem("ts_token", token);
+  function setToken() {
+    try {
+      localStorage.setItem(SESSION_HINT_KEY, "1");
+    } catch {}
   }
 
   function removeToken() {
-    localStorage.removeItem("ts_token");
+    try {
+      localStorage.removeItem(SESSION_HINT_KEY);
+      localStorage.removeItem("ts_token");
+    } catch {}
+  }
+
+  function hasSessionHint() {
+    return !!(getToken() || getStoredUser());
   }
 
   function setUser(user) {
-    localStorage.setItem("ts_currentUser", JSON.stringify(user));
+    try {
+      localStorage.setItem("ts_currentUser", JSON.stringify(user));
+    } catch {}
+    if (user) setToken();
   }
 
   function getStoredUser() {
@@ -60,7 +77,9 @@ const API = (() => {
   }
 
   function removeUser() {
-    localStorage.removeItem("ts_currentUser");
+    try {
+      localStorage.removeItem("ts_currentUser");
+    } catch {}
   }
 
   function sleep(ms) {
@@ -169,7 +188,7 @@ const API = (() => {
 
   async function flushPendingChatMessages() {
     const queue = readPendingChatQueue();
-    if (!queue.length || !getToken()) return [];
+    if (!queue.length || !hasSessionHint()) return [];
 
     const sent = [];
     const remaining = [];
@@ -213,11 +232,11 @@ const API = (() => {
   }
 
   async function request(path, options = {}) {
-    const token = getToken();
     const {
       retry = 0,
       retryDelayMs = 650,
       timeoutMs = 0,
+      suppressErrorLog = false,
       ...fetchOptions
     } = options || {};
     const method = String(fetchOptions.method || "GET").toUpperCase();
@@ -225,9 +244,6 @@ const API = (() => {
       "Content-Type": "application/json",
       ...(fetchOptions.headers || {}),
     };
-    if (token) {
-      headers["Authorization"] = "Bearer " + token;
-    }
 
     if (
       !["GET", "HEAD", "OPTIONS"].includes(method) &&
@@ -290,7 +306,9 @@ const API = (() => {
           continue;
         }
 
-        console.error("API error:", path, err.message);
+        if (!suppressErrorLog) {
+          console.error("API error:", path, err.message);
+        }
         throw err;
       } finally {
         if (timeoutHandle) clearTimeout(timeoutHandle);
@@ -352,16 +370,15 @@ const API = (() => {
   }
 
   async function uploadFile(file) {
-    const token = getToken();
     const formData = new FormData();
     formData.append("file", file);
+    const csrfToken = await ensureCsrfToken().catch(() => "");
 
     const res = await fetch(getApiBase() + "/upload", {
       method: "POST",
-      headers: {
-        Authorization: "Bearer " + token,
-      },
+      headers: csrfToken ? { "x-csrf-token": csrfToken } : {},
       body: formData,
+      credentials: "include",
     });
     const data = await res.json();
     if (!res.ok) throw new Error(data.error || "Upload failed");
@@ -413,8 +430,10 @@ const API = (() => {
         method: "POST",
         body: JSON.stringify({ email, otp }),
       });
-      setToken(data.token);
-      setUser(data.user);
+      if (data?.user) {
+        setToken();
+        setUser(data.user);
+      }
       return data;
     },
 
@@ -423,8 +442,10 @@ const API = (() => {
         method: "POST",
         body: JSON.stringify({ email, password }),
       });
-      setToken(data.token);
-      setUser(data.user);
+      if (data?.user) {
+        setToken();
+        setUser(data.user);
+      }
       return data;
     },
 
@@ -478,8 +499,10 @@ const API = (() => {
           timezone,
         }),
       });
-      setToken(data.token);
-      setUser(data.user);
+      if (data?.user) {
+        setToken();
+        setUser(data.user);
+      }
       return data;
     },
 
@@ -504,14 +527,21 @@ const API = (() => {
           provider,
         }),
       });
-      setToken(data.token);
-      setUser(data.user);
+      if (data?.user) {
+        setToken();
+        setUser(data.user);
+      }
       return data;
     },
 
-    async getMe() {
-      const data = await request("/auth/me");
-      setUser(data.user);
+    async getMe(options = {}) {
+      const data = await request("/auth/me", {
+        suppressErrorLog: options?.silent === true,
+      });
+      if (data?.user) {
+        setToken();
+        setUser(data.user);
+      }
       return data.user;
     },
 
@@ -541,6 +571,14 @@ const API = (() => {
       params.set("page", String(page || 1));
       if (limit) params.set("limit", String(limit));
       return request(`/posts?${params.toString()}`);
+    },
+
+    async getHomeFeed(view = "forYou", page = 1, limit = 20) {
+      const params = new URLSearchParams();
+      params.set("view", String(view || "forYou"));
+      params.set("page", String(page || 1));
+      params.set("limit", String(limit || 20));
+      return request(`/feed/home?${params.toString()}`);
     },
 
     async getAllPosts(tab = "forYou") {
@@ -617,9 +655,7 @@ const API = (() => {
     },
 
     async exportMyData() {
-      const token = getToken();
       const headers = {};
-      if (token) headers.Authorization = "Bearer " + token;
       const csrfToken = await ensureCsrfToken().catch(() => "");
       if (csrfToken) headers["x-csrf-token"] = csrfToken;
       const res = await fetch(getApiBase() + "/users/account/export", {
@@ -653,10 +689,14 @@ const API = (() => {
       return fetchAllPagedResults(
         (page, pageSize) => request(`/users/all?page=${page}&limit=${pageSize}`),
         {
-          pageSize: 100,
-          maxPages: 50,
+          pageSize: 40,
+          maxPages: 25,
         }
       );
+    },
+
+    async getUsersPage(page = 1, limit = 20) {
+      return request(`/users/all?page=${encodeURIComponent(page)}&limit=${encodeURIComponent(limit)}`);
     },
 
     async getBootstrapFeed() {
@@ -680,8 +720,12 @@ const API = (() => {
       return request("/messages");
     },
 
-    async getMessages(convId) {
-      return request(`/messages/${convId}`);
+    async getMessages(convId, options = {}) {
+      const params = new URLSearchParams();
+      if (options.page) params.set("page", String(options.page));
+      if (options.limit) params.set("limit", String(options.limit));
+      const query = params.toString();
+      return request(`/messages/${convId}${query ? `?${query}` : ""}`);
     },
 
     async sendMessage(convId, textOrPayload, extra = {}) {
@@ -711,10 +755,19 @@ const API = (() => {
       }
     },
 
-    async forwardMessage(sourceConvId, messageId, targetConvId) {
+    async forwardMessage(sourceConvId, messageId, targetConvIdOrIds) {
+      const targetConvIds = Array.isArray(targetConvIdOrIds)
+        ? targetConvIdOrIds
+        : [targetConvIdOrIds];
       return request("/messages/forward/message", {
         method: "POST",
-        body: JSON.stringify({ sourceConvId, messageId, targetConvId }),
+        body: JSON.stringify({
+          sourceConvId,
+          messageId,
+          targetConvId:
+            targetConvIds.length === 1 ? targetConvIds[0] : undefined,
+          targetConvIds,
+        }),
       });
     },
 
@@ -722,6 +775,39 @@ const API = (() => {
       return request(`/messages/${convId}/${messageId}/delete`, {
         method: "POST",
         body: JSON.stringify({ scope }),
+      });
+    },
+
+    async undoDeleteMessage(convId, messageId, scope = "me") {
+      return request(`/messages/${convId}/${messageId}/delete/undo`, {
+        method: "POST",
+        body: JSON.stringify({ scope }),
+      });
+    },
+
+    async reactToMessage(convId, messageId, emoji) {
+      return request(`/messages/${convId}/${messageId}/react`, {
+        method: "POST",
+        body: JSON.stringify({ emoji }),
+      });
+    },
+
+    async starMessage(convId, messageId) {
+      return request(`/messages/${convId}/${messageId}/star`, {
+        method: "POST",
+      });
+    },
+
+    async pinMessage(convId, messageId) {
+      return request(`/messages/${convId}/${messageId}/pin`, {
+        method: "POST",
+      });
+    },
+
+    async editMessage(convId, messageId, text) {
+      return request(`/messages/${convId}/${messageId}/edit`, {
+        method: "POST",
+        body: JSON.stringify({ text }),
       });
     },
 

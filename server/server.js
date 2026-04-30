@@ -80,6 +80,7 @@ const searchRoutes = require("./routes/search");
 const analyticsRoutes = require("./routes/analytics");
 const founderRoutes = require("./routes/founder");
 const bootstrapRoutes = require("./routes/bootstrap");
+const feedRoutes = require("./routes/feed");
 const { startEmailCampaignWorker } = require("./services/emailCampaignService");
 
 const app = express();
@@ -213,6 +214,7 @@ app.use("/api/search", searchRoutes);
 app.use("/api/analytics", analyticsRoutes);
 app.use("/api/founder", founderRoutes);
 app.use("/api/bootstrap", bootstrapRoutes);
+app.use("/api/feed", feedRoutes);
 
 // Health check
 app.get("/api/health", (req, res) => {

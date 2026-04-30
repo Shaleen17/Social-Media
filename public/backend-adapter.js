@@ -60,12 +60,57 @@
     );
     if (idx > -1) {
       _conversationMessages[convId][idx] = incoming;
-      updateConversationPreview(convId, incoming);
-      if (convId === activeChatId) renderChatMessages(activeChatId);
-      if (curPage === "chats") {
-        updateChatItemDOM(convId, getMessagePreview(incoming), fmtChatTs(incoming.ts), 0);
-      }
+    } else {
+      upsertConversationMessage(convId, incoming);
     }
+    const latestMessage = (_conversationMessages[convId] || []).slice(-1)[0];
+    if ((latestMessage?.id || "").toString() === (incoming.id || "").toString()) {
+      updateConversationPreview(convId, incoming);
+    }
+    if (convId === activeChatId) renderChatMessages(activeChatId);
+    if (curPage === "chats") {
+      updateChatItemDOM(
+        convId,
+        getMessagePreview(latestMessage || incoming),
+        fmtChatTs((latestMessage || incoming)?.ts),
+        0
+      );
+    }
+    if (convId === activeChatId) refreshOpenChatPanels();
+  };
+
+  window.handleConversationUpdated = function (data) {
+    const convId = (data.convId || "").toString();
+    const incoming = data.conversation || {};
+    const conv = getConversationById(convId);
+    if (conv) {
+      Object.assign(conv, incoming);
+    }
+    if (convId === activeChatId) {
+      renderPinnedBanner();
+      refreshOpenChatPanels();
+      renderChatMessages(activeChatId);
+    }
+    if (curPage === "chats") renderChatsList();
+  };
+
+  window.handleConversationsInvalidated = function () {
+    loadConversations()
+      .then(async () => {
+        if (activeChatId && !getConversationById(activeChatId)) {
+          closeChatWindow();
+          return;
+        }
+        if (activeChatId) {
+          const data = await loadMessages(activeChatId);
+          renderChatMessages(activeChatId, data.messages || []);
+          refreshOpenChatPanels();
+        }
+        if (curPage === "chats") renderChatsList();
+      })
+      .catch((err) => {
+        console.error("Failed to refresh conversations after invalidation:", err);
+      });
   };
 
   window.updateChatHeaderOnline = function (userId, online, lastSeen) {
@@ -101,7 +146,7 @@
   let _videoRefreshTimer = null;
   let _videoRefreshInFlight = false;
   const BOOT_CACHE_KEY = "backendBootCache";
-  const BOOT_CACHE_VERSION = "20260429-founder-directory-ui-24";
+  const BOOT_CACHE_VERSION = "20260430-profile-qr-1";
   const BOOT_CACHE_TTL = 1000 * 60 * 60 * 24 * 30;
   const LIVE_REFRESH_INTERVAL_MS = 15000;
   const VIDEO_REFRESH_INTERVAL_MS = 45000;
@@ -378,7 +423,7 @@
       },
       notifs: () => renderNotifs(),
       bookmarks: () => renderBM(),
-      profile: () => renderProfile(CU ? CU.id : curProfId || "u1"),
+      profile: () => renderProfile(curProfId || getCurrentUserId() || "u1"),
       chats: () => renderChatsPage(),
       about: () => {},
       language: () => renderLanguagePage(),
@@ -436,12 +481,11 @@
     const params = rawHash
       ? new URLSearchParams(rawHash)
       : new URLSearchParams(window.location.search);
-    const authToken = params.get("authToken");
     const authError = params.get("authError");
     const authSource = params.get("authSource");
     const status = params.get("status");
 
-    if (!authToken && !authError && !status) {
+    if (!authError && !status) {
       return null;
     }
 
@@ -452,7 +496,6 @@
     );
 
     return {
-      authToken,
       authError,
       authSource,
       status,
@@ -471,7 +514,7 @@
 
   let _chatPushSetupPromise = null;
   let _pendingOpenChatId = consumeOpenChatParam();
-const APP_ASSET_VERSION = "20260429-founder-directory-ui-24";
+const APP_ASSET_VERSION = "20260430-deleted-chat-cleanup-1";
   let _appSwPromise = null;
   let _deferredInstallPrompt = null;
   let _installPromptBound = false;
@@ -888,7 +931,9 @@ const APP_ASSET_VERSION = "20260429-founder-directory-ui-24";
       const previousVideoSignature = getCachedVideoSignature(_cachedVideos);
       const previousLiveSignature = getCachedLiveSignature(_cachedLiveStreams);
       const previousUserSignature = getCachedUserSignature(_cachedUsers);
-      const videos = await (API.getAllVideos ? API.getAllVideos() : API.getVideos());
+      const videos = await (API.getVideos
+        ? API.getVideos(undefined, undefined, 1, 20)
+        : []);
       const allVideos = normalizeVideoCollection(videos);
       const embeddedUsers = allVideos.map((video) => video?.user).filter(Boolean);
 
@@ -2252,46 +2297,146 @@ const APP_ASSET_VERSION = "20260429-founder-directory-ui-24";
   // =============================================
   // Data Loading from Backend
   // =============================================
+  function getFeedViewForTab(tab) {
+    const normalized = String(tab || curFTab || "forYou").trim().toLowerCase();
+    if (normalized === "following") return "following";
+    if (normalized === "trending") return "trending";
+    if (normalized === "latest") return "latest";
+    return "forYou";
+  }
+
+  function mergeFeedUsers(posts = []) {
+    const embeddedUsers = (Array.isArray(posts) ? posts : [])
+      .map((post) => post?.user)
+      .filter(Boolean);
+    if (embeddedUsers.length) {
+      _cachedUsers = mergeUniqueById(_cachedUsers, embeddedUsers);
+    }
+  }
+
+  function replaceHomeFeedCache(posts, view, options = {}) {
+    const safePosts = Array.isArray(posts) ? posts : [];
+    mergeFeedUsers(safePosts);
+    _cachedPosts = safePosts;
+
+    if (window.TSFeedPager) {
+      const safeView = getFeedViewForTab(view);
+      window.TSFeedPager.resetView(safeView);
+      window.TSFeedPager.setCurrentView(safeView);
+      window.TSFeedPager.primeView(safeView, safePosts, {
+        page: 1,
+        limit: options.limit || window.TSFeedPager.DEFAULT_PAGE_SIZE || 20,
+        hasMore:
+          typeof options.hasMore === "boolean"
+            ? options.hasMore
+            : safePosts.length >= (options.limit || window.TSFeedPager.DEFAULT_PAGE_SIZE || 20),
+      });
+    }
+
+    writeBootCache();
+    return safePosts;
+  }
+
+  function appendHomeFeedCache(posts) {
+    const safePosts = Array.isArray(posts) ? posts : [];
+    if (!safePosts.length) return [];
+    mergeFeedUsers(safePosts);
+    _cachedPosts = mergeUniqueById(_cachedPosts, safePosts);
+    writeBootCache();
+    return safePosts;
+  }
+
+  async function loadHomeFeedPage(view, options = {}) {
+    const safeView = getFeedViewForTab(view);
+    const pageSize = options.limit || window.TSFeedPager?.DEFAULT_PAGE_SIZE || 20;
+    if (!API?.getHomeFeed) return [];
+
+    const items = await API.getHomeFeed(safeView, 1, pageSize);
+    replaceHomeFeedCache(items, safeView, {
+      limit: pageSize,
+      hasMore: Array.isArray(items) && items.length >= pageSize,
+    });
+
+    if (options.render !== false && typeof renderFeed === "function") {
+      renderFeed();
+    }
+
+    return items;
+  }
+
+  function ensureHomeFeedPagination() {
+    if (!window.TSFeedPager) return;
+
+    window.TSFeedPager.bindInfiniteScroll({
+      pageSize: window.TSFeedPager.DEFAULT_PAGE_SIZE || 20,
+      threshold: 520,
+      isActive: () => document.visibilityState === "visible" && curPage === "home",
+      getView: () => getFeedViewForTab(curFTab),
+      onAppend: (items, activeView) => {
+        if (getFeedViewForTab(curFTab) !== activeView) return;
+        appendHomeFeedCache(items);
+        if (typeof renderFeed === "function") {
+          renderFeed();
+        }
+      },
+    });
+  }
+
+  const _origSetFTab = window.setFTab;
+  window.setFTab = function (tab, el) {
+    curFTab = tab;
+    document.querySelectorAll(".ftab").forEach((t) => t.classList.remove("on"));
+    if (el) el.classList.add("on");
+
+    if (!API?.getHomeFeed) {
+      if (typeof _origSetFTab === "function") {
+        return _origSetFTab(tab, el);
+      }
+      renderFeed();
+      return;
+    }
+
+    const sk = document.getElementById("feedSkel");
+    const fp = document.getElementById("feedPosts");
+    if (sk) sk.style.display = "";
+    if (fp) fp.innerHTML = "";
+
+    loadHomeFeedPage(tab, { render: true }).catch(() => {
+      if (sk) sk.style.display = "none";
+      renderFeed();
+    });
+  };
+
+  window.refreshFeed = function () {
+    const sk = document.getElementById("feedSkel");
+    const fp = document.getElementById("feedPosts");
+    if (sk) sk.style.display = "";
+    if (fp) fp.innerHTML = "";
+
+    loadHomeFeedPage(curFTab, { render: true })
+      .then(() => {
+        MC.info("Feed refreshed 🔄");
+      })
+      .catch(() => {
+        if (sk) sk.style.display = "none";
+        renderFeed();
+      });
+  };
+
   async function loadAllData() {
     try {
-      let users = [];
-      let posts = [];
-      let videos = [];
-      let vidStories = [];
-
-      if (API.getBootstrapFeed) {
-        try {
-          const bootstrap = await API.getBootstrapFeed();
-          users = Array.isArray(bootstrap?.users) ? bootstrap.users : [];
-          posts = Array.isArray(bootstrap?.posts) ? bootstrap.posts : [];
-          videos = normalizeVideoCollection(bootstrap?.videos);
-          vidStories = Array.isArray(bootstrap?.vidStories) ? bootstrap.vidStories : [];
-        } catch (bootstrapError) {
-          console.warn("Bootstrap feed load failed, falling back to paginated fetches:", bootstrapError?.message || bootstrapError);
-        }
-      }
-
-      if (!users.length || !posts.length || !videos.length) {
-        const fallbackResults = await Promise.all([
-          users.length
-            ? Promise.resolve(users)
-            : API.getAllUsers().catch(() => []),
-          posts.length
-            ? Promise.resolve(posts)
-            : (API.getAllPosts ? API.getAllPosts("forYou") : API.getPosts()).catch(() => []),
-          videos.length
-            ? Promise.resolve(videos)
-            : (API.getAllVideos ? API.getAllVideos() : API.getVideos()).catch(() => []),
-          vidStories.length
-            ? Promise.resolve(vidStories)
-            : API.getVideoStories().catch(() => []),
-        ]);
-
-        users = fallbackResults[0];
-        posts = fallbackResults[1];
-        videos = normalizeVideoCollection(fallbackResults[2]);
-        vidStories = fallbackResults[3];
-      }
+      const feedLimit = window.TSFeedPager?.DEFAULT_PAGE_SIZE || 20;
+      const initialFeedView = getFeedViewForTab(curFTab);
+      const [posts, users, videos, vidStories] = await Promise.all([
+        API.getHomeFeed
+          ? API.getHomeFeed(initialFeedView, 1, feedLimit).catch(() =>
+              (API.getPosts ? API.getPosts(initialFeedView, 1, feedLimit) : [])
+            )
+          : (API.getPosts ? API.getPosts(initialFeedView, 1, feedLimit) : []).catch(() => []),
+        CU && API.getUsersPage ? API.getUsersPage(1, 20).catch(() => []) : Promise.resolve([]),
+        API.getVideos ? API.getVideos(undefined, undefined, 1, 20).catch(() => []) : Promise.resolve([]),
+        API.getVideoStories ? API.getVideoStories().catch(() => []) : Promise.resolve([]),
+      ]);
 
       const embeddedUsers = [
         ...(posts || []).map((post) => post?.user).filter(Boolean),
@@ -2300,7 +2445,10 @@ const APP_ASSET_VERSION = "20260429-founder-directory-ui-24";
       ];
 
       _cachedUsers = mergeUniqueById(users || [], embeddedUsers);
-      _cachedPosts = posts || [];
+      replaceHomeFeedCache(posts || [], initialFeedView, {
+        limit: feedLimit,
+        hasMore: Array.isArray(posts) && posts.length >= feedLimit,
+      });
 
       _cachedVideos = normalizeVideoCollection(videos).filter((v) => !v.live);
       _cachedLiveStreams = mapLiveStreamsFromVideos(videos || []);
@@ -2309,6 +2457,7 @@ const APP_ASSET_VERSION = "20260429-founder-directory-ui-24";
 
       _dataLoaded = true;
       writeBootCache();
+      ensureHomeFeedPagination();
       loadTrendingHashtagDiscovery().catch(() => {});
       return true;
     } catch (err) {
@@ -2360,6 +2509,7 @@ const APP_ASSET_VERSION = "20260429-founder-directory-ui-24";
 
     if (!query || !API?.searchAll) {
       _remoteSearchHashtags = [];
+      window.TSSearchEnhancer?.clear?.();
       return rendered;
     }
 
@@ -2373,8 +2523,11 @@ const APP_ASSET_VERSION = "20260429-founder-directory-ui-24";
         if (typeof _origDoSearch === "function") {
           _origDoSearch(query);
         }
+        window.TSSearchEnhancer?.render?.(result, query);
       })
-      .catch(() => {});
+      .catch(() => {
+        window.TSSearchEnhancer?.clear?.();
+      });
 
     return rendered;
   };
@@ -2393,7 +2546,12 @@ const APP_ASSET_VERSION = "20260429-founder-directory-ui-24";
   let _chatReplyDraft = null;
   let _chatMsgMenuState = null;
   let _chatForwardMessage = null;
+  let _chatForwardSelection = [];
   let _chatLongPressTimer = null;
+  let _chatEditDraft = null;
+  let _chatSearchKind = "all";
+  let _chatGalleryTab = "media";
+  let _chatUndoNoticeTimer = null;
 
   // ── Helper: get userId string ──
   function myId() {
@@ -2428,6 +2586,24 @@ const APP_ASSET_VERSION = "20260429-founder-directory-ui-24";
   function getConversationById(convId) {
     return _cachedConversations.find(
       (conv) => (conv.id || conv._id || "").toString() === (convId || "").toString()
+    );
+  }
+
+  function isRenderableDirectConversation(conv) {
+    if (!conv || conv.isGroup) return false;
+    const userId = (conv.uid || conv.user?._id || conv.user?.id || "").toString();
+    return !!userId;
+  }
+
+  function isRenderableConversation(conv) {
+    const convId = (conv?.id || conv?._id || "").toString();
+    if (!convId) return false;
+    return conv?.isGroup ? true : isRenderableDirectConversation(conv);
+  }
+
+  function sanitizeRenderableConversations(conversations) {
+    return (Array.isArray(conversations) ? conversations : []).filter(
+      isRenderableConversation
     );
   }
 
@@ -2474,6 +2650,223 @@ const APP_ASSET_VERSION = "20260429-founder-directory-ui-24";
       return "📎 " + getAttachmentLabel(m.attachments[0]);
     }
     return "Message";
+  }
+
+  function getChatMessageById(chatId, messageId) {
+    return (_conversationMessages[chatId] || []).find(
+      (item) => (item.id || "").toString() === (messageId || "").toString()
+    );
+  }
+
+  function getMessageSenderName(message) {
+    if (!message) return "Unknown";
+    if (message.isMe || (message.from && message.from.toString() === myId())) {
+      return CU?.name || "You";
+    }
+    return message.sender?.name || "Unknown";
+  }
+
+  function getMessageDateInputValue(message) {
+    const d = message?.ts ? new Date(message.ts) : null;
+    if (!d || Number.isNaN(d.getTime())) return "";
+    const year = d.getFullYear();
+    const month = String(d.getMonth() + 1).padStart(2, "0");
+    const day = String(d.getDate()).padStart(2, "0");
+    return `${year}-${month}-${day}`;
+  }
+
+  function extractChatLinks(message) {
+    const text = message?.txt || "";
+    return text.match(/https?:\/\/[^\s<>"')]+/gi) || [];
+  }
+
+  function getSearchableMessageText(message) {
+    return [
+      message?.txt || "",
+      getMessageSenderName(message),
+      ...(message?.attachments || []).map((attachment) => attachment.name || ""),
+      ...extractChatLinks(message),
+    ]
+      .join(" ")
+      .trim();
+  }
+
+  function getRenderableChatMessages(chatId) {
+    return (_conversationMessages[chatId] || []).filter((message) => !message.deleted);
+  }
+
+  function getPinnedMessageForChat(chatId) {
+    const conv = getConversationById(chatId);
+    const pinnedId = conv?.pinnedMessage?.messageId;
+    return pinnedId ? getChatMessageById(chatId, pinnedId) || conv?.pinnedMessage : null;
+  }
+
+  function formatBytes(size) {
+    const value = Number(size) || 0;
+    if (!value) return "0 B";
+    if (value < 1024) return `${value} B`;
+    if (value < 1024 * 1024) return `${(value / 1024).toFixed(1)} KB`;
+    return `${(value / (1024 * 1024)).toFixed(1)} MB`;
+  }
+
+  function formatChatLongDate(dateStr) {
+    const d = dateStr ? new Date(dateStr) : null;
+    if (!d || Number.isNaN(d.getTime())) return "";
+    return d.toLocaleDateString([], {
+      day: "numeric",
+      month: "short",
+      year: "numeric",
+    });
+  }
+
+  function summarizeMessageForCard(message) {
+    if (!message) return "Message";
+    if (message.preview) return message.preview;
+    if (message.txt) return message.txt;
+    if (message.attachments?.length) return getAttachmentLabel(message.attachments[0]);
+    return "Message";
+  }
+
+  function getChatDerivedData(chatId) {
+    const messages = getRenderableChatMessages(chatId);
+    const media = [];
+    const docs = [];
+    const links = [];
+    let storageBytes = 0;
+
+    messages.forEach((message) => {
+      const senderName = getMessageSenderName(message);
+      (message.attachments || []).forEach((attachment, index) => {
+        const item = {
+          id: `${message.id || "msg"}_${index}`,
+          messageId: message.id || "",
+          kind: attachment.kind || "document",
+          url: attachment.url || "",
+          name: attachment.name || getAttachmentLabel(attachment),
+          mimeType: attachment.mimeType || "",
+          size: Number(attachment.size) || 0,
+          ts: message.ts || "",
+          senderName,
+        };
+        storageBytes += item.size;
+        if (attachment.kind === "document") {
+          docs.push(item);
+        } else {
+          media.push(item);
+        }
+      });
+
+      extractChatLinks(message).forEach((url, index) => {
+        links.push({
+          id: `${message.id || "msg"}_link_${index}`,
+          messageId: message.id || "",
+          url,
+          label: url,
+          ts: message.ts || "",
+          senderName,
+        });
+      });
+    });
+
+    const sortByNewest = (items) =>
+      [...items].sort(
+        (left, right) =>
+          new Date(right.ts || 0).getTime() - new Date(left.ts || 0).getTime()
+      );
+
+    const starred = messages.filter((message) => !!message.starred);
+    return {
+      messages,
+      media: sortByNewest(media),
+      docs: sortByNewest(docs),
+      links: sortByNewest(links),
+      starred: sortByNewest(starred),
+      storageBytes,
+    };
+  }
+
+  function messageMatchesSearchKind(message, kind) {
+    const hasMedia = (message.attachments || []).some(
+      (attachment) => attachment.kind !== "document"
+    );
+    const hasFiles = (message.attachments || []).some(
+      (attachment) => attachment.kind === "document"
+    );
+    const hasLinks = extractChatLinks(message).length > 0;
+    switch (kind) {
+      case "text":
+        return !!message.txt;
+      case "media":
+        return hasMedia;
+      case "links":
+        return hasLinks;
+      case "files":
+        return hasFiles;
+      default:
+        return true;
+    }
+  }
+
+  function getChatSearchResults(chatId) {
+    const query = (
+      document.getElementById("chatSearchInput")?.value || ""
+    ).trim().toLowerCase();
+    const selectedDate = document.getElementById("chatSearchDate")?.value || "";
+    return getRenderableChatMessages(chatId)
+      .filter((message) => {
+        if (!messageMatchesSearchKind(message, _chatSearchKind)) return false;
+        if (selectedDate && getMessageDateInputValue(message) !== selectedDate) {
+          return false;
+        }
+        if (!query) return true;
+        return getSearchableMessageText(message).toLowerCase().includes(query);
+      })
+      .sort(
+        (left, right) =>
+          new Date(right.ts || 0).getTime() - new Date(left.ts || 0).getTime()
+      );
+  }
+
+  function renderPinnedBanner() {
+    const box = document.getElementById("chatPinnedBanner");
+    if (!box) return;
+    const message = activeChatId ? getPinnedMessageForChat(activeChatId) : null;
+    if (!message || message.deleted) {
+      box.classList.add("hide");
+      box.innerHTML = "";
+      return;
+    }
+    const preview =
+      typeof message === "object" && "preview" in message && !message.id
+        ? message.preview
+        : summarizeMessageForCard(message);
+    const messageId = message.messageId || message.id || "";
+    box.classList.remove("hide");
+    box.innerHTML =
+      '<div class="chat-pinned-banner-main" onclick="jumpToChatMessage(\'' +
+      messageId +
+      "')\">" +
+      '<div class="chat-pinned-banner-label">Pinned message</div>' +
+      '<div class="chat-pinned-banner-text">' +
+      esc(preview) +
+      "</div></div>" +
+      '<button class="chat-pinned-banner-close" onclick="unpinCurrentChatMessage(event)" aria-label="Unpin message">✕</button>';
+  }
+
+  function refreshOpenChatPanels() {
+    renderPinnedBanner();
+    if (document.getElementById("chatInfoModal")?.classList.contains("show")) {
+      renderChatInfoModal();
+    }
+    if (document.getElementById("chatMediaGalleryModal")?.classList.contains("show")) {
+      renderChatMediaGallery();
+    }
+    if (document.getElementById("chatStarredModal")?.classList.contains("show")) {
+      renderChatStarredMessages();
+    }
+    if (document.getElementById("chatSearchModal")?.classList.contains("show")) {
+      renderChatSearchResults();
+    }
   }
 
   function formatLastSeen(dateStr) {
@@ -2588,9 +2981,39 @@ const APP_ASSET_VERSION = "20260429-founder-directory-ui-24";
       .join("");
   }
 
+  function renderMessageReactionsHtml(chatId, message) {
+    const reactions = Array.isArray(message?.reactions) ? message.reactions : [];
+    if (!reactions.length || message.deleted) return "";
+    return (
+      '<div class="chat-msg-reactions">' +
+      reactions
+        .map(
+          (reaction) =>
+            '<button class="chat-msg-reaction' +
+            (reaction.reacted ? " reacted" : "") +
+            '" onclick="reactToChatMessage(\'' +
+            chatId +
+            "','" +
+            (message.id || "") +
+            "','" +
+            esc(reaction.emoji) +
+            '\')">' +
+            esc(reaction.emoji) +
+            " " +
+            Number(reaction.count || 0) +
+            "</button>"
+        )
+        .join("") +
+      "</div>"
+    );
+  }
+
   function buildMessageRowHtml(chatId, message, prevMessage) {
     const conv = getConversationById(chatId);
     const isGroup = !!conv?.isGroup;
+    const isPinnedMessage =
+      (conv?.pinnedMessage?.messageId || "").toString() ===
+      (message.id || "").toString();
     const isOut = message.isMe || (message.from && message.from.toString() === myId());
     const sender = message.sender || {};
     const senderName = sender.name || "Unknown";
@@ -2622,18 +3045,21 @@ const APP_ASSET_VERSION = "20260429-founder-directory-ui-24";
           message.id +
           '\')" onpointerup="endChatMessagePress()" onpointerleave="endChatMessagePress()" onpointercancel="endChatMessagePress()"';
 
-    return `<div class="msg-row ${isOut ? "out" : "in"}">
+    return `<div class="msg-row ${isOut ? "out" : "in"}" id="chatMsg_${message.id}">
       ${avOrSpacer}
       <div class="msg-bubble"${bubbleHandlers}>
         ${showAv ? '<div class="msg-sender-name">' + esc(senderName) + "</div>" : ""}
+        ${isPinnedMessage ? '<div class="msg-pin-badge">Pinned</div>' : ""}
         ${message.forwarded ? '<div class="msg-bubble-forwarded">Forwarded</div>' : ""}
         ${renderReplyHtml(message.replyTo)}
         ${renderAttachmentsHtml(message)}
         ${message.txt ? '<div class="' + (message.deleted ? "msg-bubble-deleted" : "") + '">' + esc(message.txt) + "</div>" : ""}
         <div class="msg-meta">
+          ${message.edited ? '<span class="msg-edited-label">Edited</span>' : ""}
           <span class="msg-time">${timeStr}</span>
           ${tickHtml}
         </div>
+        ${renderMessageReactionsHtml(chatId, message)}
       </div>
     </div>`;
   }
@@ -2761,7 +3187,9 @@ const APP_ASSET_VERSION = "20260429-founder-directory-ui-24";
   async function loadConversations() {
     if (!API.getToken()) return [];
     try {
-      _cachedConversations = await API.getConversations();
+      _cachedConversations = sanitizeRenderableConversations(
+        await API.getConversations()
+      );
       return _cachedConversations;
     } catch (err) {
       console.error("Failed to load conversations:", err);
@@ -2773,8 +3201,12 @@ const APP_ASSET_VERSION = "20260429-founder-directory-ui-24";
   async function loadMessages(convId) {
     if (!API.getToken() || !convId) return [];
     try {
-      const data = await API.getMessages(convId);
+      const data = await API.getMessages(convId, { page: 1, limit: 200 });
       _conversationMessages[convId] = data.messages || [];
+      const conv = getConversationById(convId);
+      if (conv && data.pinnedMessage !== undefined) {
+        conv.pinnedMessage = data.pinnedMessage || null;
+      }
       return data;
     } catch (err) {
       console.error("Failed to load messages:", err);
@@ -2827,22 +3259,84 @@ const APP_ASSET_VERSION = "20260429-founder-directory-ui-24";
 
     const isOut = message.isMe || (message.from && message.from.toString() === myId());
     const canDeleteForEveryone = isOut && !message.deleted;
+    const isPinnedMessage =
+      (getConversationById(chatId)?.pinnedMessage?.messageId || "").toString() ===
+      messageId.toString();
+    const reactions = ["❤️", "😂", "🙏", "👍", "🔥"];
+    const actions = [];
 
-    menu.innerHTML =
-      '<button class="chat-msg-action" onclick="replyToChatMessage(\'' +
-      chatId +
-      "','" +
-      messageId +
-      '\')">Reply</button>' +
-      '<button class="chat-msg-action" onclick="openChatForwardPicker(\'' +
-      chatId +
-      "','" +
-      messageId +
-      '\')">Forward</button>' +
-      '<button class="chat-msg-action red" onclick="deleteChatMessage(\'me\')">Delete for me</button>' +
-      (canDeleteForEveryone
-        ? '<button class="chat-msg-action red" onclick="deleteChatMessage(\'everyone\')">Delete for everyone</button>'
-        : "");
+    if (!message.deleted) {
+      actions.push(
+        '<div class="chat-msg-reaction-row">' +
+          reactions
+            .map(
+              (emoji) =>
+                '<button class="chat-msg-emoji-action" onclick="reactToChatMessage(\'' +
+                chatId +
+                "','" +
+                messageId +
+                "','" +
+                emoji +
+                "')\">" +
+                emoji +
+                "</button>"
+            )
+            .join("") +
+          "</div>"
+      );
+      actions.push(
+        '<button class="chat-msg-action" onclick="replyToChatMessage(\'' +
+          chatId +
+          "','" +
+          messageId +
+          '\')">Reply</button>'
+      );
+      actions.push(
+        '<button class="chat-msg-action" onclick="openChatForwardPicker(\'' +
+          chatId +
+          "','" +
+          messageId +
+          '\')">Forward</button>'
+      );
+      actions.push(
+        '<button class="chat-msg-action" onclick="toggleStarredChatMessage(\'' +
+          chatId +
+          "','" +
+          messageId +
+          "')\">" +
+          (message.starred ? "Unstar message" : "Star message") +
+          "</button>"
+      );
+      actions.push(
+        '<button class="chat-msg-action" onclick="togglePinnedChatMessage(\'' +
+          chatId +
+          "','" +
+          messageId +
+          "')\">" +
+          (isPinnedMessage ? "Unpin message" : "Pin message") +
+          "</button>"
+      );
+      if (isOut) {
+        actions.push(
+          '<button class="chat-msg-action" onclick="openChatEditModal(\'' +
+            chatId +
+            "','" +
+            messageId +
+            '\')">Edit</button>'
+        );
+      }
+    }
+
+    actions.push(
+      '<button class="chat-msg-action red" onclick="deleteChatMessage(\'me\')">Delete for me</button>'
+    );
+    if (canDeleteForEveryone) {
+      actions.push(
+        '<button class="chat-msg-action red" onclick="deleteChatMessage(\'everyone\')">Delete for everyone</button>'
+      );
+    }
+
+    menu.innerHTML = actions.join("");
 
     const viewportWidth = window.innerWidth;
     const viewportHeight = window.innerHeight;
@@ -2877,11 +3371,28 @@ const APP_ASSET_VERSION = "20260429-founder-directory-ui-24";
   window.openChatForwardPicker = function (chatId, messageId) {
     closeChatMessageMenu();
     _chatForwardMessage = { chatId, messageId };
+    _chatForwardSelection = [];
     const input = document.getElementById("chatForwardSearch");
     if (input) input.value = "";
     filterChatForwardTargets("");
     openOvl("chatForwardModal");
   };
+
+  function syncChatForwardSelection() {
+    const meta = document.getElementById("chatForwardMeta");
+    const button = document.getElementById("chatForwardSubmitBtn");
+    if (meta) {
+      meta.textContent = _chatForwardSelection.length
+        ? `${_chatForwardSelection.length} chat${_chatForwardSelection.length === 1 ? "" : "s"} selected`
+        : "Select up to 5 chats";
+    }
+    if (button) {
+      button.disabled = !_chatForwardSelection.length;
+      button.textContent = _chatForwardSelection.length
+        ? `Forward (${_chatForwardSelection.length})`
+        : "Forward";
+    }
+  }
 
   window.filterChatForwardTargets = function (query) {
     const list = document.getElementById("chatForwardList");
@@ -2909,7 +3420,7 @@ const APP_ASSET_VERSION = "20260429-founder-directory-ui-24";
         .slice(0, 8);
 
       if (suggestions.length) {
-        c.innerHTML =
+        list.innerHTML =
           '<div style="padding:16px 14px 8px;font-size:13px;font-weight:700;color:var(--t2)">People you can message</div>' +
           suggestions
             .map(({ user, uid }) => {
@@ -2923,9 +3434,11 @@ const APP_ASSET_VERSION = "20260429-founder-directory-ui-24";
               </div>`;
             })
             .join("");
+        syncChatForwardSelection();
         return;
       }
       list.innerHTML = '<div class="empty-sub" style="padding:10px 0">No chats found.</div>';
+      syncChatForwardSelection();
       return;
     }
 
@@ -3023,6 +3536,563 @@ const APP_ASSET_VERSION = "20260429-founder-directory-ui-24";
     }
   };
 
+  window.filterChatForwardTargets = function (query) {
+    const list = document.getElementById("chatForwardList");
+    if (!list) return;
+    const q = (query || "").trim().toLowerCase();
+    const items = _cachedConversations.filter((conv) => {
+      const name = conv.isGroup ? conv.groupName || "Group" : conv.user?.name || "Unknown";
+      return !q || name.toLowerCase().includes(q);
+    });
+
+    if (!items.length) {
+      list.innerHTML = '<div class="empty-sub" style="padding:10px 0">No chats found.</div>';
+      syncChatForwardSelection();
+      return;
+    }
+
+    list.innerHTML = items
+      .map((conv) => {
+        const id = (conv.id || conv._id || "").toString();
+        const name = conv.isGroup ? conv.groupName || "Group" : conv.user?.name || "Unknown";
+        const sub = conv.lastMessage || "Tap to forward here";
+        const selected = _chatForwardSelection.includes(id);
+        const avatarHtml = conv.isGroup
+          ? '<div class="av av36">👥</div>'
+          : '<div class="av av36">' +
+            (conv.user?.avatar ? '<img src="' + conv.user.avatar + '">' : getIni(name)) +
+            "</div>";
+        return (
+          '<div class="chat-forward-item' +
+          (selected ? " active" : "") +
+          '" onclick="toggleChatForwardSelection(\'' +
+          id +
+          "')\">" +
+          avatarHtml +
+          '<div class="chat-forward-item-meta">' +
+          '<div class="chat-forward-item-name">' +
+          esc(name) +
+          "</div>" +
+          '<div class="chat-forward-item-sub">' +
+          esc(sub) +
+          '</div></div><div class="chat-forward-check">' +
+          (selected ? "✓" : "") +
+          "</div></div>"
+        );
+      })
+      .join("");
+    syncChatForwardSelection();
+  };
+
+  window.toggleChatForwardSelection = function (targetConvId) {
+    const id = (targetConvId || "").toString();
+    if (!id) return;
+    if (_chatForwardSelection.includes(id)) {
+      _chatForwardSelection = _chatForwardSelection.filter((item) => item !== id);
+    } else if (_chatForwardSelection.length < 5) {
+      _chatForwardSelection = [..._chatForwardSelection, id];
+    } else {
+      MC.info("You can forward to up to 5 chats at once.");
+    }
+    filterChatForwardTargets(document.getElementById("chatForwardSearch")?.value || "");
+  };
+
+  window.submitForwardedMessages = async function () {
+    if (!_chatForwardMessage || !_chatForwardSelection.length) return;
+    try {
+      const response = await API.forwardMessage(
+        _chatForwardMessage.chatId,
+        _chatForwardMessage.messageId,
+        _chatForwardSelection
+      );
+      const deliveries = Array.isArray(response?.messages)
+        ? response.messages
+        : [
+            {
+              convId: _chatForwardSelection[0],
+              message: response,
+            },
+          ];
+
+      deliveries.forEach((entry) => {
+        const convId = (entry.convId || "").toString();
+        const message = entry.message;
+        if (!convId || !message) return;
+        if (!_conversationMessages[convId]) {
+          _conversationMessages[convId] = [];
+        }
+        upsertConversationMessage(convId, message);
+        updateConversationPreview(convId, message);
+        if (activeChatId === convId) {
+          appendChatMessageDOM(message, convId);
+          updateChatItemDOM(convId, getMessagePreview(message), "just now", 0);
+        }
+      });
+
+      _chatForwardMessage = null;
+      _chatForwardSelection = [];
+      closeOvl("chatForwardModal");
+      await loadConversations();
+      if (curPage === "chats") renderChatsList();
+      MC.success(
+        deliveries.length > 1
+          ? `Message forwarded to ${deliveries.length} chats`
+          : "Message forwarded"
+      );
+    } catch (err) {
+      MC.error("Could not forward message: " + (err.message || ""));
+    }
+  };
+
+  function showChatUndoToast(chatId, messageId, scope, undoExpiresAt) {
+    const toast = document.getElementById("chatUndoToast");
+    if (!toast) return;
+    if (_chatUndoNoticeTimer) {
+      clearTimeout(_chatUndoNoticeTimer);
+      _chatUndoNoticeTimer = null;
+    }
+    toast.innerHTML =
+      '<div class="chat-undo-toast-text">Message deleted</div>' +
+      '<button class="chat-undo-toast-btn" onclick="undoDeletedChatMessage(\'' +
+      chatId +
+      "','" +
+      messageId +
+      "','" +
+      scope +
+      '\')">Undo</button>';
+    toast.classList.remove("hide");
+    const msLeft = Math.max(
+      1000,
+      new Date(undoExpiresAt || Date.now() + 5000).getTime() - Date.now()
+    );
+    _chatUndoNoticeTimer = setTimeout(() => {
+      toast.classList.add("hide");
+      toast.innerHTML = "";
+      _chatUndoNoticeTimer = null;
+    }, msLeft);
+  }
+
+  window.undoDeletedChatMessage = async function (chatId, messageId, scope) {
+    try {
+      const result = await API.undoDeleteMessage(chatId, messageId, scope);
+      if (result?.message) {
+        upsertConversationMessage(chatId, result.message);
+      }
+      const toast = document.getElementById("chatUndoToast");
+      if (toast) {
+        toast.classList.add("hide");
+        toast.innerHTML = "";
+      }
+      if (_chatUndoNoticeTimer) {
+        clearTimeout(_chatUndoNoticeTimer);
+        _chatUndoNoticeTimer = null;
+      }
+      await loadConversations();
+      if (activeChatId === chatId) {
+        renderChatMessages(chatId);
+        refreshOpenChatPanels();
+      }
+      if (curPage === "chats") renderChatsList();
+      MC.success("Message restored");
+    } catch (err) {
+      MC.error("Could not undo delete: " + (err.message || ""));
+    }
+  };
+
+  window.deleteChatMessage = async function (scope) {
+    if (!_chatMsgMenuState) return;
+    const { chatId, messageId } = _chatMsgMenuState;
+    closeChatMessageMenu();
+
+    try {
+      const result = await API.deleteMessage(chatId, messageId, scope);
+      if (scope === "everyone") {
+        const target = getChatMessageById(chatId, messageId);
+        if (target) {
+          target.deleted = true;
+          target.txt = "This message was deleted";
+          target.attachments = [];
+          target.replyTo = null;
+          target.forwarded = false;
+          target.reactions = [];
+          target.edited = false;
+          target.isPinned = false;
+          target.status = "";
+        }
+        const conv = getConversationById(chatId);
+        if (conv?.pinnedMessage?.messageId?.toString() === messageId.toString()) {
+          conv.pinnedMessage = null;
+        }
+      } else {
+        _conversationMessages[chatId] = (_conversationMessages[chatId] || []).filter(
+          (item) => (item.id || "").toString() !== messageId.toString()
+        );
+        if (_chatReplyDraft?.messageId?.toString() === messageId.toString()) {
+          window.clearChatReply();
+        }
+      }
+
+      await loadConversations();
+      if (activeChatId === chatId) {
+        renderChatMessages(chatId);
+        refreshOpenChatPanels();
+      }
+      if (curPage === "chats") renderChatsList();
+      showChatUndoToast(chatId, messageId, scope, result?.undoExpiresAt);
+      MC.info(scope === "everyone" ? "Message deleted for everyone" : "Message deleted");
+    } catch (err) {
+      MC.error("Could not delete message: " + (err.message || ""));
+    }
+  };
+
+  window.reactToChatMessage = async function (chatId, messageId, emoji) {
+    closeChatMessageMenu();
+    try {
+      const result = await API.reactToMessage(chatId, messageId, emoji);
+      if (result?.message) {
+        upsertConversationMessage(chatId, result.message);
+      }
+      if (activeChatId === chatId) {
+        renderChatMessages(chatId);
+        refreshOpenChatPanels();
+      }
+    } catch (err) {
+      MC.error("Could not react to message: " + (err.message || ""));
+    }
+  };
+
+  window.toggleStarredChatMessage = async function (chatId, messageId) {
+    closeChatMessageMenu();
+    try {
+      const result = await API.starMessage(chatId, messageId);
+      if (result?.message) {
+        upsertConversationMessage(chatId, result.message);
+      }
+      if (activeChatId === chatId) {
+        renderChatMessages(chatId);
+        refreshOpenChatPanels();
+      }
+    } catch (err) {
+      MC.error("Could not update starred message: " + (err.message || ""));
+    }
+  };
+
+  window.togglePinnedChatMessage = async function (chatId, messageId) {
+    closeChatMessageMenu();
+    try {
+      const result = await API.pinMessage(chatId, messageId);
+      const conv = getConversationById(chatId);
+      if (conv) conv.pinnedMessage = result?.pinnedMessage || null;
+      if (activeChatId === chatId) {
+        renderChatMessages(chatId);
+        refreshOpenChatPanels();
+      }
+    } catch (err) {
+      MC.error("Could not update pinned message: " + (err.message || ""));
+    }
+  };
+
+  window.unpinCurrentChatMessage = function (event) {
+    if (event?.stopPropagation) event.stopPropagation();
+    if (!activeChatId) return;
+    const pinned = getPinnedMessageForChat(activeChatId);
+    const messageId = pinned?.messageId || pinned?.id || "";
+    if (messageId) togglePinnedChatMessage(activeChatId, messageId);
+  };
+
+  window.openChatEditModal = function (chatId, messageId) {
+    closeChatMessageMenu();
+    const message = getChatMessageById(chatId, messageId);
+    if (!message) return;
+    _chatEditDraft = { chatId, messageId };
+    const input = document.getElementById("chatEditInput");
+    if (input) input.value = message.txt || "";
+    openOvl("chatEditModal");
+    setTimeout(() => document.getElementById("chatEditInput")?.focus(), 60);
+  };
+
+  window.closeChatEditModal = function () {
+    _chatEditDraft = null;
+    closeOvl("chatEditModal");
+  };
+
+  window.saveEditedChatMessage = async function () {
+    if (!_chatEditDraft) return;
+    const draft = { ..._chatEditDraft };
+    const text = document.getElementById("chatEditInput")?.value?.trim() || "";
+    try {
+      const result = await API.editMessage(draft.chatId, draft.messageId, text);
+      if (result?.message) {
+        upsertConversationMessage(draft.chatId, result.message);
+      }
+      closeChatEditModal();
+      if (activeChatId === draft.chatId) {
+        renderChatMessages(draft.chatId);
+        refreshOpenChatPanels();
+      }
+      MC.success("Message edited");
+    } catch (err) {
+      MC.error("Could not edit message: " + (err.message || ""));
+    }
+  };
+
+  window.jumpToChatMessage = function (messageId) {
+    if (!messageId) return;
+    closeOvl("chatInfoModal");
+    closeOvl("chatMediaGalleryModal");
+    closeOvl("chatSearchModal");
+    closeOvl("chatStarredModal");
+    const target = document.getElementById("chatMsg_" + messageId);
+    if (!target) return;
+    target.scrollIntoView({ behavior: "smooth", block: "center" });
+    target.classList.add("chat-msg-focus");
+    setTimeout(() => target.classList.remove("chat-msg-focus"), 1400);
+  };
+
+  function renderChatGalleryPreviewItem(item) {
+    if (!item) return "";
+    if (item.kind === "image") {
+      return '<div class="chat-info-preview-tile"><img src="' + item.url + '" alt="' + esc(item.name || "Photo") + '"></div>';
+    }
+    if (item.kind === "video") {
+      return '<div class="chat-info-preview-tile"><div class="chat-gallery-preview-fallback">🎬</div></div>';
+    }
+    if (item.kind === "audio") {
+      return '<div class="chat-info-preview-tile"><div class="chat-gallery-preview-fallback">🎧</div></div>';
+    }
+    return '<div class="chat-info-preview-tile"><div class="chat-gallery-preview-fallback">📄</div></div>';
+  }
+
+  window.viewChatInfo = function () {
+    document.getElementById("chatWinMenu")?.classList.add("hide");
+    if (!activeChatId) return;
+    renderChatInfoModal();
+    openOvl("chatInfoModal");
+  };
+
+  function renderChatInfoModal() {
+    const content = document.getElementById("chatInfoContent");
+    if (!content || !activeChatId) return;
+    const conv = getConversationById(activeChatId);
+    const derived = getChatDerivedData(activeChatId);
+    const name = conv?.isGroup ? conv.groupName || "Group" : conv?.user?.name || "Unknown";
+    const subtitle = conv?.isGroup
+      ? `${conv?.participants?.length || 0} members`
+      : getChatHeaderStatus(conv);
+    const avatar = conv?.isGroup ? conv?.groupAvatar : conv?.user?.avatar;
+    const previewItems = [...derived.media.slice(0, 3), ...derived.docs.slice(0, 1)].slice(0, 4);
+    const pinned = getPinnedMessageForChat(activeChatId);
+
+    content.innerHTML =
+      '<div class="chat-info-hero">' +
+      '<div class="chat-info-avatar">' +
+      (avatar ? '<img src="' + avatar + '" alt="' + esc(name) + '">' : esc(getIni(name || "U"))) +
+      "</div>" +
+      '<div class="chat-info-name">' +
+      esc(name) +
+      "</div>" +
+      '<div class="chat-info-sub">' +
+      esc(subtitle) +
+      "</div></div>" +
+      '<button class="chat-info-media-card" onclick="openChatMediaGallery(\'media\')">' +
+      '<div class="chat-info-row-head"><span>Media, links, and docs</span><span>' +
+      (derived.media.length + derived.docs.length + derived.links.length) +
+      " ›</span></div>" +
+      '<div class="chat-info-media-strip">' +
+      (previewItems.length
+        ? previewItems.map(renderChatGalleryPreviewItem).join("")
+        : '<div class="chat-info-empty-strip">No shared media yet</div>') +
+      "</div></button>" +
+      '<div class="chat-info-list">' +
+      '<button class="chat-info-item" onclick="openChatSearchModal()"><span>Search in chat</span><span>›</span></button>' +
+      '<button class="chat-info-item" onclick="openChatStarredMessages()"><span>Starred messages</span><span>' +
+      derived.starred.length +
+      " ›</span></button>" +
+      '<div class="chat-info-item static"><span>Shared storage</span><span>' +
+      esc(formatBytes(derived.storageBytes)) +
+      "</span></div>" +
+      (pinned
+        ? '<button class="chat-info-item chat-info-pinned-item" onclick="jumpToChatMessage(\'' +
+          (pinned.messageId || pinned.id || "") +
+          "')\"><span>Pinned message</span><span>" +
+          esc(summarizeMessageForCard(pinned)) +
+          "</span></button>"
+        : "") +
+      "</div>";
+  }
+
+  window.openChatMediaGallery = function (initialTab = "media") {
+    if (!activeChatId) return;
+    closeOvl("chatInfoModal");
+    _chatGalleryTab = initialTab;
+    renderChatMediaGallery();
+    openOvl("chatMediaGalleryModal");
+  };
+
+  window.setChatGalleryTab = function (tab) {
+    _chatGalleryTab = tab;
+    renderChatMediaGallery();
+  };
+
+  function renderChatMediaGallery() {
+    const content = document.getElementById("chatMediaGalleryContent");
+    if (!content || !activeChatId) return;
+    document.querySelectorAll("#chatGalleryTabs .chat-gallery-tab").forEach((tab) => {
+      const kind = (tab.textContent || "").trim().toLowerCase();
+      tab.classList.toggle("active", kind === _chatGalleryTab);
+    });
+    const derived = getChatDerivedData(activeChatId);
+
+    if (_chatGalleryTab === "links") {
+      content.innerHTML = derived.links.length
+        ? '<div class="chat-link-list">' +
+          derived.links
+            .map(
+              (item) =>
+                '<a class="chat-link-card" href="' +
+                item.url +
+                '" target="_blank" rel="noopener"><div class="chat-link-card-title">' +
+                esc(item.label) +
+                '</div><div class="chat-link-card-sub">' +
+                esc(item.senderName) +
+                " · " +
+                esc(formatChatLongDate(item.ts)) +
+                "</div></a>"
+            )
+            .join("") +
+          "</div>"
+        : '<div class="empty-sub" style="padding:18px 0">No links found.</div>';
+      return;
+    }
+
+    if (_chatGalleryTab === "docs") {
+      content.innerHTML = derived.docs.length
+        ? '<div class="chat-doc-list">' +
+          derived.docs
+            .map(
+              (item) =>
+                '<a class="chat-doc-card" href="' +
+                item.url +
+                '" target="_blank" rel="noopener"><div class="chat-doc-card-ico">📄</div><div class="chat-doc-card-meta"><div class="chat-doc-card-name">' +
+                esc(item.name) +
+                '</div><div class="chat-doc-card-sub">' +
+                esc(item.senderName) +
+                " · " +
+                esc(formatBytes(item.size)) +
+                " · " +
+                esc(formatChatLongDate(item.ts)) +
+                "</div></div></a>"
+            )
+            .join("") +
+          "</div>"
+        : '<div class="empty-sub" style="padding:18px 0">No documents found.</div>';
+      return;
+    }
+
+    content.innerHTML = derived.media.length
+      ? '<div class="chat-media-grid">' +
+        derived.media
+          .map((item) => {
+            const inner =
+              item.kind === "image"
+                ? '<img src="' + item.url + '" alt="' + esc(item.name || "Media") + '">'
+                : item.kind === "video"
+                  ? '<div class="chat-media-grid-fallback">🎬</div>'
+                  : '<div class="chat-media-grid-fallback">🎧</div>';
+            return (
+              '<a class="chat-media-grid-item" href="' +
+              item.url +
+              '" target="_blank" rel="noopener">' +
+              inner +
+              '<span class="chat-media-grid-label">' +
+              esc(item.senderName) +
+              "</span></a>"
+            );
+          })
+          .join("") +
+        "</div>"
+      : '<div class="empty-sub" style="padding:18px 0">No media found.</div>';
+  }
+
+  window.openChatStarredMessages = function () {
+    closeOvl("chatInfoModal");
+    renderChatStarredMessages();
+    openOvl("chatStarredModal");
+  };
+
+  function renderChatStarredMessages() {
+    const content = document.getElementById("chatStarredContent");
+    if (!content || !activeChatId) return;
+    const starred = getChatDerivedData(activeChatId).starred;
+    content.innerHTML = starred.length
+      ? '<div class="chat-result-list">' +
+        starred
+          .map(
+            (message) =>
+              '<button class="chat-result-card" onclick="jumpToChatMessage(\'' +
+              (message.id || "") +
+              "')\"><div class=\"chat-result-card-title\">" +
+              esc(getMessageSenderName(message)) +
+              '</div><div class="chat-result-card-text">' +
+              esc(summarizeMessageForCard(message)) +
+              '</div><div class="chat-result-card-sub">' +
+              esc(formatChatLongDate(message.ts)) +
+              "</div></button>"
+          )
+          .join("") +
+        "</div>"
+      : '<div class="empty-sub" style="padding:18px 0">No starred messages yet.</div>';
+  }
+
+  window.openChatSearchModal = function () {
+    document.getElementById("chatWinMenu")?.classList.add("hide");
+    if (!activeChatId) return;
+    closeOvl("chatInfoModal");
+    const input = document.getElementById("chatSearchInput");
+    const dateInput = document.getElementById("chatSearchDate");
+    if (input && input.getAttribute("data-chat-id") !== activeChatId) {
+      input.value = "";
+      input.setAttribute("data-chat-id", activeChatId);
+      if (dateInput) dateInput.value = "";
+      _chatSearchKind = "all";
+    }
+    renderChatSearchResults();
+    openOvl("chatSearchModal");
+    setTimeout(() => document.getElementById("chatSearchInput")?.focus(), 60);
+  };
+
+  window.setChatSearchKind = function (kind) {
+    _chatSearchKind = kind || "all";
+    renderChatSearchResults();
+  };
+
+  window.renderChatSearchResults = function () {
+    const content = document.getElementById("chatSearchResults");
+    if (!content || !activeChatId) return;
+    document.querySelectorAll(".chat-search-chip").forEach((chip) => {
+      chip.classList.toggle("active", chip.getAttribute("data-kind") === _chatSearchKind);
+    });
+    const results = getChatSearchResults(activeChatId);
+    content.innerHTML = results.length
+      ? '<div class="chat-result-list">' +
+        results
+          .map(
+            (message) =>
+              '<button class="chat-result-card" onclick="jumpToChatMessage(\'' +
+              (message.id || "") +
+              "')\"><div class=\"chat-result-card-title\">" +
+              esc(getMessageSenderName(message)) +
+              '</div><div class="chat-result-card-text">' +
+              esc(summarizeMessageForCard(message)) +
+              '</div><div class="chat-result-card-sub">' +
+              esc(formatChatLongDate(message.ts)) +
+              "</div></button>"
+          )
+          .join("") +
+        "</div>"
+      : '<div class="empty-sub" style="padding:18px 0">No matching messages found.</div>';
+  };
+
   // =============================================
   // Override renderChatsPage
   // =============================================
@@ -3060,7 +4130,7 @@ const APP_ASSET_VERSION = "20260429-founder-directory-ui-24";
     const c = document.getElementById("chatsList");
     if (!c) return;
 
-    let items = _cachedConversations.map((conv) => {
+    let items = sanitizeRenderableConversations(_cachedConversations).map((conv) => {
       const isGroup = conv.isGroup;
       const uid = conv.uid ? conv.uid.toString() : "";
       const user = conv.user || {};
@@ -3068,7 +4138,7 @@ const APP_ASSET_VERSION = "20260429-founder-directory-ui-24";
       return {
         id: (conv.id || conv._id || "").toString(),
         type: isGroup ? "group" : "direct",
-        name: isGroup ? conv.groupName : user.name || "Unknown",
+        name: isGroup ? conv.groupName : user.name || "",
         online: online,
         uid: uid,
         avatar: user.avatar || null,
@@ -3144,6 +4214,19 @@ const APP_ASSET_VERSION = "20260429-founder-directory-ui-24";
       return;
     }
 
+    let conv = getConversationById(chatId);
+    if (!isRenderableConversation(conv)) {
+      await loadConversations();
+      conv = getConversationById(chatId);
+      if (!isRenderableConversation(conv)) {
+        if (curPage === "chats") renderChatsList();
+        if (activeChatId === chatId || _currentConvId === chatId) {
+          closeChatWindow();
+        }
+        return;
+      }
+    }
+
     // Leave previous conversation room
     if (_currentConvId && _currentConvId !== chatId) {
       SocketClient.leaveConversation(_currentConvId);
@@ -3175,10 +4258,6 @@ const APP_ASSET_VERSION = "20260429-founder-directory-ui-24";
     }
 
     // Find conversation info
-    const conv = _cachedConversations.find(
-      (c) => (c.id || c._id || "").toString() === chatId
-    );
-
     const winAv = document.getElementById("chatWinAv");
     const winName = document.getElementById("chatWinName");
     const winSub = document.getElementById("chatWinSub");
@@ -3197,7 +4276,7 @@ const APP_ASSET_VERSION = "20260429-founder-directory-ui-24";
       const ini = getIni(u.name || "U");
       if (winAv)
         winAv.innerHTML = `<div style="width:38px;height:38px;border-radius:50%;overflow:hidden;background:var(--p);display:flex;align-items:center;justify-content:center;color:#fff;font-size:14px;font-weight:600;flex-shrink:0">${u.avatar ? '<img src="' + u.avatar + '" style="width:100%;height:100%;object-fit:cover">' : ini}</div>`;
-      if (winName) winName.textContent = (u.name || "Unknown") + (u.verified ? " 🔱" : "");
+      if (winName) winName.textContent = (u.name || "") + (u.verified ? " 🔱" : "");
       if (winSub) winSub.textContent = online ? "🟢 online" : "last seen recently";
       // Store uid for online status updates
       if (winSub) winSub.setAttribute("data-chat-uid", uid);
@@ -3270,6 +4349,7 @@ const APP_ASSET_VERSION = "20260429-founder-directory-ui-24";
       '<div class="chat-empty-state"><div style="font-size:36px;margin-bottom:8px">ðŸ‘‹</div><div style="font-size:14px;color:var(--t3)">Say hello!</div></div>';
     c.scrollTop = c.scrollHeight;
     syncReplyPreview();
+    renderPinnedBanner();
     return;
 
     const conv = _cachedConversations.find(
@@ -3545,6 +4625,11 @@ const APP_ASSET_VERSION = "20260429-founder-directory-ui-24";
     }
     closeChatMessageMenu();
     window.clearChatReply();
+    closeOvl("chatInfoModal");
+    closeOvl("chatMediaGalleryModal");
+    closeOvl("chatSearchModal");
+    closeOvl("chatStarredModal");
+    closeChatEditModal();
     activeChatId = null;
     _currentConvId = null;
 
@@ -3567,6 +4652,7 @@ const APP_ASSET_VERSION = "20260429-founder-directory-ui-24";
       const winSub = document.getElementById("chatWinSub");
       if (winSub) winSub.textContent = "";
     }
+    renderPinnedBanner();
     renderChatsList();
   };
 
@@ -3879,6 +4965,7 @@ const APP_ASSET_VERSION = "20260429-founder-directory-ui-24";
       c.appendChild(ti);
     }
     c.scroll({ top: c.scrollHeight, behavior: "smooth" });
+    refreshOpenChatPanels();
     return;
 
     const isOut = m.isMe || (m.from && m.from.toString() === myId());
@@ -4040,6 +5127,7 @@ const APP_ASSET_VERSION = "20260429-founder-directory-ui-24";
       ensureAppServiceWorker().catch(() => {});
       setupInstallPromptBridge();
       updateInstallButtons();
+      window.TSAuthSupport?.clearLegacyTokenArtifacts?.();
 
       // Restore theme
       if (typeof applyThemePreference === "function") {
@@ -4067,8 +5155,9 @@ const APP_ASSET_VERSION = "20260429-founder-directory-ui-24";
         typeof window.consumePendingAppwriteAuth === "function"
           ? await window.consumePendingAppwriteAuth()
           : null;
-      if (appwriteRedirect?.token) {
-        API.setToken(appwriteRedirect.token);
+      if (appwriteRedirect?.user) {
+        API.setToken();
+        API.setUser(appwriteRedirect.user);
       } else if (appwriteRedirect?.authError) {
         // Google auth failed — show the error and guide user to the right form
         MC.error(appwriteRedirect.authError);
@@ -4083,28 +5172,26 @@ const APP_ASSET_VERSION = "20260429-founder-directory-ui-24";
       }
 
       const authRedirect = consumeAuthRedirectHash();
-      if (authRedirect?.authToken) {
-        API.setToken(authRedirect.authToken);
-      }
 
-      // Try to restore session from stored token
-      const storedToken = API.getToken();
-      if (
-        storedToken &&
-        storedToken !== "undefined" &&
-        storedToken !== "null"
-      ) {
-        try {
-          CU = await API.getMe();
+      const hadLocalSessionState = !!(
+        API.getToken() ||
+        API.getStoredUser?.() ||
+        appwriteRedirect?.user ||
+        authRedirect?.status === "success"
+      );
+
+      try {
+        CU = await API.getMe({ silent: true });
+        if (CU) {
           SocketClient.connect((CU.id || CU._id).toString());
           API.flushPendingChatMessages?.().catch(() => {});
           ensureChatPushNotifications(false).catch(() => {});
-        } catch {
-          CU = null;
+        }
+      } catch {
+        CU = null;
+        if (hadLocalSessionState) {
           API.logout();
         }
-      } else if (storedToken === "undefined" || storedToken === "null") {
-        API.logout();
       }
 
       const renderedFromCache = hydrateBootCache();
@@ -4142,7 +5229,7 @@ const APP_ASSET_VERSION = "20260429-founder-directory-ui-24";
       if (appwriteRedirect?.authError) {
         MC.error(appwriteRedirect.authError);
       } else if (
-        appwriteRedirect?.token &&
+        appwriteRedirect?.user &&
         String(appwriteRedirect.authSource || "").startsWith("appwrite")
       ) {
         if (typeof window.clearPendingReferralCode === "function") {
@@ -4161,7 +5248,7 @@ const APP_ASSET_VERSION = "20260429-founder-directory-ui-24";
       } else if (authRedirect?.authError) {
         MC.error(authRedirect.authError);
       } else if (
-        authRedirect?.authToken &&
+        authRedirect?.status === "success" &&
         authRedirect.authSource === "google"
       ) {
         if (typeof window.clearPendingReferralCode === "function") {

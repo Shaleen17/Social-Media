@@ -18,6 +18,17 @@ const { getVisibleAccountStatusFilter } = require("../utils/userVisibility");
 
 const router = express.Router();
 const SEARCH_VISIBILITY_CACHE_VERSION = "legacy-active-v1";
+const TAB_ALIASES = {
+  people: "users",
+  users: "users",
+  posts: "posts",
+  tags: "tags",
+  videos: "videos",
+  reels: "videos",
+  bhajans: "videos",
+  topics: "videos",
+  all: "all",
+};
 
 function escapeRegex(value = "") {
   return String(value).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -40,6 +51,32 @@ function scoreMatch(query, fields = []) {
   }, 0);
 }
 
+function levenshteinDistance(left = "", right = "") {
+  const a = String(left || "").toLowerCase();
+  const b = String(right || "").toLowerCase();
+  if (!a) return b.length;
+  if (!b) return a.length;
+
+  const matrix = Array.from({ length: a.length + 1 }, (_, row) =>
+    Array.from({ length: b.length + 1 }, (_, col) =>
+      row === 0 ? col : col === 0 ? row : 0
+    )
+  );
+
+  for (let row = 1; row <= a.length; row += 1) {
+    for (let col = 1; col <= b.length; col += 1) {
+      const cost = a[row - 1] === b[col - 1] ? 0 : 1;
+      matrix[row][col] = Math.min(
+        matrix[row - 1][col] + 1,
+        matrix[row][col - 1] + 1,
+        matrix[row - 1][col - 1] + cost
+      );
+    }
+  }
+
+  return matrix[a.length][b.length];
+}
+
 function timeAgo(date) {
   if (!date) return "";
   const seconds = Math.floor((Date.now() - new Date(date).getTime()) / 1000);
@@ -60,17 +97,6 @@ function mapUser(user) {
     handle: user.handle,
     avatar: user.avatar,
     bio: user.bio || "",
-    location: user.location || "",
-    website: user.website || "",
-    spiritualName: user.spiritualName || "",
-    homeMandir: user.homeMandir || "",
-    favoriteDeity: user.favoriteDeity || "",
-    spiritualPath: user.spiritualPath || "",
-    interests: user.interests || "",
-    spokenLanguages: user.spokenLanguages || "",
-    seva: user.seva || "",
-    yatraWishlist: user.yatraWishlist || "",
-    sankalp: user.sankalp || "",
     verified: !!user.verified,
     followersCount: Array.isArray(user.followers) ? user.followers.length : 0,
   };
@@ -166,6 +192,84 @@ function aggregateHashtags(query, posts = [], videos = [], limit = 12) {
     .slice(0, limit);
 }
 
+function buildSuggestions(query, users = [], posts = [], videos = [], hashtags = [], limit = 8) {
+  const seen = new Set();
+  const normalizedQuery = String(query || "").trim().toLowerCase();
+
+  const suggestions = [];
+  const pushSuggestion = (value, type, label, meta = "") => {
+    const safeValue = String(value || "").trim();
+    if (!safeValue) return;
+    const key = `${type}:${safeValue.toLowerCase()}`;
+    if (seen.has(key)) return;
+    seen.add(key);
+    suggestions.push({
+      value: safeValue,
+      type,
+      label: label || safeValue,
+      meta,
+    });
+  };
+
+  hashtags.forEach((item) => {
+    if (!item?.tag) return;
+    pushSuggestion(`#${item.tag}`, "hashtag", `#${item.tag}`, item.countLabel || "");
+  });
+
+  users.forEach((user) => {
+    pushSuggestion(`@${user.handle}`, "user", user.name || `@${user.handle}`, "User");
+  });
+
+  posts.forEach((post) => {
+    const snippet = String(post.txt || "").trim();
+    if (!snippet) return;
+    pushSuggestion(snippet.slice(0, 64), "post", snippet.slice(0, 64), "Post");
+  });
+
+  videos.forEach((video) => {
+    const title = String(video.title || "").trim();
+    if (!title) return;
+    pushSuggestion(title, "video", title, "Video");
+  });
+
+  return suggestions
+    .filter((item) =>
+      !normalizedQuery ||
+      item.value.toLowerCase().includes(normalizedQuery) ||
+      item.label.toLowerCase().includes(normalizedQuery)
+    )
+    .slice(0, limit);
+}
+
+function findTypoCorrection(query, users = [], posts = [], videos = [], hashtags = []) {
+  const normalizedQuery = String(query || "").trim().toLowerCase().replace(/^#/, "");
+  if (!normalizedQuery || normalizedQuery.length < 3) return "";
+
+  const candidates = [
+    ...hashtags.map((item) => item?.tag),
+    ...users.flatMap((user) => [user?.handle, user?.name]),
+    ...videos.map((video) => video?.title),
+    ...posts.map((post) => post?.txt),
+  ]
+    .map((value) => String(value || "").trim())
+    .filter((value) => value.length >= 3)
+    .slice(0, 80);
+
+  let best = "";
+  let bestDistance = Infinity;
+
+  candidates.forEach((candidate) => {
+    const comparable = candidate.toLowerCase().replace(/^[@#]/, "");
+    const distance = levenshteinDistance(normalizedQuery, comparable);
+    if (distance < bestDistance) {
+      bestDistance = distance;
+      best = candidate;
+    }
+  });
+
+  return bestDistance <= 2 ? best : "";
+}
+
 const APPROVED_CONTENT_FILTER = {
   $or: [
     { "moderation.status": { $exists: false } },
@@ -176,7 +280,8 @@ const APPROVED_CONTENT_FILTER = {
 router.get("/", optionalAuth, async (req, res, next) => {
   try {
     const q = cleanString(req.query.q, { field: "Search query", max: 100 });
-    const tab = cleanString(req.query.tab, { field: "Search tab", max: 24 });
+    const rawTab = cleanString(req.query.tab, { field: "Search tab", max: 24 });
+    const tab = TAB_ALIASES[String(rawTab || "").trim().toLowerCase()] || "all";
     const { limit } = getPagination(req.query, {
       defaultLimit: 12,
       maxLimit: 24,
@@ -185,11 +290,13 @@ router.get("/", optionalAuth, async (req, res, next) => {
     if (!q) {
       return res.json({
         query: "",
-        tab: tab || "all",
+        tab,
         users: [],
         posts: [],
         videos: [],
         hashtags: [],
+        suggestions: [],
+        correction: "",
       });
     }
 
@@ -198,7 +305,7 @@ router.get("/", optionalAuth, async (req, res, next) => {
       "full",
       SEARCH_VISIBILITY_CACHE_VERSION,
       q.toLowerCase(),
-      tab || "all",
+      tab,
       limit
     );
     const { status: cacheStatus, value } = await withRedisJsonCache(
@@ -250,7 +357,7 @@ router.get("/", optionalAuth, async (req, res, next) => {
                 .lean();
 
         const videoQuery =
-          tab && !["all", "reels", "bhajans", "topics", "tags"].includes(tab)
+          tab && !["all", "videos", "tags"].includes(tab)
             ? Promise.resolve([])
             : Video.find({
                 $and: [
@@ -319,13 +426,27 @@ router.get("/", optionalAuth, async (req, res, next) => {
           .slice(0, limit)
           .map((item) => item.value);
 
+        const hashtags = aggregateHashtags(q, posts, videos, Math.max(8, limit));
+
         return {
           query: q,
-          tab: tab || "all",
+          tab,
           users: rankedUsers,
           posts: rankedPosts,
           videos: rankedVideos,
-          hashtags: aggregateHashtags(q, posts, videos, Math.max(8, limit)),
+          hashtags,
+          suggestions: buildSuggestions(
+            q,
+            rankedUsers,
+            rankedPosts,
+            rankedVideos,
+            hashtags,
+            Math.max(5, Math.min(limit, 8))
+          ),
+          correction:
+            rankedUsers.length || rankedPosts.length || rankedVideos.length || hashtags.length
+              ? ""
+              : findTypoCorrection(q, rankedUsers, rankedPosts, rankedVideos, hashtags),
         };
       },
       { ttlSeconds: 45 }

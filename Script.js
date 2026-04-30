@@ -754,6 +754,7 @@ async function doLogin() {
     const res = await fetch(`${API_BASE}/auth/login`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
+      credentials: "include",
       body: JSON.stringify({ email: em, password: pw }),
     });
     const data = await res.json();
@@ -769,10 +770,10 @@ async function doLogin() {
     }
 
     if (e) e.style.display = "none";
-    const { user, token } = data;
+    const { user } = data;
     CU = user;
     Store.s("currentUser", user);
-    Store.s("token", token);
+    Store.s("sessionHint", true);
     ["liEml", "liPw"].forEach((id) => {
       const el = document.getElementById(id);
       if (el) el.value = "";
@@ -850,6 +851,7 @@ async function handleGoogleCredentialResponse(response) {
     const res = await fetch(`${API_BASE}/auth/google`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
+      credentials: "include",
       body: JSON.stringify({ token: response.credential }),
     });
     const data = await res.json();
@@ -859,10 +861,10 @@ async function handleGoogleCredentialResponse(response) {
       return;
     }
 
-    const { user, token } = data;
+    const { user } = data;
     CU = user;
     Store.s("currentUser", user);
-    Store.s("token", token);
+    Store.s("sessionHint", true);
     
     closeOvl("authOvl");
     initUI();
@@ -877,6 +879,8 @@ async function handleGoogleCredentialResponse(response) {
 function logout() {
   CU = null;
   Store.d("currentUser");
+  Store.d("token");
+  Store.d("sessionHint");
   initUI();
   gp("home");
   MC.info("Signed out. Jai Shri Ram 🙏");
@@ -1130,7 +1134,14 @@ function renderFeed() {
   const fp = document.getElementById("feedPosts");
   if (!fp) return;
   if (sk) sk.style.display = "none";
-  let posts = getPosts().sort((a, b) => b.ts - a.ts);
+  const preserveServerOrder =
+    typeof window !== "undefined" &&
+    window.TSFeedPager &&
+    String(curFTab || "").toLowerCase() === "foryou";
+  let posts = [...getPosts()];
+  if (!preserveServerOrder) {
+    posts.sort((a, b) => b.ts - a.ts);
+  }
   if (curFTab === "following" && CU) {
     const fl = CU.following || [];
     posts = posts.filter((p) => fl.includes(p.uid) || p.uid === CU.id);

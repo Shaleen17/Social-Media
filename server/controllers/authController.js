@@ -56,7 +56,10 @@ const login = asyncHandler(async (req, res) => {
     provider: "local",
     authSource: "password",
   });
-  res.json(result);
+  res.json({
+    success: true,
+    user: result.user,
+  });
 });
 
 const me = asyncHandler(async (req, res) => {
@@ -74,7 +77,7 @@ const verifySignupOtpCode = asyncHandler(async (req, res) => {
   await trackAuthEvent(req, "auth_signup_verified", result.user, {
     provider: result.user?.authProvider || "local",
   });
-  res.json({ success: true, user: result.user, token: result.token });
+  res.json({ success: true, user: result.user });
 });
 
 const resendSignupOtpCode = asyncHandler(async (req, res) => {
@@ -113,7 +116,10 @@ const googleAuth = asyncHandler(async (req, res) => {
     provider: "google",
     authSource: req.body?.tokenType || "google",
   });
-  res.json(result);
+  res.json({
+    success: true,
+    user: result.user,
+  });
 });
 
 const appwriteGoogleAuth = asyncHandler(async (req, res) => {
@@ -126,7 +132,10 @@ const appwriteGoogleAuth = asyncHandler(async (req, res) => {
     provider: req.body?.provider || "appwrite",
     authSource: "appwrite",
   });
-  res.json(result);
+  res.json({
+    success: true,
+    user: result.user,
+  });
 });
 
 const appwriteGoogleIntent = asyncHandler(async (req, res) => {
@@ -176,9 +185,7 @@ async function googleCallback(req, res) {
       authSource: "oauth_callback",
     });
 
-    return res.redirect(
-      buildGoogleSuccessRedirect(req, result.returnTo, result.token)
-    );
+    return res.redirect(buildGoogleSuccessRedirect(req, result.returnTo));
   } catch (error) {
     ensureCsrfCookie(req, res);
     return res.redirect(

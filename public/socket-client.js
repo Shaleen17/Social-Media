@@ -187,6 +187,18 @@ const SocketClient = (() => {
       }
     });
 
+    socket.on("conversationUpdated", (data) => {
+      if (typeof handleConversationUpdated === "function") {
+        handleConversationUpdated(data);
+      }
+    });
+
+    socket.on("conversationsInvalidated", (data) => {
+      if (typeof handleConversationsInvalidated === "function") {
+        handleConversationsInvalidated(data);
+      }
+    });
+
     socket.on("disconnect", () => {
       console.log("🔌 Socket disconnected — will reconnect...");
     });
@@ -315,4 +327,6 @@ function handleRemoteStopTyping(data) {}
 function handleRemoteRead(data) {}
 function handleMessageDelivered(data) {}
 function handleMessageUpdated(data) {}
+function handleConversationUpdated(data) {}
+function handleConversationsInvalidated(data) {}
 function updateChatHeaderOnline(userId, online, lastSeen) {}
