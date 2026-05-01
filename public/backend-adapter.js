@@ -514,7 +514,7 @@
 
   let _chatPushSetupPromise = null;
   let _pendingOpenChatId = consumeOpenChatParam();
-const APP_ASSET_VERSION = "20260430-deleted-chat-cleanup-1";
+const APP_ASSET_VERSION = "20260501-profile-qr-scan-1";
   let _appSwPromise = null;
   let _deferredInstallPrompt = null;
   let _installPromptBound = false;

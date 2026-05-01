@@ -3,9 +3,18 @@
 
   const PROFILE_ROUTE_PARAM = "profile";
   const QR_MENU_LABEL = "My QR Code";
+  const QR_SCAN_MENU_LABEL = "Scan QR Code";
   const QR_MODAL_ID = "profileQrOvl";
+  const QR_SCANNER_MODAL_ID = "profileQrScannerOvl";
   const QR_QUERY_KEYS_TO_CLEAR = ["reel", "r", "partner", "brandPartner"];
   let pendingSharedProfileId = getInitialSharedProfileId();
+  let profileQrScannerStream = null;
+  let profileQrScannerDetector = null;
+  let profileQrScannerFrameId = 0;
+  let profileQrScannerActive = false;
+  let profileQrScannerBusy = false;
+  let profileQrScannerLastValue = "";
+  let profileQrScannerLastScannedAt = 0;
 
   function normalizeProfileId(value) {
     const id = String(value || "").trim();
@@ -52,6 +61,23 @@
 
   function buildProfileQrPreviewUrl(userId) {
     return `https://api.qrserver.com/v1/create-qr-code/?size=320x320&margin=12&data=${encodeURIComponent(buildProfileShareUrl(userId))}`;
+  }
+
+  function extractProfileIdFromQrValue(value) {
+    const rawValue = String(value || "").trim();
+    const directId = normalizeProfileId(rawValue);
+    if (directId) return directId;
+
+    try {
+      const url = new URL(rawValue, window.location.origin);
+      const sharedId = normalizeProfileId(
+        url.searchParams.get(PROFILE_ROUTE_PARAM) || ""
+      );
+      if (sharedId) return sharedId;
+    } catch {}
+
+    const match = rawValue.match(/[?&]profile=([0-9a-fA-F]{24})\b/);
+    return normalizeProfileId(match?.[1] || "");
   }
 
   function copyProfileLink(url) {
@@ -136,6 +162,118 @@
     return overlay;
   }
 
+  function setProfileQrScannerStatus(message, isError = false) {
+    const status = document.getElementById("profileQrScannerStatus");
+    if (!status) return;
+    status.textContent = message || "";
+    status.classList.toggle("is-error", !!isError);
+  }
+
+  function stopProfileQrScanner() {
+    profileQrScannerActive = false;
+    profileQrScannerBusy = false;
+    profileQrScannerLastValue = "";
+    profileQrScannerLastScannedAt = 0;
+
+    if (profileQrScannerFrameId) {
+      window.cancelAnimationFrame(profileQrScannerFrameId);
+      profileQrScannerFrameId = 0;
+    }
+
+    const video = document.getElementById("profileQrScannerVideo");
+    if (video) {
+      try {
+        video.pause();
+      } catch {}
+      video.srcObject = null;
+    }
+
+    if (profileQrScannerStream) {
+      profileQrScannerStream.getTracks().forEach((track) => {
+        try {
+          track.stop();
+        } catch {}
+      });
+    }
+
+    profileQrScannerStream = null;
+    profileQrScannerDetector = null;
+  }
+
+  function closeProfileQrScannerModal() {
+    stopProfileQrScanner();
+    const overlay = document.getElementById(QR_SCANNER_MODAL_ID);
+    if (!overlay) return;
+    if (typeof window.closeOvl === "function") {
+      window.closeOvl(QR_SCANNER_MODAL_ID);
+    } else {
+      overlay.classList.remove("show");
+    }
+  }
+
+  function ensureProfileQrScannerModal() {
+    let overlay = document.getElementById(QR_SCANNER_MODAL_ID);
+    if (overlay) return overlay;
+
+    overlay = document.createElement("div");
+    overlay.className = "ovl";
+    overlay.id = QR_SCANNER_MODAL_ID;
+    overlay.innerHTML = `
+      <div class="modal profile-qr-modal profile-qr-scanner-modal" role="dialog" aria-modal="true" aria-labelledby="profileQrScannerTitle">
+        <div class="mhdr">
+          <h3 id="profileQrScannerTitle">${QR_SCAN_MENU_LABEL}</h3>
+          <button class="xbtn" type="button" aria-label="Close QR scanner">
+            <svg viewBox="0 0 24 24">
+              <line x1="18" y1="6" x2="6" y2="18"></line>
+              <line x1="6" y1="6" x2="18" y2="18"></line>
+            </svg>
+          </button>
+        </div>
+        <div class="mpad">
+          <div class="profile-qr-shell profile-qr-scanner-shell">
+            <div class="profile-qr-scanner-stage">
+              <video id="profileQrScannerVideo" autoplay playsinline muted></video>
+              <div class="profile-qr-scanner-target" aria-hidden="true"></div>
+            </div>
+            <p class="profile-qr-copy profile-qr-scanner-status" id="profileQrScannerStatus">
+              Point your camera at a profile QR code.
+            </p>
+            <div class="profile-qr-actions profile-qr-scanner-actions">
+              <button class="btn" id="profileQrScannerRetryBtn" type="button" hidden>Retry Camera</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    `;
+
+    const closeButton = overlay.querySelector(".xbtn");
+    closeButton?.addEventListener("click", closeProfileQrScannerModal);
+
+    overlay.addEventListener("click", (event) => {
+      if (event.target !== overlay) return;
+      closeProfileQrScannerModal();
+    });
+
+    overlay
+      .querySelector("#profileQrScannerRetryBtn")
+      ?.addEventListener("click", () => {
+        startProfileQrScanner();
+      });
+
+    const observer = new MutationObserver(() => {
+      if (!overlay.classList.contains("show")) {
+        stopProfileQrScanner();
+      }
+    });
+    observer.observe(overlay, {
+      attributes: true,
+      attributeFilter: ["class"],
+    });
+
+    document.body.appendChild(overlay);
+    return overlay;
+  }
+
   function openProfileQrModal(profileId) {
     const id = normalizeProfileId(profileId) || getCurrentProfileId();
     const user = id && typeof window.getUser === "function" ? window.getUser(id) : null;
@@ -188,6 +326,166 @@
     }
   }
 
+  async function openProfileFromQrValue(rawValue) {
+    const profileId = extractProfileIdFromQrValue(rawValue);
+    if (!profileId) {
+      setProfileQrScannerStatus(
+        "This QR code does not contain a profile link.",
+        true
+      );
+      return false;
+    }
+
+    setProfileQrScannerStatus("Opening profile...");
+
+    try {
+      const user = await fetchProfileUser(profileId);
+      const resolvedId = normalizeProfileId(user?.id || user?._id || profileId);
+      if (!resolvedId) {
+        setProfileQrScannerStatus("This profile is not available.", true);
+        return false;
+      }
+
+      closeProfileQrScannerModal();
+      window.curProfId = resolvedId;
+      if (typeof window.gp === "function") {
+        window.gp("profile");
+      } else if (typeof window.renderProfile === "function") {
+        window.renderProfile(resolvedId);
+      }
+      window.MC?.success?.("Profile opened.");
+      return true;
+    } catch (error) {
+      console.warn("Failed to open scanned profile:", error);
+      setProfileQrScannerStatus("Could not open this profile right now.", true);
+      return false;
+    }
+  }
+
+  async function scanProfileQrFrame() {
+    if (!profileQrScannerActive) return;
+
+    const video = document.getElementById("profileQrScannerVideo");
+    if (!video || !profileQrScannerDetector) {
+      stopProfileQrScanner();
+      return;
+    }
+
+    if (video.readyState < 2 || profileQrScannerBusy) {
+      profileQrScannerFrameId = window.requestAnimationFrame(scanProfileQrFrame);
+      return;
+    }
+
+    profileQrScannerBusy = true;
+    try {
+      const codes = await profileQrScannerDetector.detect(video);
+      const match = codes.find((item) => String(item?.rawValue || "").trim());
+      if (match) {
+        const rawValue = String(match.rawValue || "").trim();
+        const now = Date.now();
+        if (
+          rawValue &&
+          (rawValue !== profileQrScannerLastValue ||
+            now - profileQrScannerLastScannedAt > 1800)
+        ) {
+          profileQrScannerLastValue = rawValue;
+          profileQrScannerLastScannedAt = now;
+          const opened = await openProfileFromQrValue(rawValue);
+          if (opened) return;
+        }
+      }
+    } catch (error) {
+      if (
+        error?.name !== "NotSupportedError" &&
+        error?.name !== "InvalidStateError"
+      ) {
+        console.warn("QR scanner detect error:", error);
+      }
+    } finally {
+      profileQrScannerBusy = false;
+    }
+
+    if (profileQrScannerActive) {
+      profileQrScannerFrameId = window.requestAnimationFrame(scanProfileQrFrame);
+    }
+  }
+
+  async function startProfileQrScanner() {
+    const overlay = ensureProfileQrScannerModal();
+    const retryButton = overlay.querySelector("#profileQrScannerRetryBtn");
+    const video = overlay.querySelector("#profileQrScannerVideo");
+
+    stopProfileQrScanner();
+    if (retryButton) retryButton.hidden = true;
+
+    if (
+      !navigator.mediaDevices ||
+      typeof navigator.mediaDevices.getUserMedia !== "function"
+    ) {
+      setProfileQrScannerStatus(
+        "Camera scanning is not available on this device.",
+        true
+      );
+      if (retryButton) retryButton.hidden = false;
+      return;
+    }
+
+    if (typeof window.BarcodeDetector !== "function") {
+      setProfileQrScannerStatus(
+        "This browser does not support live QR scanning yet. Use a recent Chrome browser on mobile.",
+        true
+      );
+      if (retryButton) retryButton.hidden = false;
+      return;
+    }
+
+    setProfileQrScannerStatus("Starting camera...");
+
+    try {
+      profileQrScannerDetector = new window.BarcodeDetector({
+        formats: ["qr_code"],
+      });
+      profileQrScannerStream = await navigator.mediaDevices.getUserMedia({
+        audio: false,
+        video: {
+          facingMode: { ideal: "environment" },
+        },
+      });
+
+      if (video) {
+        video.srcObject = profileQrScannerStream;
+        await video.play();
+      }
+
+      profileQrScannerActive = true;
+      setProfileQrScannerStatus("Point your camera at a profile QR code.");
+      profileQrScannerFrameId = window.requestAnimationFrame(scanProfileQrFrame);
+    } catch (error) {
+      console.warn("Failed to start QR scanner:", error);
+      stopProfileQrScanner();
+      setProfileQrScannerStatus(
+        error?.name === "NotAllowedError"
+          ? "Camera access was blocked. Allow camera permission and try again."
+          : "Could not start the camera right now.",
+        true
+      );
+      if (retryButton) retryButton.hidden = false;
+    }
+  }
+
+  function openProfileQrScannerModal() {
+    ensureProfileQrScannerModal();
+    closeProfileActionMenu();
+    if (typeof window.openOvl === "function") {
+      window.openOvl(QR_SCANNER_MODAL_ID);
+    } else {
+      document.getElementById(QR_SCANNER_MODAL_ID)?.classList.add("show");
+    }
+    window.setTimeout(() => {
+      startProfileQrScanner();
+    }, 60);
+  }
+
   function createProfileActionMenu(userId) {
     const wrapper = document.createElement("div");
     wrapper.className = "profile-action-menu";
@@ -223,6 +521,16 @@
       openProfileQrModal(wrapper.dataset.profileUserId);
     });
 
+    const scanItem = document.createElement("button");
+    scanItem.className = "profile-action-item";
+    scanItem.type = "button";
+    scanItem.textContent = QR_SCAN_MENU_LABEL;
+    scanItem.addEventListener("click", (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      openProfileQrScannerModal();
+    });
+
     button.addEventListener("click", (event) => {
       event.preventDefault();
       event.stopPropagation();
@@ -233,6 +541,7 @@
     });
 
     menu.appendChild(item);
+    menu.appendChild(scanItem);
     wrapper.appendChild(button);
     wrapper.appendChild(menu);
     return wrapper;
@@ -389,12 +698,22 @@
 
   document.addEventListener("keydown", (event) => {
     if (event.key !== "Escape") return;
+    if (document.getElementById(QR_SCANNER_MODAL_ID)?.classList.contains("show")) {
+      closeProfileQrScannerModal();
+    }
     closeProfileActionMenu();
   });
 
   window.addEventListener("resize", closeProfileActionMenu);
+  window.addEventListener("pagehide", stopProfileQrScanner);
+  document.addEventListener("visibilitychange", () => {
+    if (document.hidden) {
+      stopProfileQrScanner();
+    }
+  });
   window.addEventListener("popstate", () => {
     window.setTimeout(() => {
+      stopProfileQrScanner();
       closeProfileActionMenu();
       syncProfileRouteParam(getCurrentPageName());
     }, 0);
@@ -406,5 +725,6 @@
   schedulePendingProfileRoute();
 
   window.openProfileQrModal = openProfileQrModal;
+  window.openProfileQrScannerModal = openProfileQrScannerModal;
   window.handlePendingProfileRoute = handlePendingProfileRoute;
 })();

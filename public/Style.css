@@ -11186,6 +11186,61 @@ video {
   justify-content: center;
 }
 
+.profile-qr-scanner-modal {
+  max-width: 460px;
+}
+
+.profile-qr-scanner-shell {
+  gap: 18px;
+}
+
+.profile-qr-scanner-stage {
+  position: relative;
+  width: min(100%, 320px);
+  aspect-ratio: 1;
+  margin: 0 auto;
+  border-radius: 28px;
+  overflow: hidden;
+  border: 1px solid rgba(164, 111, 63, 0.18);
+  background:
+    radial-gradient(circle at top, rgba(214, 153, 79, 0.16), transparent 52%),
+    linear-gradient(180deg, rgba(54, 34, 30, 0.98), rgba(27, 18, 16, 0.98));
+  box-shadow: 0 16px 34px rgba(52, 29, 24, 0.2);
+}
+
+.profile-qr-scanner-stage video {
+  width: 100%;
+  height: 100%;
+  display: block;
+  object-fit: cover;
+  background: rgba(28, 18, 16, 0.94);
+}
+
+.profile-qr-scanner-target {
+  position: absolute;
+  inset: 50%;
+  width: min(72%, 220px);
+  aspect-ratio: 1;
+  transform: translate(-50%, -50%);
+  border-radius: 24px;
+  border: 2px solid rgba(255, 255, 255, 0.92);
+  box-shadow:
+    0 0 0 999px rgba(22, 13, 11, 0.24),
+    0 0 0 1px rgba(214, 153, 79, 0.28) inset;
+}
+
+.profile-qr-scanner-status {
+  margin-bottom: 0;
+}
+
+.profile-qr-scanner-status.is-error {
+  color: #c3533d;
+}
+
+.profile-qr-scanner-actions {
+  gap: 12px;
+}
+
 [data-dark] .profile-menu-btn {
   background:
     linear-gradient(180deg, rgba(43, 29, 25, 0.98), rgba(28, 18, 16, 0.98));
@@ -11203,6 +11258,11 @@ video {
   background:
     radial-gradient(circle at top, rgba(214, 153, 79, 0.18), transparent 54%),
     linear-gradient(180deg, rgba(38, 24, 21, 0.98), rgba(24, 15, 13, 0.98));
+}
+
+[data-dark] .profile-qr-scanner-stage {
+  border-color: rgba(251, 238, 219, 0.08);
+  box-shadow: 0 18px 36px rgba(0, 0, 0, 0.34);
 }
 
 /* Name styling */
