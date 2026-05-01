@@ -10,13 +10,16 @@ function shouldVerifyBeforeSend() {
 }
 
 function getEmailTransportSettings() {
-  const authUser = process.env.SMTP_USER || process.env.EMAIL_USER;
-  const authPass = process.env.SMTP_PASS || process.env.EMAIL_PASS;
+  const authUser = String(process.env.SMTP_USER || process.env.EMAIL_USER || "").trim();
+  const authPass = String(process.env.SMTP_PASS || process.env.EMAIL_PASS || "").trim();
   const fromAddress =
-    process.env.EMAIL_FROM ||
-    process.env.SMTP_FROM ||
-    process.env.SMTP_USER ||
-    process.env.EMAIL_USER;
+    String(
+      process.env.EMAIL_FROM ||
+      process.env.SMTP_FROM ||
+      process.env.SMTP_USER ||
+      process.env.EMAIL_USER ||
+      ""
+    ).trim();
   const parsedPort = Number(process.env.SMTP_PORT || 0);
   const secure = process.env.SMTP_SECURE
     ? process.env.SMTP_SECURE === "true"
@@ -27,7 +30,7 @@ function getEmailTransportSettings() {
     authUser,
     authPass,
     fromAddress,
-    host: process.env.SMTP_HOST || "smtp.gmail.com",
+    host: String(process.env.SMTP_HOST || "smtp.gmail.com").trim(),
     port,
     secure,
   };
@@ -52,47 +55,75 @@ function getConfiguredEmailProviderPreference() {
   return "auto";
 }
 
+function hasBrevoApiKey() {
+  return !!String(process.env.BREVO_API_KEY || "").trim();
+}
+
+function getEmailProviderSelectionSummary() {
+  const preferred = getConfiguredEmailProviderPreference();
+  if (preferred === "brevo") {
+    return "EMAIL_DELIVERY_PROVIDER=brevo";
+  }
+  if (preferred === "smtp") {
+    return "EMAIL_DELIVERY_PROVIDER=smtp";
+  }
+  return hasBrevoApiKey()
+    ? "EMAIL_DELIVERY_PROVIDER=auto with BREVO_API_KEY present"
+    : "EMAIL_DELIVERY_PROVIDER=auto without BREVO_API_KEY";
+}
+
 function getEmailDeliveryProvider() {
   const preferred = getConfiguredEmailProviderPreference();
+  if (preferred === "smtp" || preferred === "brevo") {
+    return preferred;
+  }
+
+  return hasBrevoApiKey() ? "brevo" : "smtp";
+}
+
+function getEmailConfigurationDiagnostics(provider = getEmailDeliveryProvider()) {
+  const { authUser, authPass, fromAddress } = getEmailTransportSettings();
   const { apiKey } = getBrevoSettings();
-  const { authUser, authPass } = getEmailTransportSettings();
-  const hasBrevo = !!apiKey;
-  const hasSmtp = !!(authUser && authPass);
+  const missing = [];
 
-  if (preferred === "brevo") {
-    return hasBrevo ? "brevo" : "smtp";
+  if (provider === "brevo") {
+    if (!apiKey) missing.push("BREVO_API_KEY");
+    if (!fromAddress) missing.push("EMAIL_FROM");
+  } else {
+    if (!authUser) missing.push("SMTP_USER");
+    if (!authPass) missing.push("SMTP_PASS");
+    if (!fromAddress) missing.push("EMAIL_FROM");
   }
 
-  if (preferred === "smtp") {
-    return hasSmtp ? "smtp" : "brevo";
-  }
-
-  return hasBrevo ? "brevo" : "smtp";
+  return {
+    provider,
+    configured: missing.length === 0,
+    missing,
+    selection: getEmailProviderSelectionSummary(),
+  };
 }
 
 function isEmailDeliveryConfigured() {
-  const { authUser, authPass, fromAddress } = getEmailTransportSettings();
-  const { apiKey } = getBrevoSettings();
-  return !!(fromAddress && (apiKey || (authUser && authPass)));
+  return getEmailConfigurationDiagnostics().configured;
 }
 
 function assertEmailDeliveryConfigured() {
-  if (isEmailDeliveryConfigured()) return;
+  const diagnostics = getEmailConfigurationDiagnostics();
+  if (diagnostics.configured) return;
 
-  const missing = [];
-  const { fromAddress } = getEmailTransportSettings();
-  const { apiKey } = getBrevoSettings();
-  const hasSmtpCreds = !!(process.env.SMTP_USER || process.env.EMAIL_USER) &&
-    !!(process.env.SMTP_PASS || process.env.EMAIL_PASS);
-
-  if (!fromAddress) missing.push("EMAIL_FROM");
-  if (!apiKey && !hasSmtpCreds) missing.push("BREVO_API_KEY or SMTP_USER + SMTP_PASS");
-
-  console.error("Email delivery is not configured. Missing:", missing.join(", "));
+  const missingText = diagnostics.missing.join(", ");
+  console.error(
+    `Email delivery is not configured for ${diagnostics.provider}.`,
+    `Selection: ${diagnostics.selection}.`,
+    `Missing: ${missingText}`,
+  );
 
   throw new AppError(
-    "OTP email delivery is not configured on the server. Add BREVO_API_KEY and EMAIL_FROM, or configure SMTP_HOST, SMTP_PORT, SMTP_SECURE, SMTP_USER, SMTP_PASS, and EMAIL_FROM.",
+    diagnostics.provider === "brevo"
+      ? `OTP email delivery is set to Brevo, but ${missingText} ${diagnostics.missing.length === 1 ? "is" : "are"} missing. Set EMAIL_DELIVERY_PROVIDER=brevo only when BREVO_API_KEY and EMAIL_FROM are configured.`
+      : `OTP email delivery is set to SMTP, but ${missingText} ${diagnostics.missing.length === 1 ? "is" : "are"} missing. Set EMAIL_DELIVERY_PROVIDER=smtp only when SMTP_USER, SMTP_PASS, and EMAIL_FROM are configured.`,
     503,
+    diagnostics,
   );
 }
 
@@ -345,6 +376,7 @@ module.exports = {
   assertEmailDeliveryConfigured,
   shouldVerifyBeforeSend,
   getEmailDeliveryProvider,
+  getEmailConfigurationDiagnostics,
   getEmailTransportSettings,
   getBrevoSettings,
 };

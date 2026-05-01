@@ -33,6 +33,7 @@ const {
   verifyEmailTransport,
   isEmailDeliveryConfigured,
   getEmailDeliveryProvider,
+  getEmailConfigurationDiagnostics,
   getEmailTransportSettings,
   shouldVerifyBeforeSend,
 } = require("./utils/sendEmail");
@@ -257,23 +258,20 @@ app.get("/api/health/metrics", (req, res) => {
 // URL: https://tirth-sutra-backend.onrender.com/api/health/email
 app.get("/api/health/email", async (req, res) => {
   const provider = getEmailDeliveryProvider();
+  const diagnostics = getEmailConfigurationDiagnostics(provider);
   const { fromAddress, host, port, secure } = getEmailTransportSettings();
 
   if (!isEmailDeliveryConfigured()) {
-    const missing = [];
-    if (!fromAddress) missing.push("EMAIL_FROM");
-    if (!String(process.env.BREVO_API_KEY || "").trim()) {
-      ["SMTP_HOST", "SMTP_PORT", "SMTP_SECURE", "SMTP_USER", "SMTP_PASS"]
-        .filter((k) => !process.env[k])
-        .forEach((key) => missing.push(key));
-      missing.push("BREVO_API_KEY");
-    }
     return res.status(503).json({
       status: "error",
       provider,
-      message: "Email delivery is not configured. OTP emails will fail.",
-      missingEnvVars: missing,
-      fix: "Add BREVO_API_KEY and EMAIL_FROM, or complete the SMTP environment variables in your backend environment settings.",
+      message: `Email delivery is not configured for ${provider}. OTP emails will fail.`,
+      missingEnvVars: diagnostics.missing,
+      selection: diagnostics.selection,
+      fix:
+        provider === "brevo"
+          ? "Set EMAIL_DELIVERY_PROVIDER=brevo only when BREVO_API_KEY and EMAIL_FROM are configured, or switch to EMAIL_DELIVERY_PROVIDER=smtp."
+          : "Set EMAIL_DELIVERY_PROVIDER=smtp only when SMTP_USER, SMTP_PASS, and EMAIL_FROM are configured, or switch to EMAIL_DELIVERY_PROVIDER=brevo with BREVO_API_KEY.",
     });
   }
 
