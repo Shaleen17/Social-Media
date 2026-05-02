@@ -134,7 +134,7 @@ let curVidCat = "All",
 let activeVidWatchId = null,
   activeVidChannelId = null;
 let videoPageWarmRefreshTimer = 0,
-  videoPageWarmRefreshAt = Date.now(),
+  videoPageWarmRefreshAt = 0,
   videoFeedRenderToken = 0,
   videoFeedChunkFrame = 0,
   videoFeedLastSignature = "",
@@ -162,13 +162,6 @@ const PENDING_REFERRAL_KEY = "pendingReferralCode";
 const REFERRAL_QUERY_KEYS = ["ref", "invite"];
 const INVITE_SHARE_IMAGE_PATH = "images/post/invite_image.jpg";
 const FALLBACK_LIVE_STREAM_SRC = "https://www.w3schools.com/html/mov_bbb.mp4";
-const LEGACY_TIRTH_TUBE_MEDIA_HOSTS = new Set([
-  "video-5c9i.vercel.app",
-  "video-68c8.vercel.app",
-  "video-ae5o.vercel.app",
-  "video-8d71.vercel.app",
-  "video-xi-flame.vercel.app",
-]);
 const VIDEO_DETAIL_REALTIME_INTERVAL_MS = 12000;
 const APP_TOP_LOADER_MIN_VISIBLE_MS = 140;
 const APP_TOP_LOADER_COMPLETE_MS = 170;
@@ -213,127 +206,6 @@ const APP_DATA_CACHE_STATE = (() => {
   };
 })();
 let appDataCachePersistTimer = 0;
-
-function getTirthTubeMediaHostname(src = "") {
-  const raw = String(src || "").trim();
-  if (!raw) return "";
-  try {
-    return new URL(raw, window.location.href).hostname.toLowerCase();
-  } catch {
-    return "";
-  }
-}
-
-function isLegacyTirthTubeMediaSource(src = "") {
-  return LEGACY_TIRTH_TUBE_MEDIA_HOSTS.has(getTirthTubeMediaHostname(src));
-}
-
-function getPlayableTirthTubeMediaSource(src = "", fallbackSrc = FALLBACK_LIVE_STREAM_SRC) {
-  const raw = String(src || "").trim();
-  if (!raw) return fallbackSrc;
-  return isLegacyTirthTubeMediaSource(raw) ? fallbackSrc : raw;
-}
-
-function normalizeTirthTubeVideoRecord(video) {
-  if (!video || typeof video !== "object") return video;
-  const nextSrc = getPlayableTirthTubeMediaSource(video.src);
-  if (nextSrc === String(video.src || "")) return video;
-  return {
-    ...video,
-    src: nextSrc,
-    originalSrc: video.originalSrc || video.src || "",
-  };
-}
-
-function normalizeTirthTubeVideoCollection(videos) {
-  if (!Array.isArray(videos)) return [];
-  let changed = false;
-  const normalized = videos.map((video) => {
-    const nextVideo = normalizeTirthTubeVideoRecord(video);
-    if (nextVideo !== video) changed = true;
-    return nextVideo;
-  });
-  return changed ? normalized : videos;
-}
-
-function normalizeTirthTubeLiveStreamRecord(stream) {
-  if (!stream || typeof stream !== "object") return stream;
-  const nextSrc = getPlayableTirthTubeMediaSource(stream.src);
-  if (nextSrc === String(stream.src || "")) return stream;
-  return {
-    ...stream,
-    src: nextSrc,
-    originalSrc: stream.originalSrc || stream.src || "",
-  };
-}
-
-function normalizeTirthTubeLiveStreamCollection(streams) {
-  if (!Array.isArray(streams)) return [];
-  let changed = false;
-  const normalized = streams.map((stream) => {
-    const nextStream = normalizeTirthTubeLiveStreamRecord(stream);
-    if (nextStream !== stream) changed = true;
-    return nextStream;
-  });
-  return changed ? normalized : streams;
-}
-
-function persistNormalizedCollectionIfChanged(key, current, normalized) {
-  if (!Array.isArray(normalized)) return normalized;
-  if (!Array.isArray(current)) {
-    Store.s(key, normalized);
-    return normalized;
-  }
-  if (normalized === current) return normalized;
-  const changed =
-    normalized.length !== current.length ||
-    normalized.some((item, index) => item !== current[index]);
-  if (changed) {
-    Store.s(key, normalized);
-  }
-  return normalized;
-}
-
-function repairStoredTirthTubeMediaCaches() {
-  const storedVideos = Store.g("videos", SEED_VIDEOS);
-  persistNormalizedCollectionIfChanged(
-    "videos",
-    storedVideos,
-    normalizeTirthTubeVideoCollection(storedVideos),
-  );
-
-  const storedLiveStreams = Store.g("liveStreams", SEED_LIVE);
-  persistNormalizedCollectionIfChanged(
-    "liveStreams",
-    storedLiveStreams,
-    normalizeTirthTubeLiveStreamCollection(storedLiveStreams),
-  );
-}
-
-function handleTirthTubeVideoElementError(video) {
-  if (!video) return;
-  const fallbackSrc =
-    video.getAttribute("data-fallback-src") || FALLBACK_LIVE_STREAM_SRC;
-  if (!fallbackSrc || video.dataset.fallbackApplied === "1") return;
-  const currentSrc = String(video.currentSrc || video.src || "").trim();
-  if (!currentSrc || currentSrc === fallbackSrc) return;
-
-  video.dataset.fallbackApplied = "1";
-  video.src = fallbackSrc;
-  try {
-    video.load();
-    const playPromise = video.play?.();
-    if (playPromise && typeof playPromise.catch === "function") {
-      playPromise.catch(() => {});
-    }
-  } catch {}
-}
-
-window.getPlayableTirthTubeMediaSource = getPlayableTirthTubeMediaSource;
-window.normalizeTirthTubeVideoRecord = normalizeTirthTubeVideoRecord;
-window.normalizeTirthTubeVideoCollection = normalizeTirthTubeVideoCollection;
-window.normalizeTirthTubeLiveStreamCollection = normalizeTirthTubeLiveStreamCollection;
-window.handleTirthTubeVideoElementError = handleTirthTubeVideoElementError;
 
 function getAppDataCacheBucket(bucketName) {
   if (!APP_DATA_CACHE_STATE.buckets[bucketName]) {
@@ -1553,20 +1425,10 @@ function getPosts() {
   return Store.g("posts", SEED_POSTS);
 }
 function getVideos() {
-  const storedVideos = Store.g("videos", SEED_VIDEOS);
-  return persistNormalizedCollectionIfChanged(
-    "videos",
-    storedVideos,
-    normalizeTirthTubeVideoCollection(storedVideos),
-  );
+  return Store.g("videos", SEED_VIDEOS);
 }
 function getLiveStreams() {
-  const storedLiveStreams = Store.g("liveStreams", SEED_LIVE);
-  return persistNormalizedCollectionIfChanged(
-    "liveStreams",
-    storedLiveStreams,
-    normalizeTirthTubeLiveStreamCollection(storedLiveStreams),
-  );
+  return Store.g("liveStreams", SEED_LIVE);
 }
 function getVidStories() {
   // Always return a fresh clone of the canonical seed so no stale runtime mutation can leak in.
@@ -1669,7 +1531,7 @@ function saveVideo(id, data) {
   const i = v.findIndex((x) => x.id === id);
   if (i > -1) {
     Object.assign(v[i], data);
-    Store.s("videos", normalizeTirthTubeVideoCollection(v));
+    Store.s("videos", v);
   }
 }
 function updateUser(id, data) {
@@ -1731,8 +1593,8 @@ function seedData() {
     Store.s("stories", SEED_STORIES);
     Store.s("notifs", SEED_NOTIFS);
     Store.s("convs", SEED_CONVS);
-    Store.s("videos", normalizeTirthTubeVideoCollection(SEED_VIDEOS));
-    Store.s("liveStreams", normalizeTirthTubeLiveStreamCollection(SEED_LIVE));
+    Store.s("videos", SEED_VIDEOS);
+    Store.s("liveStreams", SEED_LIVE);
     Store.s("vidStories", SEED_VID_STORIES);
     Store.s("seeded", true);
     Store.s("seedVersion", SEED_VERSION);
@@ -8466,7 +8328,7 @@ function primeReelVideo(index, preloadMode = "metadata") {
 }
 
 function loadReelWindow(index) {
-  [index, index + 1].forEach((target) => {
+  [index - 1, index, index + 1, index + 2].forEach((target) => {
     if (target < 0 || target >= reelsSession.length) return;
     primeReelVideo(target, target === index || target === index + 1 ? "auto" : "metadata");
   });
@@ -8703,8 +8565,7 @@ function scheduleVideoPageWarmRefresh() {
     videoPageWarmRefreshTimer = 0;
   }
   if (typeof window.refreshVideosFromBackend !== "function") return;
-  const cachedVideos = typeof getVideos === "function" ? getVideos() : [];
-  if (cachedVideos.length && Date.now() - videoPageWarmRefreshAt < 25000) return;
+  if (Date.now() - videoPageWarmRefreshAt < 25000) return;
 
   videoPageWarmRefreshTimer = window.setTimeout(() => {
     videoPageWarmRefreshTimer = 0;
@@ -9957,8 +9818,7 @@ function getVidReactionState(v) {
   };
 }
 function getVidComments(v) {
-  if (!Array.isArray(v?.cmts)) return [];
-  return [...v.cmts]
+  return [...(v.cmts || [])]
     .map((cm, idx) => ({
       ...cm,
       id: cm.id || `${v.id}_c_${idx}`,
@@ -9966,14 +9826,6 @@ function getVidComments(v) {
       pinned: !!cm.pinned,
     }))
     .sort((a, b) => Number(!!b.pinned) - Number(!!a.pinned));
-}
-function getVideoCommentCount(v) {
-  const counted = Number(v?.commentCount);
-  if (Number.isFinite(counted) && counted >= 0) return counted;
-  return Array.isArray(v?.cmts) ? v.cmts.length : 0;
-}
-function hasVideoCommentSnapshot(v) {
-  return v?.hasDetail !== false || Array.isArray(v?.cmts);
 }
 function fmtVideoAge(ts) {
   const t = Number(ts) || new Date(ts || 0).getTime();
@@ -10031,11 +9883,8 @@ function mkVidCard(v) {
   const ini = getIni(u.name);
   const avH = u.avatar ? `<img src="${u.avatar}" alt="">` : ini;
   const rx = getVidReactionState(v);
-  const cmts = { length: getVideoCommentCount(v) };
-  const thumbSource = getVideoThumbSource(v, u);
-  const mediaH = thumbSource
-    ? `<img src="${thumbSource}" alt="${esc(v.title || "Video thumbnail")}" loading="lazy" style="width:100%;max-height:340px;object-fit:contain;background:#000">`
-    : `<video src="${v.src}" muted playsinline webkit-playsinline preload="none" data-feed-preview style="width:100%;max-height:340px;object-fit:contain;background:#000"></video>`;
+  const cmts = v.cmts || [];
+  const mediaH = `<video src="${v.src}" muted playsinline webkit-playsinline preload="none" data-feed-preview style="width:100%;max-height:340px;object-fit:contain;background:#000"></video>`;
   return `<div class="vid-card" id="vc_${v.id}"><div class="vid-card-thumb" onclick="openVideoWatch('${v.id}')">${mediaH}<div class="vid-overlay"><span class="vid-duration">${v.dur || "--:--"}</span></div><div class="vid-card-play">▶ Watch on Tirth Tube</div></div><div class="vid-card-body"><div class="vid-card-meta"><div class="av av40" onclick="openVideoChannel('${u.id}')" style="cursor:pointer">${avH}</div><div class="vid-card-info"><div class="vid-card-title" onclick="openVideoWatch('${v.id}')">${esc(v.title)}</div><div class="vid-card-channel" onclick="openVideoChannel('${u.id}')">${u.name}${u.verified ? " 🔱" : ""}</div><div class="vid-card-stats">${fmtV(v.views)} views · ${v.cat} · ${fmtVidSubs(u.id)}</div></div><div class="more-wrap"><button class="sb" style="width:26px;height:26px;border-radius:6px" onclick="toggleVidMore('${v.id}',event)"><svg style="width:15px;height:15px" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/><circle cx="5" cy="12" r="1"/></svg></button><div class="more-menu" id="vm_${v.id}">${CU && v.uid === CU.id ? `<button class="mi red" onclick="deleteVid('${v.id}')"><svg viewBox="0 0 24 24"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>Delete</button>` : ""}<button class="mi" onclick="shareVid('${v.id}')"><svg viewBox="0 0 24 24"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg>Share</button></div></div></div></div><div class="vid-card-actions"><button class="va${rx.liked ? " vliked" : ""}" onclick="toggleVidLike('${v.id}',this,event)"><svg viewBox="0 0 24 24" ${rx.liked ? 'style="fill:#e53935;stroke:#e53935"' : ""}><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg><span id="vlc_${v.id}">${(v.likes || []).length}</span></button><button class="va" onclick="openVideoWatch('${v.id}','comments')"><svg viewBox="0 0 24 24"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>${cmts.length}</button><button class="va" onclick="shareVid('${v.id}')"><svg viewBox="0 0 24 24"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg>Share</button></div></div>`;
 }
 async function syncVideoForDetail(id) {
@@ -10050,10 +9899,7 @@ async function syncVideoForDetail(id) {
 }
 function renderVidSideItem(v) {
   const u = getVidCreator(v);
-  const thumbSource = getVideoThumbSource(v, u);
-  const media = thumbSource
-    ? `<img src="${thumbSource}" alt="${esc(v.title || "Video thumbnail")}" loading="lazy" style="width:100%;height:100%;object-fit:cover">`
-    : `<video src="${v.src}" muted playsinline preload="metadata" data-frame-preview></video>`;
+  const media = `<video src="${v.src}" muted playsinline preload="metadata" data-frame-preview></video>`;
   return `<div class="video-side-item" onclick="openVideoWatch('${v.id}')"><div class="video-side-thumb">${media}<span class="vid-duration">${v.dur || "--:--"}</span></div><div class="video-side-copy"><strong>${esc(v.title)}</strong><span class="video-side-channel">${u.name}${u.verified ? " 🔱" : ""}</span><span class="video-side-meta">${fmtV(v.views)} views · ${fmtVideoAge(v.ts)}</span></div></div>`;
 }
 function renderVidComment(videoId, ownerId, cm) {
@@ -10145,17 +9991,15 @@ function renderVideoWatchModal(id, focus = "") {
   const quickStats = [
     { label: "Category", value: v.cat || "Spiritual" },
     { label: "Likes", value: fmtV((v.likes || []).length) },
-    { label: "Comments", value: fmtV(getVideoCommentCount(v)) },
+    { label: "Comments", value: fmtV(comments.length) },
     { label: "Channel", value: u.name.split(" ")[0] || "Creator" },
   ];
   const metaTags = [
     v.cat || "Spiritual",
-    `${getVideoCommentCount(v)} comment${getVideoCommentCount(v) === 1 ? "" : "s"}`,
+    `${comments.length} comment${comments.length === 1 ? "" : "s"}`,
     `${fmtV((v.likes || []).length)} likes`,
   ];
-  const playableSrc = getPlayableTirthTubeMediaSource(v.src);
-  const posterSrc = getVideoThumbSource(v, u);
-  const mediaH = `<video src="${playableSrc}" controls autoplay playsinline data-fallback-src="${FALLBACK_LIVE_STREAM_SRC}" onerror="handleTirthTubeVideoElementError(this)"${posterSrc ? ` poster="${esc(posterSrc)}"` : ""} style="width:100%;max-height:520px;object-fit:contain;background:#000" onplay="trackVidView('${v.id}')"></video>`;
+  const mediaH = `<video src="${v.src}" controls autoplay playsinline style="width:100%;max-height:520px;object-fit:contain;background:#000" onplay="trackVidView('${v.id}')"></video>`;
 
   c.innerHTML = `<div class="video-watch-layout"><div class="video-watch-main"><div class="video-watch-player-shell"><div class="video-watch-player">${mediaH}</div><div class="video-live-sync-bar"><span class="video-live-sync-pill"><span class="video-live-sync-dot"></span>Live updates</span><span class="video-live-sync-copy" data-video-sync-label>${esc(fmtVideoDetailSyncStatus())}</span></div></div><div class="video-watch-meta"><div class="video-watch-topline"><div class="video-watch-heading"><div class="video-watch-title">${esc(v.title)}</div><div class="video-watch-sub">${fmtV(v.views)} views &middot; ${published}</div></div><div class="video-watch-mini-grid">${quickStats.map((item) => `<div class="video-mini-stat"><span>${esc(item.label)}</span><strong>${esc(item.value)}</strong></div>`).join("")}</div></div><div class="video-channel-row"><div class="video-channel-main"><div class="av av48" onclick="openVideoChannel('${u.id}')">${u.avatar ? `<img src="${u.avatar}" alt="">` : getIni(u.name)}</div><div class="video-channel-copy"><strong onclick="openVideoChannel('${u.id}')" style="cursor:pointer">${u.name}${u.verified ? " 🔱" : ""}</strong><span>@${u.handle} &middot; ${fmtVidSubs(u.id)}</span></div></div>${u.id ? `<button class="video-sub-btn${isVidSubscribed(u.id) || isOwnChannel ? " subbed" : ""}" ${isOwnChannel ? "disabled" : `onclick="toggleVideoSubscribe('${u.id}')"`}>${isOwnChannel ? "Your channel" : isVidSubscribed(u.id) ? "Subscribed" : "Subscribe"}</button>` : ""}</div><div class="video-react-row"><div class="video-pill-group"><button class="video-react-btn like${rx.liked ? " on" : ""}" onclick="toggleVidLike('${v.id}',this,event)"><svg viewBox="0 0 24 24"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg><span>${fmtV((v.likes || []).length)}</span></button><span class="video-pill-divider"></span><button class="video-react-btn dislike${rx.disliked ? " on" : ""}" onclick="toggleVidDislike('${v.id}',this,event)"><svg viewBox="0 0 24 24"><path d="M10 14V5a3 3 0 0 1 3-3h4a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2h-5l1 7-6-9z"/></svg><span>${fmtV((v.dislikes || []).length)}</span></button></div><button class="video-react-btn" onclick="openVideoWatch('${v.id}','comments')"><svg viewBox="0 0 24 24"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg><span>${comments.length} Comments</span></button><button class="video-react-btn" onclick="shareVid('${v.id}')"><svg viewBox="0 0 24 24"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg><span>Share</span></button><button class="video-react-btn" onclick="openVideoChannel('${u.id}')"><svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="15" rx="2"/><path d="M8 21h8"/><path d="M12 19v2"/></svg><span>Channel</span></button></div><div class="video-meta-card"><div class="video-meta-top"><strong>${fmtV(v.views)} views</strong><span>${published}</span><span class="video-meta-badge">${esc(v.cat)}</span></div><div class="video-meta-desc">${descHtml}</div><div class="video-meta-tags">${metaTags.map((tag) => `<span class="video-meta-tag">${esc(tag)}</span>`).join("")}</div></div><div class="video-comments-card" id="videoCommentsBlock"><div class="video-comments-head"><div class="video-section-title">${comments.length} comment${comments.length === 1 ? "" : "s"}</div><button class="video-chip on" type="button">Community</button></div>${comments.length ? comments.map((cm) => renderVidComment(v.id, u.id, cm)).join("") : `<div class="empty-sub">No comments yet. Start the conversation.</div>`}<div class="video-comment-box">${avHTML(CU ? CU.id : "u1", "av36")}<input class="fi" id="watchVidCommentIn" placeholder="Add a public comment..." onkeydown="if(event.key==='Enter'){event.preventDefault();submitVidCmt('${v.id}')}"><button class="btn btn-p btn-sm" onclick="submitVidCmt('${v.id}')">Comment</button></div></div></div></div><div class="video-watch-side"><div class="video-chip-row">${chipHtml}</div><div class="video-side-card video-side-channel-card"><div class="video-side-header"><div class="video-section-title">Channel pulse</div><span>${fmtVidSubs(u.id)}</span></div><div class="video-side-channel-copy"><strong onclick="openVideoChannel('${u.id}')">${u.name}${u.verified ? " 🔱" : ""}</strong><span>@${u.handle}</span><p>${esc(u.bio || `${u.name} is sharing spiritual talks, reflections, and devotional learning on Tirth Tube.`)}</p></div></div><div class="video-side-card"><div class="video-side-header"><div class="video-section-title">Up next</div><span>${u.name.split(" ")[0]} and similar</span></div><div class="video-side-list">${related.length ? related.map((rv) => renderVidSideItem(rv)).join("") : `<div class="empty-sub">More videos will appear here.</div>`}</div></div></div></div>`;
   openOvl("videoDetailOvl");
@@ -12395,7 +12239,6 @@ async function init() {
   window.__TS_BOOT_PROMISE = (async () => {
     // Step 1 — seed data immediately (no delay)
     seedData();
-    repairStoredTirthTubeMediaCaches();
 
     // Step 2 — restore logged-in user
     // Priority 1: Real backend user stored from login/verify (ts_currentUser)

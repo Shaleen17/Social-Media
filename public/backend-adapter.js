@@ -169,13 +169,8 @@
       video.thumbUrl ||
       video.thumbnailUrl ||
       "";
-    const safeSrc =
-      typeof window.getPlayableTirthTubeMediaSource === "function"
-        ? window.getPlayableTirthTubeMediaSource(video.src)
-        : video.src;
     return {
       ...video,
-      src: safeSrc,
       thumb,
       thumbnail: thumb || video.thumbnail || "",
     };
@@ -206,19 +201,13 @@
     _cachedPosts = posts;
     _cachedVideos = normalizedVideos.filter((video) => !video?.live);
     _cachedLiveStreams = Array.isArray(liveStreams) && liveStreams.length
-      ? liveStreams.map((stream) => {
-          const normalizedStream =
-            typeof window.normalizeTirthTubeLiveStreamCollection === "function"
-              ? window.normalizeTirthTubeLiveStreamCollection([stream])[0] || stream
-              : stream;
-          return {
-            ...normalizedStream,
-            poster:
-              normalizedStream?.poster ||
-              normalizedVideos.find((video) => (video?.id || "").toString() === (normalizedStream?.id || "").toString())?.thumb ||
-              "",
-          };
-        })
+      ? liveStreams.map((stream) => ({
+          ...stream,
+          poster:
+            stream?.poster ||
+            normalizedVideos.find((video) => (video?.id || "").toString() === (stream?.id || "").toString())?.thumb ||
+            "",
+        }))
       : mapLiveStreamsFromVideos(normalizedVideos);
     _cachedVidStories = vidStories;
     _dataLoaded = true;
@@ -873,15 +862,11 @@ const APP_ASSET_VERSION = "20260501-profile-qr-scan-1";
 
   window.prependLiveStreamCache = function (stream, options = {}) {
     if (!stream || !stream.id) return false;
-    const safeSrc =
-      typeof window.getPlayableTirthTubeMediaSource === "function"
-        ? window.getPlayableTirthTubeMediaSource(stream.src)
-        : stream.src;
     const normalized = {
       id: (stream.id || "").toString(),
       uid: (stream.uid || "").toString(),
       title: stream.title || "Live Stream",
-      src: safeSrc || "",
+      src: stream.src || "",
       viewers: Number(stream.viewers) || 0,
       started: stream.started || "Just now",
       poster: stream.poster || "",
