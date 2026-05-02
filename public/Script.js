@@ -1495,7 +1495,12 @@ function preloadStoryNeighborhood(profiles, pi, ii) {
   candidates.forEach(warmStoryMedia);
 }
 function getUser(id) {
-  return getUsers().find((u) => u.id === id) || null;
+  if (!id) return null;
+  const idStr = id.toString();
+  const user =
+    getUsers().find((u) => (u?.id || u?._id || "").toString() === idStr) || null;
+  if (user && !user.id) user.id = (user._id || idStr).toString();
+  return user;
 }
 function getPost(id) {
   return getPosts().find((p) => p.id === id) || null;

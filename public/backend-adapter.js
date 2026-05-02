@@ -721,7 +721,9 @@ const APP_ASSET_VERSION = "20260501-profile-qr-scan-1";
     [...(existing || []), ...(incoming || [])].forEach((item) => {
       const key = (item?.id || item?._id || "").toString();
       if (!key) return;
-      map.set(key, { ...(map.get(key) || {}), ...item });
+      const merged = { ...(map.get(key) || {}), ...(item || {}) };
+      if (!merged.id) merged.id = key;
+      map.set(key, merged);
     });
     return Array.from(map.values());
   }
