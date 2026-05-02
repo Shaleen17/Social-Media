@@ -403,16 +403,6 @@ select:focus-visible,
     border-width: 2px;
   }
 }
-#googleTranslateHost {
-  position: fixed;
-  left: -9999px;
-  top: auto;
-  width: 1px;
-  height: 1px;
-  overflow: hidden;
-  opacity: 0;
-  pointer-events: none;
-}
 body {
   top: 0 !important;
 }
@@ -464,27 +454,6 @@ body {
 body.reels-mode .app-top-loader-track {
   background: linear-gradient(90deg, rgba(8, 5, 3, 0.68), rgba(8, 5, 3, 0.3));
 }
-.goog-te-banner-frame.skiptranslate,
-.goog-te-menu-frame,
-.goog-tooltip,
-.goog-tooltip:hover,
-.goog-text-highlight {
-  display: none !important;
-}
-.goog-text-highlight {
-  background: transparent !important;
-  box-shadow: none !important;
-}
-.goog-logo-link,
-.goog-te-gadget span,
-.goog-te-gadget-simple span {
-  display: none !important;
-}
-.goog-te-gadget,
-.goog-te-combo {
-  font-size: 0 !important;
-}
-
 /* ============================================================
    BRAND SPLASH
    ============================================================ */
