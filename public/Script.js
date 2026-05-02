@@ -8252,7 +8252,7 @@ window.shareReel = shareReel;
 
 function renderReelCard(reel, index) {
   return `
-    <section class="reel-slide${index === 0 ? " is-active" : ""}" data-index="${index}" data-reel-id="${reel.id}">
+    <section class="reel-slide${index === 0 ? " is-active" : ""}" data-index="${index}" data-reel-id="${reel.id}" data-reel-src="${reel.src}">
       <div
         class="reel-stage"
         role="button"
@@ -8261,18 +8261,6 @@ function renderReelCard(reel, index) {
         onclick="toggleReelPlayback(event)"
         onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();toggleReelPlayback(event);}"
       >
-        <video
-          class="reel-video"
-          data-src="${reel.src}"
-          muted
-          loop
-          playsinline
-          webkit-playsinline
-          preload="none"
-          onloadedmetadata="updateReelProgressFromEvent(event)"
-          ontimeupdate="updateReelProgressFromEvent(event)"
-          onended="restartReelFromEvent(event)"
-        ></video>
         <div class="reel-progress" aria-hidden="true">
           <span class="reel-progress-fill"></span>
         </div>
@@ -8319,21 +8307,89 @@ function updateReelsNavButtons() {
   if (next) next.disabled = reelsActiveIndex >= reelsSession.length - 1;
 }
 
-function primeReelVideo(index, preloadMode = "metadata") {
-  const video = getReelVideo(index);
+function ensureReelVideoElement(index) {
+  var slide = getReelSlide(index);
+  if (!slide) return null;
+  var stage = slide.querySelector(".reel-stage");
+  if (!stage) return null;
+  var existing = stage.querySelector(".reel-video");
+  if (existing) return existing;
+  var src = slide.dataset.reelSrc || "";
+  if (!src) return null;
+  var video = document.createElement("video");
+  video.className = "reel-video";
+  video.dataset.src = src;
+  video.muted = true;
+  video.loop = true;
+  video.playsInline = true;
+  video.setAttribute("playsinline", "");
+  video.setAttribute("webkit-playsinline", "");
+  video.preload = "none";
+  video.addEventListener("loadedmetadata", updateReelProgressFromEvent);
+  video.addEventListener("timeupdate", updateReelProgressFromEvent);
+  video.addEventListener("ended", restartReelFromEvent);
+  video.addEventListener("error", function () {
+    var retries = parseInt(this.dataset.retries || "0", 10);
+    if (retries >= 3) return;
+    this.dataset.retries = String(retries + 1);
+    var retrySrc = this.dataset.src || "";
+    if (!retrySrc) return;
+    var self = this;
+    setTimeout(function () {
+      self.removeAttribute("src");
+      self.load();
+      self.src = retrySrc;
+      self.load();
+    }, (retries + 1) * 800);
+  });
+  stage.insertBefore(video, stage.firstChild);
+  return video;
+}
+
+function removeReelVideoElement(index) {
+  var slide = getReelSlide(index);
+  if (!slide) return;
+  var video = slide.querySelector(".reel-video");
+  if (!video) return;
+  try { video.pause(); } catch (e) { }
+  video.removeAttribute("src");
+  try { video.load(); } catch (e) { }
+  video.remove();
+}
+
+function primeReelVideo(index, preloadMode) {
+  if (typeof preloadMode === "undefined") preloadMode = "metadata";
+  var video = ensureReelVideoElement(index);
   if (!video) return null;
   if (preloadMode === "auto") video.preload = "auto";
   else if (!video.preload || video.preload === "none") video.preload = "metadata";
   if (video.dataset.loaded === "true") return video;
-  video.src = video.dataset.src || "";
+  var src = video.dataset.src || "";
+  if (!src) return null;
+  video.src = src;
   video.dataset.loaded = "true";
+  video.dataset.retries = "0";
   reelsLoaded.add(index);
   video.load();
   return video;
 }
 
+function unloadFarReels(activeIndex, keepRadius) {
+  if (typeof keepRadius !== "number" || keepRadius < 1) keepRadius = 2;
+  var toDelete = [];
+  reelsLoaded.forEach(function (loadedIndex) {
+    if (Math.abs(loadedIndex - activeIndex) <= keepRadius) return;
+    toDelete.push(loadedIndex);
+  });
+  toDelete.forEach(function (loadedIndex) {
+    removeReelVideoElement(loadedIndex);
+    reelsLoaded.delete(loadedIndex);
+  });
+}
+
 function loadReelWindow(index) {
-  [index - 1, index, index + 1, index + 2].forEach((target) => {
+  unloadFarReels(index, 2);
+  [index - 1, index, index + 1, index + 2].forEach(function (target) {
     if (target < 0 || target >= reelsSession.length) return;
     primeReelVideo(target, target === index || target === index + 1 ? "auto" : "metadata");
   });
