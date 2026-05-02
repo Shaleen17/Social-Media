@@ -103,7 +103,7 @@ function bridgeLiveAppState(name, read, write) {
       get: read,
       set: write,
     });
-  } catch {}
+  } catch { }
 }
 // Founder and add-on scripts need live access to the same session/profile state.
 bridgeLiveAppState("CU", () => CU, (value) => {
@@ -472,49 +472,50 @@ function flashAppTopLoader(duration = 220, options = {}) {
 
 const REELS_UPLOADER_NAME = "Tirth Sutra Community";
 const REELS_LIBRARY = [
-  { id: "reel-1", src: "https://videos-jjun.vercel.app/Reel1.mp4" },
-  { id: "reel-2", src: "https://videos-jjun.vercel.app/Reel2.mp4" },
-  { id: "reel-3", src: "https://videos-jjun.vercel.app/Reel3.mp4" },
-  { id: "reel-4", src: "https://videos-jjun.vercel.app/Reel4.mp4" },
-  { id: "reel-5", src: "https://videos-jjun.vercel.app/Reel5.mp4" },
-  { id: "reel-6", src: "https://videos-jjun.vercel.app/Reel6.mp4" },
-  { id: "reel-7", src: "https://videos-jjun.vercel.app/Reel7.mp4" },
-  { id: "reel-8", src: "https://videos-jjun.vercel.app/Reel8.mp4" },
-  { id: "reel-9", src: "https://videos-jjun.vercel.app/Reel9.mp4" },
-  { id: "reel-10", src: "https://videos-jjun.vercel.app/Reel10.mp4" },
-  { id: "reel-11", src: "https://videos-jjun.vercel.app/Reel11.mp4" },
-  { id: "reel-12", src: "https://videos-jjun.vercel.app/Reel12.mp4" },
-  { id: "reel-13", src: "https://videos-jjun.vercel.app/Reel13.mp4" },
-  { id: "reel-14", src: "https://videos-jjun.vercel.app/Reel14.mp4" },
-  { id: "reel-15", src: "https://videos-jjun.vercel.app/Reel15.mp4" },
-  { id: "reel-16", src: "https://videos-jjun.vercel.app/Reel16.mp4" },
-  { id: "reel-17", src: "https://videos-jjun.vercel.app/Reel17.mp4" },
-  { id: "reel-18", src: "https://videos-jjun.vercel.app/Reel18.mp4" },
-  { id: "reel-20", src: "https://videos-jjun.vercel.app/Reel20.mp4" },
-  { id: "reel-21", src: "https://videos-65t1.vercel.app/Reel21.mp4" },
-  { id: "reel-22", src: "https://videos-65t1.vercel.app/Reel22.mp4" },
-  { id: "reel-23", src: "https://videos-65t1.vercel.app/Reel23.mp4" },
-  { id: "reel-24", src: "https://videos-65t1.vercel.app/Reel24.mp4" },
-  { id: "reel-25", src: "https://videos-65t1.vercel.app/Reel25.mp4" },
-  { id: "reel-26", src: "https://videos-65t1.vercel.app/Reel26.mp4" },
-  { id: "reel-27", src: "https://videos-65t1.vercel.app/Reel27.mp4" },
-  { id: "reel-28", src: "https://videos-65t1.vercel.app/Reel28.mp4" },
-  { id: "reel-29", src: "https://videos-65t1.vercel.app/Reel29.mp4" },
-  { id: "reel-30", src: "https://videos-65t1.vercel.app/Reel30.mp4" },
-  { id: "reel-31", src: "https://videos-65t1.vercel.app/Reel31.mp4" },
-  { id: "reel-32", src: "https://videos-65t1.vercel.app/Reel32.mp4" },
-  { id: "reel-33", src: "https://videos-65t1.vercel.app/Reel33.mp4" },
-  { id: "reel-34", src: "https://videos-65t1.vercel.app/Reel34.mp4" },
-  { id: "reel-35", src: "https://videos-65t1.vercel.app/Reel35.mp4" },
-  { id: "reel-36", src: "https://videos-65t1.vercel.app/Reel36.mp4" },
-  { id: "reel-37", src: "https://videos-65t1.vercel.app/Reel37.mp4" },
-  { id: "reel-38", src: "https://videos-65t1.vercel.app/Reel38.mp4" },
-  { id: "reel-39", src: "https://videos-65t1.vercel.app/Reel39.mp4" },
-  { id: "reel-40", src: "https://videos-65t1.vercel.app/Reel40.mp4" },
-  { id: "reel-41", src: "https://videos-65t1.vercel.app/Reel41.mp4" },
-  { id: "reel-42", src: "https://videos-65t1.vercel.app/Reel42.mp4" },
-  { id: "reel-43", src: "https://videos-65t1.vercel.app/Reel43.mp4" },
-  { id: "reel-44", src: "https://videos-65t1.vercel.app/Reel44.mp4" },
+  { id: "reel-1", src: "https://videos-o57d.vercel.app/Reel1.mp4" },
+  { id: "reel-2", src: "https://videos-o57d.vercel.app/Reel2.mp4" },
+  { id: "reel-3", src: "https://videos-o57d.vercel.app/Reel3.mp4" },
+  { id: "reel-4", src: "https://videos-o57d.vercel.app/Reel4.mp4" },
+  { id: "reel-5", src: "https://videos-o57d.vercel.app/Reel5.mp4" },
+  { id: "reel-6", src: "https://videos-o57d.vercel.app/Reel6.mp4" },
+  { id: "reel-7", src: "https://videos-o57d.vercel.app/Reel7.mp4" },
+  { id: "reel-8", src: "https://videos-o57d.vercel.app/Reel8.mp4" },
+  { id: "reel-9", src: "https://videos-o57d.vercel.app/Reel9.mp4" },
+  { id: "reel-10", src: "https://videos-o57d.vercel.app/Reel10.mp4" },
+  { id: "reel-11", src: "https://videos-o57d.vercel.app/Reel11.mp4" },
+  { id: "reel-12", src: "https://videos-o57d.vercel.app/Reel12.mp4" },
+  { id: "reel-13", src: "https://videos-o57d.vercel.app/Reel13.mp4" },
+  { id: "reel-14", src: "https://videos-o57d.vercel.app/Reel14.mp4" },
+  { id: "reel-15", src: "https://videos-o57d.vercel.app/Reel15.mp4" },
+  { id: "reel-16", src: "https://videos-o57d.vercel.app/Reel16.mp4" },
+  { id: "reel-17", src: "https://videos-o57d.vercel.app/Reel17.mp4" },
+  { id: "reel-18", src: "https://videos-o57d.vercel.app/Reel18.mp4" },
+  { id: "reel-19", src: "https://videos-o57d.vercel.app/Reel19.mp4" },
+  { id: "reel-20", src: "https://videos-o57d.vercel.app/Reel20.mp4" },
+  { id: "reel-21", src: "https://videos-o57d.vercel.app/Reel21.mp4" },
+  { id: "reel-22", src: "https://videos-o57d.vercel.app/Reel22.mp4" },
+  { id: "reel-23", src: "https://videos-o57d.vercel.app/Reel23.mp4" },
+  { id: "reel-24", src: "https://videos-o57d.vercel.app/Reel24.mp4" },
+  { id: "reel-25", src: "https://videos-o57d.vercel.app/Reel25.mp4" },
+  { id: "reel-26", src: "https://videos-o57d.vercel.app/Reel26.mp4" },
+  { id: "reel-27", src: "https://videos-o57d.vercel.app/Reel27.mp4" },
+  { id: "reel-28", src: "https://videos-o57d.vercel.app/Reel28.mp4" },
+  { id: "reel-29", src: "https://videos-o57d.vercel.app/Reel29.mp4" },
+  { id: "reel-30", src: "https://videos-o57d.vercel.app/Reel30.mp4" },
+  { id: "reel-31", src: "https://videos-o57d.vercel.app/Reel31.mp4" },
+  { id: "reel-32", src: "https://videos-o57d.vercel.app/Reel32.mp4" },
+  { id: "reel-33", src: "https://videos-o57d.vercel.app/Reel33.mp4" },
+  { id: "reel-34", src: "https://videos-o57d.vercel.app/Reel34.mp4" },
+  { id: "reel-35", src: "https://videos-o57d.vercel.app/Reel35.mp4" },
+  { id: "reel-36", src: "https://videos-o57d.vercel.app/Reel36.mp4" },
+  { id: "reel-37", src: "https://videos-o57d.vercel.app/Reel37.mp4" },
+  { id: "reel-38", src: "https://videos-o57d.vercel.app/Reel38.mp4" },
+  { id: "reel-39", src: "https://videos-o57d.vercel.app/Reel39.mp4" },
+  { id: "reel-40", src: "https://videos-o57d.vercel.app/Reel40.mp4" },
+  { id: "reel-41", src: "https://videos-o57d.vercel.app/Reel41.mp4" },
+  { id: "reel-42", src: "https://videos-o57d.vercel.app/Reel42.mp4" },
+  { id: "reel-43", src: "https://videos-o57d.vercel.app/Reel43.mp4" },
+  { id: "reel-44", src: "https://videos-o57d.vercel.app/Reel44.mp4" },
   { id: "reel-45", src: "https://videos-o57d.vercel.app/Reel45.mp4" },
   { id: "reel-46", src: "https://videos-o57d.vercel.app/Reel46.mp4" },
   { id: "reel-47", src: "https://videos-o57d.vercel.app/Reel47.mp4" },
@@ -542,7 +543,7 @@ const REELS_LIBRARY = [
   { id: "reel-69", src: "https://videos-o57d.vercel.app/Reel69.mp4" },
   { id: "reel-70", src: "https://videos-o57d.vercel.app/Reel70.mp4" },
   { id: "reel-71", src: "https://videos-o57d.vercel.app/Reel71.mp4" },
-  { id: "reel-72", src: "https://videos-o57d.vercel.app/Reel72.mp4" },
+  { id: "reel-72", src: "https://videos-o57d.vercel.app/Reel72.mp4" }
 ];
 const REELS_PREFERS_REDUCED_MOTION = !!(
   window.matchMedia &&
@@ -1483,7 +1484,7 @@ function warmStoryMedia(item) {
       img.src = item.src;
       storyMediaWarmCache.set(item.src, img);
     }
-  } catch {}
+  } catch { }
 }
 function preloadStoryNeighborhood(profiles, pi, ii) {
   const candidates = [];
@@ -1634,25 +1635,25 @@ function stopMediaPlaybackInContainer(container) {
   container.querySelectorAll("video, audio").forEach((media) => {
     try {
       media.pause();
-    } catch {}
+    } catch { }
     try {
       media.muted = true;
-    } catch {}
+    } catch { }
     try {
       media.currentTime = 0;
-    } catch {}
+    } catch { }
     try {
       media.removeAttribute("autoplay");
-    } catch {}
+    } catch { }
     try {
       media.removeAttribute("src");
-    } catch {}
+    } catch { }
     try {
       media.querySelectorAll("source").forEach((source) => source.removeAttribute("src"));
-    } catch {}
+    } catch { }
     try {
       media.load();
-    } catch {}
+    } catch { }
   });
 }
 function stopVideoDetailPlayback() {
@@ -2724,12 +2725,12 @@ function getMorePrefs() {
         ? saved.privateAccount
         : typeof CU?.privateAccount === "boolean"
           ? CU.privateAccount
-        : MORE_DEFAULT_PREFS.privateAccount,
+          : MORE_DEFAULT_PREFS.privateAccount,
     blockedUsers: Array.isArray(saved.blockedUsers)
       ? Array.from(new Set(saved.blockedUsers.filter(Boolean)))
       : Array.isArray(CU?.blockedUsers)
         ? Array.from(new Set(CU.blockedUsers.filter(Boolean)))
-      : [],
+        : [],
   };
 }
 
@@ -3150,7 +3151,7 @@ function primeLanguageTranslation(languageCode) {
         delay: 50,
       });
     })
-    .catch(() => {});
+    .catch(() => { });
 }
 
 function getTranslationApiBase() {
@@ -3164,7 +3165,7 @@ function getTranslationApiBase() {
 
   const origin =
     window.location.hostname === "localhost" ||
-    window.location.hostname === "127.0.0.1"
+      window.location.hostname === "127.0.0.1"
       ? "http://localhost:5000"
       : window.location.origin;
   return origin.replace(/\/+$/, "") + "/api";
@@ -3337,7 +3338,7 @@ async function getTranslatedTexts(texts, targetLanguage) {
               bucket[text] = translated;
             }
           });
-        } catch {}
+        } catch { }
       }),
     );
   }
@@ -3984,22 +3985,22 @@ function copyTextToClipboard(text, successMessage = "Copied.") {
     navigator.clipboard && window.isSecureContext
       ? navigator.clipboard.writeText(text)
       : new Promise((resolve, reject) => {
-          try {
-            const area = document.createElement("textarea");
-            area.value = text;
-            area.setAttribute("readonly", "");
-            area.style.position = "fixed";
-            area.style.opacity = "0";
-            document.body.appendChild(area);
-            area.focus();
-            area.select();
-            const ok = document.execCommand("copy");
-            area.remove();
-            ok ? resolve() : reject(new Error("copy_failed"));
-          } catch (err) {
-            reject(err);
-          }
-        });
+        try {
+          const area = document.createElement("textarea");
+          area.value = text;
+          area.setAttribute("readonly", "");
+          area.style.position = "fixed";
+          area.style.opacity = "0";
+          document.body.appendChild(area);
+          area.focus();
+          area.select();
+          const ok = document.execCommand("copy");
+          area.remove();
+          ok ? resolve() : reject(new Error("copy_failed"));
+        } catch (err) {
+          reject(err);
+        }
+      });
 
   copyTask
     .then(() => MC.success(successMessage))
@@ -5220,15 +5221,15 @@ function renderHelpSupportPage() {
   if (!page) return;
   const accountCta = CU
     ? {
-        title: "Open your profile",
-        desc: "Manage your public details and account activity from one place.",
-        label: "Open Profile",
-      }
+      title: "Open your profile",
+      desc: "Manage your public details and account activity from one place.",
+      label: "Open Profile",
+    }
     : {
-        title: "Sign in or create an account",
-        desc: "Get help with login, bookmarks, community activity, and more.",
-        label: "Open Account Help",
-      };
+      title: "Sign in or create an account",
+      desc: "Get help with login, bookmarks, community activity, and more.",
+      label: "Open Account Help",
+    };
 
   page.innerHTML = `
     <div class="fhdr about-page-header">
@@ -5429,13 +5430,13 @@ function renderHelpSupportPage() {
         </div>
         <div class="more-faq-list">
           ${MORE_FAQS.map(
-            (item, idx) => `
+    (item, idx) => `
               <details class="more-faq"${idx === 0 ? " open" : ""}>
                 <summary>${esc(item.q)}</summary>
                 <p>${esc(item.a)}</p>
               </details>
             `,
-          ).join("")}
+  ).join("")}
         </div>
       </section>
     </div>
@@ -5522,7 +5523,7 @@ function renderInviteFriendsPage(options = {}) {
         </div>
       </section>
       ${!isSignedIn
-        ? `
+      ? `
           <section class="more-surface-card more-surface-card-feature">
             <div class="more-section-head">
               <div>
@@ -5536,14 +5537,14 @@ function renderInviteFriendsPage(options = {}) {
             </div>
           </section>
         `
-        : ""}
+      : ""}
       ${activeReferralCode && !isSignedIn
-        ? `
+      ? `
           <div class="more-empty-note">
             An invite code is already attached on this device. If you sign up now, it will be carried into your account automatically.
           </div>
         `
-        : ""}
+      : ""}
     </div>
   `;
 
@@ -5578,8 +5579,8 @@ function renderBlockedUsersPanel() {
 
   listEl.innerHTML = blockedUsers.length
     ? blockedUsers
-        .map(
-          (user) => `
+      .map(
+        (user) => `
             <div class="more-user-row">
               <div class="more-user-main">
                 ${avHTML(user.id, "av40")}
@@ -5593,8 +5594,8 @@ function renderBlockedUsersPanel() {
               </button>
             </div>
           `,
-        )
-        .join("")
+      )
+      .join("")
     : `
         <div class="more-empty-note">
           No blocked users yet. Search below to manage your list.
@@ -5603,8 +5604,8 @@ function renderBlockedUsersPanel() {
 
   suggestionsEl.innerHTML = suggestions.length
     ? suggestions
-        .map(
-          (user) => `
+      .map(
+        (user) => `
             <button class="more-user-suggestion" type="button" onclick="blockUserFromSettings('${user.id}')">
               <div class="more-user-main">
                 ${avHTML(user.id, "av36")}
@@ -5616,8 +5617,8 @@ function renderBlockedUsersPanel() {
               <span class="more-suggestion-cta">Block</span>
             </button>
           `,
-        )
-        .join("")
+      )
+      .join("")
     : `
         <div class="more-empty-note">
           ${query ? "No devotees matched your search." : "Suggestions will appear here."}
@@ -5680,7 +5681,7 @@ function renderSettingsPrivacyPage() {
         </div>
         <div class="more-settings-list more-settings-list-cards">
           ${MORE_NOTIFICATION_OPTIONS.map(
-            (item) => `
+    (item) => `
               <div class="more-settings-row more-settings-row-card">
                 <div class="more-settings-copy">
                   <strong>${esc(item.title)}</strong>
@@ -5696,7 +5697,7 @@ function renderSettingsPrivacyPage() {
                 </button>
               </div>
             `,
-          ).join("")}
+  ).join("")}
         </div>
       </section>
       <div class="more-settings-grid more-settings-grid-refined">
@@ -5713,8 +5714,8 @@ function renderSettingsPrivacyPage() {
               <strong>Private account</strong>
               <span>
                 ${CU
-                  ? "Control who can follow and view your profile activity."
-                  : "Sign in to manage account privacy settings."}
+      ? "Control who can follow and view your profile activity."
+      : "Sign in to manage account privacy settings."}
               </span>
             </div>
             <button
@@ -5726,21 +5727,20 @@ function renderSettingsPrivacyPage() {
               <span></span>
             </button>
           </div>
-          ${
-            CU
-              ? `
+          ${CU
+      ? `
                 <div class="more-privacy-note">
                   Your account is currently
                   <span class="more-status-pill">${prefs.privateAccount ? "private" : "public"}</span>
                   for new profile access.
                 </div>
               `
-              : `
+      : `
                 <div class="more-empty-note">
                   Sign in to save privacy settings to your account.
                 </div>
               `
-          }
+    }
         </section>
         <section class="more-surface-card more-surface-card-feature">
           <div class="more-section-head">
@@ -5798,9 +5798,8 @@ function renderSettingsPrivacyPage() {
             <p>Search devotees by name or handle and manage them from one place.</p>
           </div>
         </div>
-        ${
-          CU
-            ? `
+        ${CU
+      ? `
               <div class="more-block-search">
                 <svg viewBox="0 0 24 24">
                   <circle cx="11" cy="11" r="8"></circle>
@@ -5825,7 +5824,7 @@ function renderSettingsPrivacyPage() {
                 </div>
               </div>
             `
-            : `
+      : `
               <div class="more-empty-note">
                 Sign in to keep a blocked-users list for your account.
               </div>
@@ -5833,7 +5832,7 @@ function renderSettingsPrivacyPage() {
                 <button class="btn btn-p" type="button" onclick="openOvl('authOvl')">Sign In</button>
               </div>
             `
-        }
+    }
       </section>
     </div>
   `;
@@ -6039,7 +6038,7 @@ function gp(page) {
       inviteFriends: () => renderInviteFriendsPage(),
       profile: () => renderProfile(curProfId || getCurrentUserId()),
       chats: () => renderChatsPage(),
-      about: () => {},
+      about: () => { },
       authenticBrands: () => renderAuthenticBrandsPage(),
       helpSupport: () => renderHelpSupportPage(),
       settingsPrivacy: () => renderSettingsPrivacyPage(),
@@ -8319,9 +8318,12 @@ function ensureReelVideoElement(index) {
   var video = document.createElement("video");
   video.className = "reel-video";
   video.dataset.src = src;
+  video.crossOrigin = "anonymous";
   video.muted = true;
   video.loop = true;
   video.playsInline = true;
+  video.autoplay = false;
+  video.setAttribute("muted", "");
   video.setAttribute("playsinline", "");
   video.setAttribute("webkit-playsinline", "");
   video.preload = "none";
@@ -8349,6 +8351,10 @@ function ensureReelVideoElement(index) {
 function removeReelVideoElement(index) {
   var slide = getReelSlide(index);
   if (!slide) return;
+  if (slide.__reelPlayTimer) {
+    clearTimeout(slide.__reelPlayTimer);
+    slide.__reelPlayTimer = 0;
+  }
   var video = slide.querySelector(".reel-video");
   if (!video) return;
   try { video.pause(); } catch (e) { }
@@ -8397,21 +8403,88 @@ function loadReelWindow(index) {
 
 function playReel(index) {
   if (curPage !== "reels") return;
-  const video = primeReelVideo(index, "auto");
-  const slide = getReelSlide(index);
+  var video = primeReelVideo(index, "auto");
+  var slide = getReelSlide(index);
   if (!video || !slide) return;
   video.muted = reelsMuted;
   video.loop = true;
   video.playsInline = true;
-  const startPlayback = () => {
+
+  // Clear any previous playback timer on this slide
+  if (slide.__reelPlayTimer) {
+    clearTimeout(slide.__reelPlayTimer);
+    slide.__reelPlayTimer = 0;
+  }
+
+  var attemptCount = 0;
+  var maxAttempts = 40; // 40 x 200ms = 8 seconds max wait
+  var rebuildCount = 0;
+  var maxRebuilds = 3;
+
+  function tryPlay() {
+    // Bail if we navigated away
     if (curPage !== "reels" || reelsActiveIndex !== index) return;
-    video.play().then(() => {
-      slide.classList.remove("is-paused");
-    }).catch(() => { });
-  };
-  if (video.readyState >= 2) startPlayback();
-  else video.addEventListener("loadeddata", startPlayback, { once: true });
+
+    // Re-get video in case it was rebuilt
+    video = getReelVideo(index);
+    if (!video) return;
+
+    attemptCount++;
+
+    if (video.readyState >= 2) {
+      video.play().then(function () {
+        slide.classList.remove("is-paused");
+      }).catch(function () {
+        // Autoplay blocked — try muted
+        video.muted = true;
+        reelsMuted = true;
+        updateReelsMuteButtons();
+        video.play().catch(function () { });
+      });
+      return;
+    }
+
+    // Check for network error state
+    if ((video.error || video.networkState === 3) && rebuildCount < maxRebuilds) {
+      // Video errored — force rebuild the element
+      rebuildCount++;
+      removeReelVideoElement(index);
+      reelsLoaded.delete(index);
+      video = primeReelVideo(index, "auto");
+      if (video) {
+        video.muted = reelsMuted;
+        video.loop = true;
+        video.playsInline = true;
+      }
+      attemptCount = 0; // Reset for new element
+    }
+
+    if (attemptCount < maxAttempts) {
+      slide.__reelPlayTimer = setTimeout(tryPlay, 200);
+    } else if (rebuildCount < maxRebuilds) {
+      // Last resort: destroy and rebuild entirely
+      rebuildCount++;
+      removeReelVideoElement(index);
+      reelsLoaded.delete(index);
+      video = primeReelVideo(index, "auto");
+      if (video) {
+        video.muted = reelsMuted;
+        video.loop = true;
+        video.playsInline = true;
+        // One final attempt after rebuild
+        video.addEventListener("canplay", function finalTry() {
+          video.removeEventListener("canplay", finalTry);
+          if (curPage === "reels" && reelsActiveIndex === index) {
+            video.play().catch(function () { });
+          }
+        });
+      }
+    }
+  }
+
+  tryPlay();
 }
+
 
 function pauseAllReels() {
   document.querySelectorAll("#reelsFeed .reel-video").forEach((video) => {
@@ -8644,7 +8717,7 @@ function scheduleVideoPageWarmRefresh() {
           renderLive: true,
           renderDetail: false,
         })
-        .catch(() => {});
+        .catch(() => { });
     };
 
     if (typeof window.requestIdleCallback === "function") {
@@ -8671,7 +8744,7 @@ function teardownLivePreviewPlayback() {
     .forEach((video) => {
       try {
         video.pause();
-      } catch (err) {}
+      } catch (err) { }
     });
 }
 function syncTirthTubePerformanceState(page = curPage) {
@@ -8937,12 +9010,12 @@ function ensureVideoDetailRealtimeLoop() {
   if (videoDetailRealtimeTimer) return;
 
   videoDetailRealtimeTimer = window.setInterval(() => {
-    refreshActiveVideoDetailRealtime({ render: true }).catch(() => {});
+    refreshActiveVideoDetailRealtime({ render: true }).catch(() => { });
   }, VIDEO_DETAIL_REALTIME_INTERVAL_MS);
 
   document.addEventListener("visibilitychange", () => {
     if (isVideoDetailRealtimeActive()) {
-      refreshActiveVideoDetailRealtime({ render: true }).catch(() => {});
+      refreshActiveVideoDetailRealtime({ render: true }).catch(() => { });
     }
   });
 }
@@ -8961,19 +9034,19 @@ function renderVidStories() {
   // Add story button
   const addBtn = document.createElement("div");
   addBtn.className = "add-story-btn";
-  addBtn.onclick = function() { auth(() => openOvl('addStoryModal')); };
+  addBtn.onclick = function () { auth(() => openOvl('addStoryModal')); };
   addBtn.innerHTML = `<div class="add-story-ring"><svg viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg></div><div class="s-lbl">Add Story</div>`;
   row.appendChild(addBtn);
 
-  profiles.forEach(function(profile, i) {
+  profiles.forEach(function (profile, i) {
     const resolvedProfile = resolveVidStoryProfile(profile);
     warmStoryMedia(resolvedProfile.items && resolvedProfile.items[0]);
-    const ini = (resolvedProfile.name || "U").split(" ").map(function(x) { return x[0]; }).join("").slice(0, 2).toUpperCase();
-    const allSeen = resolvedProfile.items && resolvedProfile.items.every(function(item) { return seen.includes(item.id); });
+    const ini = (resolvedProfile.name || "U").split(" ").map(function (x) { return x[0]; }).join("").slice(0, 2).toUpperCase();
+    const allSeen = resolvedProfile.items && resolvedProfile.items.every(function (item) { return seen.includes(item.id); });
 
     const storyDiv = document.createElement("div");
     storyDiv.className = "story";
-    storyDiv.onclick = function() { viewVidStory(i); };
+    storyDiv.onclick = function () { viewVidStory(i); };
 
     const ring = document.createElement("div");
     ring.className = "s-ring" + (allSeen ? " seen" : "");
@@ -8985,7 +9058,7 @@ function renderVidStories() {
       const img = document.createElement("img");
       img.src = resolvedProfile.avatar;
       img.alt = resolvedProfile.name || "";
-      img.onerror = function() {
+      img.onerror = function () {
         this.parentNode.innerHTML = "";
         this.parentNode.textContent = ini;
       };
@@ -9128,7 +9201,7 @@ function _renderProfileStory() {
   const totalItems = profile.items.length;
   const barsEl = document.getElementById("svBars");
   if (barsEl) {
-    barsEl.innerHTML = Array.from({length: totalItems}, (_, j) =>
+    barsEl.innerHTML = Array.from({ length: totalItems }, (_, j) =>
       `<div class="sv-seg"><div class="sv-fill" id="svf${j}" style="width:${j < ii ? '100%' : '0%'}"></div></div>`
     ).join("");
   }
@@ -9152,7 +9225,7 @@ function _renderProfileStory() {
   if (target) {
     // Stop any previous video
     const oldVid = target.querySelector("video");
-    if (oldVid) { try { oldVid.pause(); oldVid.src = ""; } catch(e){} }
+    if (oldVid) { try { oldVid.pause(); oldVid.src = ""; } catch (e) { } }
     if (item.type === "video" && item.src) {
       target.innerHTML = `<video src="${item.src}" autoplay playsinline webkit-playsinline preload="metadata" class="sv-story-media" id="svVid"></video>`;
       const vid = target.querySelector("video");
@@ -9166,7 +9239,7 @@ function _renderProfileStory() {
             ? ""
             : `${vid.videoWidth} / ${vid.videoHeight}`;
         }, { once: true });
-        vid.play().catch(() => { vid.muted = true; vid.play().catch(() => {}); });
+        vid.play().catch(() => { vid.muted = true; vid.play().catch(() => { }); });
         // Update sound button icon
         const sndBtn = document.getElementById('svSound');
         if (sndBtn) sndBtn.innerHTML = '<svg viewBox="0 0 24 24"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07"/></svg>';
@@ -9224,7 +9297,7 @@ function _renderProfileStory() {
   const svCard = document.getElementById('svCard');
   if (svCard && !svCard._svClickBound) {
     svCard._svClickBound = true;
-    svCard.addEventListener('click', function(e) {
+    svCard.addEventListener('click', function (e) {
       if (Date.now() < _svIgnoreClickUntil) return;
       // Don't hijack clicks on buttons
       if (e.target.closest('button') || e.target.closest('.sv-tap-left') || e.target.closest('.sv-tap-right')) return;
@@ -9239,7 +9312,7 @@ function _renderProfileStory() {
 function _svBindKeyboard() {
   if (_svKeyboardBound) return;
   _svKeyboardBound = true;
-  document.addEventListener("keydown", function(event) {
+  document.addEventListener("keydown", function (event) {
     const sv = document.getElementById("sv");
     if (!sv || !sv.classList.contains("show")) return;
     const activeTag = document.activeElement?.tagName;
@@ -9295,7 +9368,7 @@ function _renderSVPreviews() {
   if (nextBtn) nextBtn.style.opacity = pi < profiles.length - 1 ? "1" : "0.2";
 
   const renderPrev = (el, profileData) => {
-    if (!el || !profileData) { if(el) el.classList.add("hide"); return; }
+    if (!el || !profileData) { if (el) el.classList.add("hide"); return; }
     el.classList.remove("hide");
     const firstItem = profileData.items[0];
     const mediaHtml = firstItem && firstItem.type === "video" && firstItem.src
@@ -9433,7 +9506,7 @@ function setupLivePreviewPlayback(container) {
     videos.forEach((video) => {
       try {
         video.pause();
-      } catch (err) {}
+      } catch (err) { }
     });
     return;
   }
@@ -9441,7 +9514,7 @@ function setupLivePreviewPlayback(container) {
   if (typeof IntersectionObserver !== "function") {
     videos.slice(0, 2).forEach((video) => {
       video.muted = true;
-      video.play().catch(() => {});
+      video.play().catch(() => { });
     });
     return;
   }
@@ -9452,7 +9525,7 @@ function setupLivePreviewPlayback(container) {
         const video = entry.target;
         if (entry.isIntersecting && entry.intersectionRatio >= 0.35) {
           video.muted = true;
-          video.play().catch(() => {});
+          video.play().catch(() => { });
         } else {
           video.pause();
         }
@@ -9477,7 +9550,7 @@ function teardownVideoFeedPreviewPlayback() {
     .forEach((video) => {
       try {
         video.pause();
-      } catch (err) {}
+      } catch (err) { }
     });
 }
 
@@ -9491,7 +9564,7 @@ function teardownInlineVideoPreviewFrames() {
     .forEach((video) => {
       try {
         video.pause();
-      } catch (err) {}
+      } catch (err) { }
     });
 }
 
@@ -9532,7 +9605,7 @@ function primeVideoPreviewFrame(video) {
     cleanup();
     try {
       video.pause();
-    } catch (err) {}
+    } catch (err) { }
     video.dataset.previewReady = "1";
     video.dataset.previewPriming = "0";
   };
@@ -9545,7 +9618,7 @@ function primeVideoPreviewFrame(video) {
     video.dataset.previewPriming = "0";
     try {
       video.pause();
-    } catch (err) {}
+    } catch (err) { }
   };
 
   const seekFrame = () => {
@@ -9632,7 +9705,7 @@ function setupVideoFeedPreviewPlayback(container) {
     videos.forEach((video) => {
       try {
         video.pause();
-      } catch (err) {}
+      } catch (err) { }
     });
     return;
   }
@@ -9651,7 +9724,7 @@ function setupVideoFeedPreviewPlayback(container) {
         } else {
           try {
             video.pause();
-          } catch (err) {}
+          } catch (err) { }
         }
       });
     },
@@ -9683,7 +9756,7 @@ function renderLiveSection() {
     .join("");
   // Force play all live preview videos (muted)
   requestAnimationFrame(() => {
-    c.querySelectorAll("video").forEach(v => { v.muted = true; v.play().catch(() => {}); });
+    c.querySelectorAll("video").forEach(v => { v.muted = true; v.play().catch(() => { }); });
   });
 }
 function playLive(id) {
@@ -9773,16 +9846,16 @@ function renderVidFeed() {
     if (!CU) {
       const emptyKey = "uploads:guest";
       if (videoFeedLastEmptyState === emptyKey && c.childElementCount) return;
-    if (videoFeedChunkFrame) {
-      window.cancelAnimationFrame(videoFeedChunkFrame);
-      videoFeedChunkFrame = 0;
-    }
-    teardownVideoFeedPreviewPlayback();
-    videoFeedLastSignature = "";
-    videoFeedLastEmptyState = emptyKey;
-    c.setAttribute("aria-busy", "false");
-    c.innerHTML = `<div class="empty"><div class="empty-ico">📹</div><div class="empty-ttl">Sign in to see your uploads</div><button class="btn btn-p" style="margin-top:14px" onclick="openOvl('authOvl')">Sign In</button></div>`;
-    return;
+      if (videoFeedChunkFrame) {
+        window.cancelAnimationFrame(videoFeedChunkFrame);
+        videoFeedChunkFrame = 0;
+      }
+      teardownVideoFeedPreviewPlayback();
+      videoFeedLastSignature = "";
+      videoFeedLastEmptyState = emptyKey;
+      c.setAttribute("aria-busy", "false");
+      c.innerHTML = `<div class="empty"><div class="empty-ico">📹</div><div class="empty-ttl">Sign in to see your uploads</div><button class="btn btn-p" style="margin-top:14px" onclick="openOvl('authOvl')">Sign In</button></div>`;
+      return;
     }
     vids = vids.filter((v) => v.uid === CU.id);
   }
@@ -10085,7 +10158,7 @@ async function openVideoWatch(id, focus = "") {
   syncVideoDetailState({ type: "watch", id, focus });
   videoDetailRealtimeStatus = "syncing";
   renderVideoWatchModal(id, focus);
-  refreshActiveVideoDetailRealtime({ render: true }).catch(() => {});
+  refreshActiveVideoDetailRealtime({ render: true }).catch(() => { });
 }
 function renderVideoChannelModalLegacy(uid) {
   const c = document.getElementById("videoDetailContent");
@@ -10143,7 +10216,7 @@ function openVideoChannel(uid) {
   syncVideoDetailState({ type: "channel", uid });
   videoDetailRealtimeStatus = "syncing";
   renderVideoChannelModal(uid);
-  refreshActiveVideoDetailRealtime({ render: true }).catch(() => {});
+  refreshActiveVideoDetailRealtime({ render: true }).catch(() => { });
 }
 function captureVideoDetailUiState() {
   const detailBody = document.querySelector("#videoDetailOvl .video-detail-body");
@@ -10178,14 +10251,14 @@ function captureVideoDetailUiState() {
     playback:
       activePlayer && activeVidWatchId
         ? {
-            currentTime: Number(activePlayer.currentTime) || 0,
-            paused: !!activePlayer.paused,
-            muted: !!activePlayer.muted,
-            volume: Number.isFinite(activePlayer.volume) ? activePlayer.volume : 1,
-            playbackRate: Number.isFinite(activePlayer.playbackRate)
-              ? activePlayer.playbackRate
-              : 1,
-          }
+          currentTime: Number(activePlayer.currentTime) || 0,
+          paused: !!activePlayer.paused,
+          muted: !!activePlayer.muted,
+          volume: Number.isFinite(activePlayer.volume) ? activePlayer.volume : 1,
+          playbackRate: Number.isFinite(activePlayer.playbackRate)
+            ? activePlayer.playbackRate
+            : 1,
+        }
         : null,
   };
 }
@@ -10229,10 +10302,10 @@ function restoreVideoDetailUiState(snapshot) {
       activePlayer.volume = snapshot.playback.volume;
       activePlayer.playbackRate = snapshot.playback.playbackRate;
       activePlayer.currentTime = snapshot.playback.currentTime;
-    } catch {}
+    } catch { }
 
     if (!snapshot.playback.paused) {
-      activePlayer.play().catch(() => {});
+      activePlayer.play().catch(() => { });
     }
   };
 
@@ -10703,7 +10776,7 @@ function clearLivePreviewObjectUrl() {
   if (!livePreviewObjectUrl) return;
   try {
     URL.revokeObjectURL(livePreviewObjectUrl);
-  } catch {}
+  } catch { }
   livePreviewObjectUrl = null;
 }
 function resetGoLiveComposer() {
@@ -10719,11 +10792,11 @@ function resetGoLiveComposer() {
   if (vid) {
     try {
       vid.pause();
-    } catch {}
+    } catch { }
     vid.removeAttribute("src");
     try {
       vid.load();
-    } catch {}
+    } catch { }
     vid.style.display = "none";
   }
   const ph = document.getElementById("livePreviewPlaceholder");
@@ -10803,7 +10876,7 @@ async function startLive() {
     closeOvl("goLiveModal");
 
     if (typeof window.refreshLiveStreamsFromBackend === "function") {
-      window.refreshLiveStreamsFromBackend({ render: curPage === "video" }).catch(() => {});
+      window.refreshLiveStreamsFromBackend({ render: curPage === "video" }).catch(() => { });
     }
 
     MC.success("You are now LIVE! 🔴 Jai Shri Ram");
@@ -12233,11 +12306,11 @@ function renderWidgets() {
       cachedTrendingHtml !== null
         ? cachedTrendingHtml
         : setAppDataCache(
-            "trending",
-            trendingCacheKey,
-            renderTrendingItems(5),
-            APP_DATA_CACHE_TTLS.trending,
-          );
+          "trending",
+          trendingCacheKey,
+          renderTrendingItems(5),
+          APP_DATA_CACHE_TTLS.trending,
+        );
     tw.innerHTML = trendingHtml;
   }
   const wf = document.getElementById("wtfW");
