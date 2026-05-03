@@ -1,0 +1,76 @@
+name: Backend Cron Jobs
+
+on:
+  workflow_dispatch:
+    inputs:
+      job:
+        description: Specific backend cron job to run. Leave empty to run all configured jobs.
+        required: false
+        type: choice
+        options:
+          - ""
+          - refresh-discovery-snapshots
+          - notification-maintenance
+          - cleanup-auth-and-messages
+          - reconcile-donations
+          - process-email-campaign-queue
+  schedule:
+    - cron: "2,7,12,17,22,27,32,37,42,47,52,57 * * * *"
+    - cron: "4,19,34,49 * * * *"
+    - cron: "9,19,29,39,49,59 * * * *"
+    - cron: "14 * * * *"
+
+jobs:
+  run-scheduled-job:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      BACKEND_BASE_URL: ${{ vars.BACKEND_BASE_URL }}
+      CRON_SECRET: ${{ secrets.CRON_SECRET }}
+      MANUAL_JOB: ${{ inputs.job }}
+      SCHEDULE: ${{ github.event.schedule }}
+    steps:
+      - name: Validate configuration
+        run: |
+          test -n "$BACKEND_BASE_URL" || (echo "Missing repository variable BACKEND_BASE_URL" && exit 1)
+          test -n "$CRON_SECRET" || (echo "Missing repository secret CRON_SECRET" && exit 1)
+
+      - name: Run requested cron job
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          trigger_job() {
+            local job_name="$1"
+            echo "Triggering ${job_name}"
+            curl --fail --silent --show-error \
+              -X POST \
+              -H "x-cron-secret: ${CRON_SECRET}" \
+              -H "x-cron-trigger: github-actions" \
+              "${BACKEND_BASE_URL%/}/api/cron/run/${job_name}"
+            echo
+          }
+
+          if [[ -n "${MANUAL_JOB}" ]]; then
+            trigger_job "${MANUAL_JOB}"
+            exit 0
+          fi
+
+          case "${SCHEDULE}" in
+            "2,7,12,17,22,27,32,37,42,47,52,57 * * * *")
+              trigger_job "refresh-discovery-snapshots"
+              ;;
+            "4,19,34,49 * * * *")
+              trigger_job "notification-maintenance"
+              ;;
+            "9,19,29,39,49,59 * * * *")
+              trigger_job "reconcile-donations"
+              ;;
+            "14 * * * *")
+              trigger_job "cleanup-auth-and-messages"
+              ;;
+            *)
+              echo "No job mapped for schedule: ${SCHEDULE}"
+              exit 1
+              ;;
+          esac
