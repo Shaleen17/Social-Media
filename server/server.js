@@ -82,7 +82,9 @@ const analyticsRoutes = require("./routes/analytics");
 const founderRoutes = require("./routes/founder");
 const bootstrapRoutes = require("./routes/bootstrap");
 const feedRoutes = require("./routes/feed");
+const cronRoutes = require("./routes/cron");
 const { startEmailCampaignWorker } = require("./services/emailCampaignService");
+const { startInlineCronScheduler } = require("./cron/scheduler");
 
 const app = express();
 const server = http.createServer(app);
@@ -216,6 +218,7 @@ app.use("/api/analytics", analyticsRoutes);
 app.use("/api/founder", founderRoutes);
 app.use("/api/bootstrap", bootstrapRoutes);
 app.use("/api/feed", feedRoutes);
+app.use("/api/cron", cronRoutes);
 
 // Health check
 app.get("/api/health", (req, res) => {
@@ -389,6 +392,7 @@ app.use((err, req, res, next) => {
 connectDB()
   .then(() => {
     startEmailCampaignWorker();
+    startInlineCronScheduler();
     scheduleDatabaseBackups();
   })
   .catch((error) => log("error", "Database startup failed", { error: error.message }));

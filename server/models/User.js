@@ -147,6 +147,7 @@ userSchema.pre("save", function (next) {
 
 userSchema.index({ createdAt: -1 });
 userSchema.index({ lastSeen: -1 });
+userSchema.index({ passwordResetOtpExpiresAt: 1 });
 userSchema.index({ followers: 1 });
 userSchema.index({ following: 1 });
 userSchema.index({ blockedUsers: 1 });

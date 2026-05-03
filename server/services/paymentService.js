@@ -1,6 +1,7 @@
 const crypto = require("crypto");
 const Donation = require("../models/Donation");
 const AppError = require("../utils/appError");
+const { buildRedisCacheKey, writeRedisJsonCache } = require("./redisCache");
 
 const DONATION_CAMPAIGNS = [
   {
@@ -43,6 +44,10 @@ const DONATION_CAMPAIGNS = [
 
 const DEFAULT_CAMPAIGN_KEY = DONATION_CAMPAIGNS[0].key;
 const CAMPAIGN_KEY_LOOKUP = new Map();
+const DONATION_DASHBOARD_CACHE_TTL_SECONDS = Math.max(
+  60,
+  Number(process.env.CRON_DONATION_DASHBOARD_CACHE_TTL_SECONDS) || 180
+);
 
 DONATION_CAMPAIGNS.forEach((campaign) => {
   CAMPAIGN_KEY_LOOKUP.set(campaign.key, campaign.key);
@@ -62,6 +67,24 @@ function getCampaignByKey(key) {
   return (
     DONATION_CAMPAIGNS.find((campaign) => campaign.key === key) ||
     DONATION_CAMPAIGNS[0]
+  );
+}
+
+function getDonationDashboardCacheKey(userId = null) {
+  return buildRedisCacheKey(
+    "payments",
+    "donations",
+    "dashboard",
+    userId ? userId.toString() : "public"
+  );
+}
+
+function getDonationHistoryCacheKey(userId = null) {
+  return buildRedisCacheKey(
+    "payments",
+    "donations",
+    "history",
+    userId ? userId.toString() : "public"
   );
 }
 
@@ -310,6 +333,13 @@ async function fetchPayment(paymentId) {
   return razorpayRequest("GET", `/payments/${paymentId}`);
 }
 
+async function fetchOrderPayments(orderId) {
+  if (!orderId) {
+    throw new AppError("Order id is required to fetch order payments.", 400);
+  }
+  return razorpayRequest("GET", `/orders/${orderId}/payments`);
+}
+
 async function captureAuthorizedPayment(payment) {
   if (payment.status === "captured") {
     return payment;
@@ -334,6 +364,105 @@ async function captureAuthorizedPayment(payment) {
     }
     throw error;
   }
+}
+
+function normalizeDonationStatus(paymentStatus = "", fallback = "created") {
+  const normalized = String(paymentStatus || "").trim().toLowerCase();
+  if (normalized === "captured") return "captured";
+  if (normalized === "authorized") return "authorized";
+  if (
+    ["failed", "refunded", "cancelled", "cancelled_by_customer"].includes(
+      normalized
+    )
+  ) {
+    return "failed";
+  }
+  return fallback;
+}
+
+async function applyPaymentStateToDonation(
+  donation,
+  payment,
+  { verificationSource = "manual", userObjectId = null, allowCapture = true } = {}
+) {
+  if (!donation || !payment) {
+    throw new AppError("Donation and payment are required.", 400);
+  }
+
+  const settledPayment =
+    allowCapture && payment.status === "authorized"
+      ? await captureAuthorizedPayment(payment)
+      : payment;
+
+  donation.user = donation.user || userObjectId || null;
+  donation.status = normalizeDonationStatus(
+    settledPayment.status,
+    donation.status || "created"
+  );
+  donation.orderStatus =
+    settledPayment.status === "captured"
+      ? "paid"
+      : settledPayment.status || donation.orderStatus || "created";
+  donation.paymentId = settledPayment.id || donation.paymentId || "";
+  donation.paymentStatus = settledPayment.status || donation.paymentStatus || "";
+  donation.paymentMethod = settledPayment.method || donation.paymentMethod || "";
+  donation.verificationSource = verificationSource;
+  donation.donorEmail = donation.donorEmail || settledPayment.email || "";
+  donation.donorContact = settledPayment.contact || donation.donorContact || "";
+
+  if (settledPayment.status === "captured") {
+    donation.receiptIssuedAt = donation.receiptIssuedAt || new Date();
+    donation.receiptNumber = donation.receiptNumber || buildReceiptNumber(donation);
+    donation.paidAt =
+      donation.paidAt ||
+      (settledPayment.created_at
+        ? new Date(settledPayment.created_at * 1000)
+        : new Date());
+  }
+
+  return settledPayment;
+}
+
+function pickBestOrderPayment(orderPaymentsPayload) {
+  const items = Array.isArray(orderPaymentsPayload?.items)
+    ? orderPaymentsPayload.items
+    : Array.isArray(orderPaymentsPayload)
+      ? orderPaymentsPayload
+      : [];
+
+  return [...items]
+    .sort((left, right) => {
+      const leftWeight =
+        left?.status === "captured"
+          ? 3
+          : left?.status === "authorized"
+            ? 2
+            : left?.status === "created"
+              ? 1
+              : 0;
+      const rightWeight =
+        right?.status === "captured"
+          ? 3
+          : right?.status === "authorized"
+            ? 2
+            : right?.status === "created"
+              ? 1
+              : 0;
+      return (
+        rightWeight - leftWeight ||
+        Number(right?.created_at || 0) - Number(left?.created_at || 0)
+      );
+    })[0];
+}
+
+async function warmPublicDonationDashboardCache() {
+  const dashboard = await buildDashboardPayload(null);
+  await writeRedisJsonCache(
+    getDonationDashboardCacheKey(null),
+    dashboard,
+    DONATION_DASHBOARD_CACHE_TTL_SECONDS
+  );
+  return dashboard;
 }
 
 async function buildDashboardPayload(userId = null) {
@@ -510,21 +639,13 @@ async function verifyDonationPayment(
     throw new AppError("Payment does not match the expected Razorpay order.", 400);
   }
 
-  const settledPayment = await captureAuthorizedPayment(payment);
+  const settledPayment = await applyPaymentStateToDonation(donation, payment, {
+    verificationSource: "checkout",
+    userObjectId,
+    allowCapture: true,
+  });
 
-  donation.user = donation.user || userObjectId || null;
-  donation.status = settledPayment.status || "captured";
-  donation.orderStatus = settledPayment.status === "captured" ? "paid" : donation.orderStatus;
-  donation.paymentId = settledPayment.id;
-  donation.paymentStatus = settledPayment.status || "";
-  donation.paymentMethod = settledPayment.method || "";
   donation.razorpaySignature = razorpay_signature;
-  donation.donorEmail = donation.donorEmail || settledPayment.email || "";
-  donation.donorContact = settledPayment.contact || donation.donorContact || "";
-  donation.receiptIssuedAt = donation.receiptIssuedAt || new Date();
-  donation.receiptNumber = donation.receiptNumber || buildReceiptNumber(donation);
-  donation.paidAt = donation.paidAt
-    || (settledPayment.created_at ? new Date(settledPayment.created_at * 1000) : new Date());
 
   await donation.save();
 
@@ -580,10 +701,94 @@ async function getDonationHistory({ userObjectId = null } = {}) {
   };
 }
 
+async function reconcilePendingDonations(options = {}) {
+  const batchSize = Math.max(
+    5,
+    Number(options.batchSize || process.env.CRON_DONATION_BATCH_SIZE) || 20
+  );
+  const lookbackHours = Math.max(
+    1,
+    Number(options.lookbackHours || process.env.CRON_DONATION_LOOKBACK_HOURS) || 48
+  );
+  const minOrderAgeMinutes = Math.max(
+    1,
+    Number(
+      options.minOrderAgeMinutes || process.env.CRON_DONATION_MIN_ORDER_AGE_MINUTES
+    ) || 5
+  );
+  const now = Date.now();
+  const createdAfter = new Date(now - lookbackHours * 60 * 60 * 1000);
+  const createdBefore = new Date(now - minOrderAgeMinutes * 60 * 1000);
+
+  const donations = await Donation.find({
+    status: { $in: ["created", "authorized"] },
+    orderId: { $ne: null, $ne: "" },
+    createdAt: {
+      $gte: createdAfter,
+      $lte: createdBefore,
+    },
+  })
+    .sort({ createdAt: 1 })
+    .limit(batchSize);
+
+  const summary = {
+    scanned: donations.length,
+    captured: 0,
+    authorized: 0,
+    failed: 0,
+    unchanged: 0,
+    errors: 0,
+    warmedDashboard: false,
+  };
+
+  for (const donation of donations) {
+    try {
+      const orderPayments = await fetchOrderPayments(donation.orderId);
+      const bestPayment = pickBestOrderPayment(orderPayments);
+
+      if (!bestPayment) {
+        summary.unchanged += 1;
+        continue;
+      }
+
+      const previousStatus = donation.status;
+      await applyPaymentStateToDonation(donation, bestPayment, {
+        verificationSource: "manual",
+        userObjectId: donation.user || null,
+        allowCapture: true,
+      });
+      await donation.save();
+
+      if (donation.status === "captured" && previousStatus !== "captured") {
+        summary.captured += 1;
+      } else if (donation.status === "authorized") {
+        summary.authorized += 1;
+      } else if (donation.status === "failed") {
+        summary.failed += 1;
+      } else {
+        summary.unchanged += 1;
+      }
+    } catch (error) {
+      summary.errors += 1;
+    }
+  }
+
+  if (summary.captured > 0 || summary.authorized > 0 || summary.failed > 0) {
+    await warmPublicDonationDashboardCache().catch(() => null);
+    summary.warmedDashboard = true;
+  }
+
+  return summary;
+}
+
 module.exports = {
   DONATION_CAMPAIGNS,
   createDonationOrder,
+  getDonationDashboardCacheKey,
+  getDonationHistoryCacheKey,
   verifyDonationPayment,
   getDonationDashboard,
   getDonationHistory,
+  reconcilePendingDonations,
+  warmPublicDonationDashboardCache,
 };

@@ -42,6 +42,7 @@ notificationSchema.set("toJSON", {
 notificationSchema.index({ recipient: 1, createdAt: -1 });
 notificationSchema.index({ recipient: 1, read: 1, createdAt: -1 });
 notificationSchema.index({ sender: 1, createdAt: -1 });
+notificationSchema.index({ read: 1, lastEventAt: 1 });
 notificationSchema.index({ recipient: 1, read: 1, deliveryScore: -1, lastEventAt: -1 });
 notificationSchema.index({ recipient: 1, dedupeKey: 1, read: 1 });
 

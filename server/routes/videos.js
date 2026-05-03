@@ -10,6 +10,9 @@ const {
   withRedisJsonCache,
 } = require("../services/redisCache");
 const {
+  getVideoFeedSnapshot,
+} = require("../services/discoverySnapshotService");
+const {
   buildSearchText,
   moderateTextContent,
 } = require("../utils/contentFeatures");
@@ -109,6 +112,27 @@ function mapChannelUser(user) {
   };
 }
 
+async function loadVideosByOrderedIds(ids = [], options = {}) {
+  const skip = Math.max(0, Number(options.skip) || 0);
+  const limit = Math.max(1, Number(options.limit) || 20);
+  const pageIds = ids.slice(skip, skip + limit);
+  if (!pageIds.length) {
+    return [];
+  }
+
+  const videos = await Video.find({ _id: { $in: pageIds } })
+    .populate("user", "name handle avatar verified followers following bio")
+    .populate("comments.user", "name handle avatar verified")
+    .populate("comments.replies.user", "name handle avatar verified")
+    .lean();
+
+  const videoMap = new Map(
+    videos.map((video) => [video._id.toString(), video])
+  );
+
+  return pageIds.map((id) => videoMap.get(String(id))).filter(Boolean);
+}
+
 // GET /api/videos - list videos
 router.get("/", optionalAuth, async (req, res) => {
   try {
@@ -138,6 +162,21 @@ router.get("/", optionalAuth, async (req, res) => {
     const { status: cacheStatus, value: videos } = await withRedisJsonCache(
       cacheKey,
       async () => {
+        const shouldUseRankedFeed =
+          !category &&
+          (!tab || tab === "feed");
+
+        if (shouldUseRankedFeed) {
+          const snapshot = await getVideoFeedSnapshot();
+          if (Array.isArray(snapshot?.ids) && snapshot.ids.length) {
+            const rankedVideos = await loadVideosByOrderedIds(snapshot.ids, {
+              skip,
+              limit,
+            });
+            return rankedVideos.map(mapVideo);
+          }
+        }
+
         const found = await Video.find(query)
           .sort({ createdAt: -1 })
           .skip(skip)

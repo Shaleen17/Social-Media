@@ -1,10 +1,17 @@
 const asyncHandler = require("../utils/asyncHandler");
 const {
   createDonationOrder,
+  getDonationDashboardCacheKey,
+  getDonationHistoryCacheKey,
   verifyDonationPayment,
   getDonationDashboard,
   getDonationHistory,
 } = require("../services/paymentService");
+const {
+  applyRedisCacheHeader,
+  invalidateRedisCacheNamespaces,
+  withRedisJsonCache,
+} = require("../services/redisCache");
 
 const createRazorpayDonationOrder = asyncHandler(async (req, res) => {
   const result = await createDonationOrder({
@@ -23,6 +30,7 @@ const verifyRazorpayDonationPayment = asyncHandler(async (req, res) => {
   const result = await verifyDonationPayment(req.body, {
     userObjectId: req.user?._id || null,
   });
+  invalidateRedisCacheNamespaces(["payments"]).catch(() => 0);
 
   const io = req.app.get("io");
   if (io && result.realtimePayload) {
@@ -33,16 +41,30 @@ const verifyRazorpayDonationPayment = asyncHandler(async (req, res) => {
 });
 
 const getDonationDashboardData = asyncHandler(async (req, res) => {
-  const result = await getDonationDashboard({
-    userObjectId: req.user?._id || null,
-  });
+  const cacheKey = getDonationDashboardCacheKey(req.user?._id || null);
+  const { status: cacheStatus, value: result } = await withRedisJsonCache(
+    cacheKey,
+    () =>
+      getDonationDashboard({
+        userObjectId: req.user?._id || null,
+      }),
+    { ttlSeconds: req.user?._id ? 90 : 180 }
+  );
+  applyRedisCacheHeader(res, cacheStatus);
   res.json(result);
 });
 
 const getDonationHistoryData = asyncHandler(async (req, res) => {
-  const result = await getDonationHistory({
-    userObjectId: req.user?._id || null,
-  });
+  const cacheKey = getDonationHistoryCacheKey(req.user?._id || null);
+  const { status: cacheStatus, value: result } = await withRedisJsonCache(
+    cacheKey,
+    () =>
+      getDonationHistory({
+        userObjectId: req.user?._id || null,
+      }),
+    { ttlSeconds: req.user?._id ? 120 : 60 }
+  );
+  applyRedisCacheHeader(res, cacheStatus);
   res.json(result);
 });
 

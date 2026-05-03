@@ -1,6 +1,14 @@
 const express = require("express");
 const Post = require("../models/Post");
 const { optionalAuth } = require("../middleware/auth");
+const {
+  applyRedisCacheHeader,
+  buildRedisCacheKey,
+  withRedisJsonCache,
+} = require("../services/redisCache");
+const {
+  getTrendingPostSnapshot,
+} = require("../services/discoverySnapshotService");
 const { cleanString, getPagination } = require("../utils/validation");
 
 const router = express.Router();
@@ -136,6 +144,32 @@ function buildSmartFeedScore(post, user, tokens) {
   );
 }
 
+async function loadPostsByOrderedIds(ids = [], options = {}) {
+  const skip = Math.max(0, Number(options.skip) || 0);
+  const limit = Math.max(1, Number(options.limit) || 20);
+  const pageIds = ids.slice(skip, skip + limit);
+  if (!pageIds.length) {
+    return {
+      items: [],
+      hasMore: ids.length > skip + limit,
+    };
+  }
+
+  const posts = await Post.find({ _id: { $in: pageIds } })
+    .populate("user", "name handle avatar verified")
+    .populate("comments.user", "name handle avatar")
+    .lean();
+
+  const postMap = new Map(
+    posts.map((post) => [post._id.toString(), post])
+  );
+
+  return {
+    items: pageIds.map((id) => postMap.get(String(id))).filter(Boolean),
+    hasMore: ids.length > skip + limit,
+  };
+}
+
 router.get("/home", optionalAuth, async (req, res, next) => {
   try {
     const { page, limit, skip } = getPagination(req.query, {
@@ -167,8 +201,75 @@ router.get("/home", optionalAuth, async (req, res, next) => {
 
     let mapped = [];
     let hasMore = false;
+    let cacheStatus = "";
 
-    if (view === "smart" || view === "trending") {
+    if (view === "latest") {
+      const cacheKey = buildRedisCacheKey("feed", "home", view, page, limit);
+      const { status, value } = await withRedisJsonCache(
+        cacheKey,
+        async () => {
+          const posts = await populateQuery.skip(skip).limit(limit + 1).lean();
+          return {
+            items: posts.slice(0, limit).map(mapPost),
+            hasMore: posts.length > limit,
+          };
+        },
+        { ttlSeconds: 120 }
+      );
+      cacheStatus = status;
+      mapped = value.items;
+      hasMore = !!value.hasMore;
+    } else if (view === "trending") {
+      const cacheKey = buildRedisCacheKey("feed", "home", view, page, limit);
+      const { status, value } = await withRedisJsonCache(
+        cacheKey,
+        async () => {
+          const snapshot = await getTrendingPostSnapshot();
+          if (Array.isArray(snapshot?.ids) && snapshot.ids.length) {
+            const ranked = await loadPostsByOrderedIds(snapshot.ids, { skip, limit });
+            return {
+              items: ranked.items.map(mapPost),
+              hasMore: ranked.hasMore,
+            };
+          }
+
+          const sampleSize = Math.min(
+            MAX_SMART_FEED_SAMPLE,
+            Math.max(limit * 6, 80)
+          );
+          const candidates = await populateQuery.limit(sampleSize).lean();
+          const ranked = candidates
+            .map((post) => ({
+              score:
+                (post.likes?.length || 0) * 3 +
+                (post.reposts?.length || 0) * 4 +
+                (post.comments?.length || 0) * 2 +
+                Math.max(
+                  0,
+                  48 -
+                    (Date.now() - new Date(post.createdAt).getTime()) /
+                      (1000 * 60 * 60)
+                ),
+              post,
+            }))
+            .sort(
+              (left, right) =>
+                right.score - left.score ||
+                new Date(right.post.createdAt).getTime() -
+                  new Date(left.post.createdAt).getTime()
+            );
+
+          return {
+            items: ranked.slice(skip, skip + limit).map((entry) => mapPost(entry.post)),
+            hasMore: ranked.length > skip + limit,
+          };
+        },
+        { ttlSeconds: 120 }
+      );
+      cacheStatus = status;
+      mapped = value.items;
+      hasMore = !!value.hasMore;
+    } else if (view === "smart") {
       const sampleSize = Math.min(
         MAX_SMART_FEED_SAMPLE,
         Math.max(limit * 6, 80)
@@ -177,18 +278,7 @@ router.get("/home", optionalAuth, async (req, res, next) => {
       const tokens = extractInterestTokens(req.user);
       const ranked = candidates
         .map((post) => ({
-          score:
-            view === "trending"
-              ? (post.likes?.length || 0) * 3 +
-                (post.reposts?.length || 0) * 4 +
-                (post.comments?.length || 0) * 2 +
-                Math.max(
-                  0,
-                  48 -
-                    (Date.now() - new Date(post.createdAt).getTime()) /
-                      (1000 * 60 * 60)
-                )
-              : buildSmartFeedScore(post, req.user, tokens),
+          score: buildSmartFeedScore(post, req.user, tokens),
           post,
         }))
         .sort(
@@ -205,6 +295,10 @@ router.get("/home", optionalAuth, async (req, res, next) => {
       const posts = await populateQuery.skip(skip).limit(limit + 1).lean();
       hasMore = posts.length > limit;
       mapped = posts.slice(0, limit).map(mapPost);
+    }
+
+    if (cacheStatus) {
+      applyRedisCacheHeader(res, cacheStatus);
     }
 
     res.setHeader("X-Page", String(page));

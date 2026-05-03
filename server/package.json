@@ -8,6 +8,7 @@
     "dev": "nodemon server.js",
     "seed": "node seed.js",
     "backup": "node scripts/backup.js",
+    "cron:run": "node scripts/run-cron.js",
     "check": "node scripts/check-files.js",
     "test": "node scripts/run-tests.js",
     "validate": "npm run check && npm test"

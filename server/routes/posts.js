@@ -10,6 +10,9 @@ const {
   withRedisJsonCache,
 } = require("../services/redisCache");
 const {
+  getTrendingPostSnapshot,
+} = require("../services/discoverySnapshotService");
+const {
   buildSearchText,
   moderateTextContent,
 } = require("../utils/contentFeatures");
@@ -25,6 +28,26 @@ const router = express.Router();
 
 function invalidatePostCaches(namespaces = ["posts", "search", "bootstrap"]) {
   return invalidateRedisCacheNamespaces(namespaces).catch(() => 0);
+}
+
+async function loadPostsByOrderedIds(ids = [], options = {}) {
+  const skip = Math.max(0, Number(options.skip) || 0);
+  const limit = Math.max(1, Number(options.limit) || 20);
+  const pageIds = ids.slice(skip, skip + limit);
+  if (!pageIds.length) {
+    return [];
+  }
+
+  const posts = await Post.find({ _id: { $in: pageIds } })
+    .populate("user", "name handle avatar verified")
+    .populate("comments.user", "name handle avatar")
+    .lean();
+
+  const postMap = new Map(
+    posts.map((post) => [post._id.toString(), post])
+  );
+
+  return pageIds.map((id) => postMap.get(String(id))).filter(Boolean);
 }
 
 // GET /api/posts — list posts
@@ -52,15 +75,28 @@ router.get("/", optionalAuth, async (req, res, next) => {
     const { status: cacheStatus, value: result } = await withRedisJsonCache(
       cacheKey,
       async () => {
-        let posts = await Post.find(query)
-          .sort(sort)
-          .skip(skip)
-          .limit(limit)
-          .populate("user", "name handle avatar verified")
-          .populate("comments.user", "name handle avatar")
-          .lean();
+        let posts;
+        let usedSnapshot = false;
 
         if (tab === "trending") {
+          const snapshot = await getTrendingPostSnapshot();
+          if (Array.isArray(snapshot?.ids) && snapshot.ids.length) {
+            posts = await loadPostsByOrderedIds(snapshot.ids, { skip, limit });
+            usedSnapshot = true;
+          }
+        }
+
+        if (!posts) {
+          posts = await Post.find(query)
+            .sort(sort)
+            .skip(skip)
+            .limit(limit)
+            .populate("user", "name handle avatar verified")
+            .populate("comments.user", "name handle avatar")
+            .lean();
+        }
+
+        if (tab === "trending" && !usedSnapshot) {
           posts.sort(
             (a, b) =>
               b.likes.length +

@@ -285,5 +285,7 @@ module.exports = {
   initializeRedisCache,
   invalidateRedisCacheNamespaces,
   isRedisCacheReady,
+  readRedisJsonCache,
   withRedisJsonCache,
+  writeRedisJsonCache,
 };

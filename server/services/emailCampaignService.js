@@ -65,6 +65,10 @@ function getWorkerIntervalMs() {
   return Number.isFinite(parsed) && parsed >= 60 * 1000 ? parsed : 5 * 60 * 1000;
 }
 
+function isWorkerEnabled() {
+  return String(process.env.EMAIL_CAMPAIGN_WORKER_ENABLED || "true").toLowerCase() !== "false";
+}
+
 function getStartDelayHours() {
   const parsed = Number(process.env.EMAIL_CAMPAIGN_START_DELAY_HOURS || 24);
   return Number.isFinite(parsed) && parsed >= 0 ? parsed : 24;
@@ -460,7 +464,12 @@ async function processDueEmailCampaignDeliveries(options = {}) {
 }
 
 function startEmailCampaignWorker() {
-  if (!isCampaignEnabled() || process.env.VERCEL || workerTimer) {
+  if (
+    !isCampaignEnabled() ||
+    !isWorkerEnabled() ||
+    process.env.VERCEL ||
+    workerTimer
+  ) {
     return false;
   }
 
@@ -673,4 +682,5 @@ module.exports = {
   normalizeRedirectTarget,
   getCampaignStats,
   isCampaignEnabled,
+  isWorkerEnabled,
 };
