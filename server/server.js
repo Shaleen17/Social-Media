@@ -34,7 +34,9 @@ const {
   isEmailDeliveryConfigured,
   getEmailDeliveryProvider,
   getEmailConfigurationDiagnostics,
+  getEmailConfigurationFixMessage,
   getEmailTransportSettings,
+  isBrevoSmtpUnauthorizedIpError,
   shouldVerifyBeforeSend,
 } = require("./utils/sendEmail");
 
@@ -262,19 +264,16 @@ app.get("/api/health/metrics", (req, res) => {
 app.get("/api/health/email", async (req, res) => {
   const provider = getEmailDeliveryProvider();
   const diagnostics = getEmailConfigurationDiagnostics(provider);
-  const { fromAddress, host, port, secure } = getEmailTransportSettings();
+  const { host, port } = getEmailTransportSettings();
 
-  if (!isEmailDeliveryConfigured()) {
+  if (!diagnostics.configured) {
     return res.status(503).json({
       status: "error",
       provider,
       message: `Email delivery is not configured for ${provider}. OTP emails will fail.`,
       missingEnvVars: diagnostics.missing,
       selection: diagnostics.selection,
-      fix:
-        provider === "brevo"
-          ? "Set EMAIL_DELIVERY_PROVIDER=brevo only when BREVO_API_KEY and EMAIL_FROM are configured, or switch to EMAIL_DELIVERY_PROVIDER=smtp."
-          : "Set EMAIL_DELIVERY_PROVIDER=smtp only when SMTP_USER, SMTP_PASS, and EMAIL_FROM are configured, or switch to EMAIL_DELIVERY_PROVIDER=brevo with BREVO_API_KEY.",
+      fix: getEmailConfigurationFixMessage(provider),
     });
   }
 
@@ -287,14 +286,6 @@ app.get("/api/health/email", async (req, res) => {
         provider === "brevo"
           ? "Brevo API verified. OTP emails should work."
           : "SMTP connection verified. OTP emails should work.",
-      fromAddress,
-      ...(provider === "smtp"
-        ? {
-            smtpHost: host,
-            smtpPort: port,
-            smtpSecure: secure,
-          }
-        : {}),
     });
   } catch (err) {
     const providerMessage = String(
@@ -303,29 +294,26 @@ app.get("/api/health/email", async (req, res) => {
     const isBrevoSmtpHost = /smtp-relay\.brevo\.com/i.test(String(host || ""));
     const isBrevoSmtpUnauthorizedIp =
       provider === "smtp" &&
-      isBrevoSmtpHost &&
-      /unauthorized ip address/i.test(providerMessage);
+      isBrevoSmtpUnauthorizedIpError(
+        { message: providerMessage || err.message || "" },
+        host,
+      );
 
     return res.status(500).json({
       status: "error",
       provider,
       message:
         provider === "brevo"
-          ? "Brevo API is configured but the connection FAILED."
-          : "SMTP credentials are set but the connection FAILED.",
+          ? "Brevo API verification failed."
+          : "SMTP verification failed.",
+      missingEnvVars: diagnostics.missing,
+      ...(provider === "brevo" ? { brevoApiVerified: false } : {}),
+      ...(provider === "smtp" ? { smtpUnauthorizedIp: isBrevoSmtpUnauthorizedIp } : {}),
       rawErrorCode: err.code || "UNKNOWN",
       rawErrorMessage: err.message,
       providerMessage: providerMessage || null,
       responseStatus: err.responseStatus || err.details?.responseStatus || null,
       rawErrorResponse: err.responseBody || err.details?.responseBody || null,
-      fromAddress,
-      ...(provider === "smtp"
-        ? {
-            smtpHost: host,
-            smtpPort: port,
-            smtpSecure: secure,
-          }
-        : {}),
       diagnosis:
         provider === "brevo"
           ? err.code === "EAUTH"
@@ -348,9 +336,9 @@ app.get("/api/health/email", async (req, res) => {
                 : "Unexpected SMTP error. Check rawErrorCode and rawErrorMessage for details.",
       fix:
         provider === "brevo"
-          ? "Check BREVO_API_KEY, set EMAIL_FROM to a Brevo-verified sender, and confirm the sender is verified in Brevo."
+          ? "Check BREVO_API_KEY, EMAIL_FROM, and EMAIL_FROM_NAME. EMAIL_FROM must be a Brevo-verified sender."
           : isBrevoSmtpUnauthorizedIp
-            ? "Authorize this machine/server IP in Brevo Security settings, or remove Brevo SMTP and use a valid BREVO_API_KEY instead."
+            ? "Authorize this machine/server IP in Brevo Security settings, or switch production to EMAIL_DELIVERY_PROVIDER=brevo with a valid BREVO_API_KEY."
             : isBrevoSmtpHost
               ? "Check the Brevo SMTP login/password and confirm this IP is allowed in Brevo."
               : "Check that SMTP_PASS is a valid Gmail App Password and ensure the hosting provider allows outbound SMTP.",
@@ -398,7 +386,7 @@ connectDB()
   .catch((error) => log("error", "Database startup failed", { error: error.message }));
 
 const PORT = process.env.PORT || 5000;
-const SHOULD_VERIFY_SMTP_ON_STARTUP =
+const SHOULD_VERIFY_EMAIL_ON_STARTUP =
   String(process.env.SMTP_VERIFY_ON_STARTUP || "false").toLowerCase() === "true";
 
 // Only start the server listening if NOT running on Vercel
@@ -428,33 +416,39 @@ if (!process.env.VERCEL) {
     }, 13 * 60 * 1000); // 13 min -- keeps Render free tier awake
   });
 
-  // Verify SMTP on startup only when explicitly enabled in env.
+  // Verify email delivery on startup only when explicitly enabled in env.
   if (isEmailDeliveryConfigured()) {
-    if (SHOULD_VERIFY_SMTP_ON_STARTUP) {
-      console.log("📧 SMTP configured — verifying connection on startup...");
+    const emailProvider = getEmailDeliveryProvider();
+    const providerLabel = emailProvider === "brevo" ? "Brevo API" : "SMTP";
+
+    if (SHOULD_VERIFY_EMAIL_ON_STARTUP) {
+      console.log(`Active email provider: ${providerLabel}`);
+      console.log(`📧 ${providerLabel} configured — verifying connection on startup...`);
       verifyEmailTransport()
         .then(() => {
-          console.log("✅ SMTP ready — OTP emails will be delivered.");
+          console.log(`✅ ${providerLabel} ready — OTP emails will be delivered.`);
         })
         .catch((err) => {
           console.error(
-            "❌ SMTP startup check FAILED — OTP emails will NOT be delivered.\n" +
+            `❌ ${providerLabel} startup check FAILED — OTP emails will NOT be delivered.\n` +
             "   Error:", err.message, "\n" +
-            "   Fix: Check the backend email environment variables for the active provider.\n" +
-            "   Gmail requires a valid App Password, and Brevo SMTP may require the current IP to be authorized."
+            `   Fix: ${getEmailConfigurationFixMessage(emailProvider)}\n` +
+            "   Brevo SMTP may require the current IP to be authorized."
           );
         });
     } else {
       console.log(
-        `SMTP startup verification skipped (SMTP_VERIFY_ON_STARTUP=false). ` +
+        `Email delivery startup verification skipped (SMTP_VERIFY_ON_STARTUP=false). ` +
+        `Active provider: ${emailProvider}. ` +
         `Per-send verification is ${shouldVerifyBeforeSend() ? "enabled" : "disabled"}.`
       );
     }
   } else {
+    const diagnostics = getEmailConfigurationDiagnostics();
     console.error(
-      "❌ SMTP is NOT configured — OTP emails will NOT be delivered.\n" +
-      "   Missing: SMTP_HOST, SMTP_PORT, SMTP_SECURE, SMTP_USER, SMTP_PASS, EMAIL_FROM\n" +
-      "   Fix: Add these to the backend environment, or set BREVO_API_KEY + EMAIL_FROM."
+      `❌ Email delivery is NOT configured for ${diagnostics.provider} — OTP emails will NOT be delivered.\n` +
+      `   Missing: ${diagnostics.missing.join(", ")}\n` +
+      `   Fix: ${getEmailConfigurationFixMessage(diagnostics.provider)}`
     );
   }
 }

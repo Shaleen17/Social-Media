@@ -4,9 +4,23 @@ const AppError = require("./appError");
 
 let transporter = null;
 let verifyPromise = null;
+const DEFAULT_EMAIL_FROM_NAME = "Tirth Sutra";
+const SMTP_REQUIRED_ENV_VARS = [
+  "SMTP_HOST",
+  "SMTP_PORT",
+  "SMTP_SECURE",
+  "SMTP_USER",
+  "SMTP_PASS",
+  "EMAIL_FROM",
+];
+const BREVO_REQUIRED_ENV_VARS = ["BREVO_API_KEY", "EMAIL_FROM", "EMAIL_FROM_NAME"];
 
 function shouldVerifyBeforeSend() {
   return String(process.env.SMTP_VERIFY_BEFORE_SEND || "false").toLowerCase() === "true";
+}
+
+function hasConfiguredEnvValue(name) {
+  return String(process.env[name] || "").trim() !== "";
 }
 
 function getEmailTransportSettings() {
@@ -59,6 +73,16 @@ function hasBrevoApiKey() {
   return !!String(process.env.BREVO_API_KEY || "").trim();
 }
 
+function getRequiredEmailEnvVars(provider = getEmailDeliveryProvider()) {
+  return provider === "brevo" ? BREVO_REQUIRED_ENV_VARS : SMTP_REQUIRED_ENV_VARS;
+}
+
+function getEmailConfigurationFixMessage(provider = getEmailDeliveryProvider()) {
+  return provider === "brevo"
+    ? "Set EMAIL_DELIVERY_PROVIDER=brevo and configure BREVO_API_KEY, EMAIL_FROM, and EMAIL_FROM_NAME."
+    : "Set EMAIL_DELIVERY_PROVIDER=smtp and configure SMTP_HOST, SMTP_PORT, SMTP_SECURE, SMTP_USER, SMTP_PASS, and EMAIL_FROM.";
+}
+
 function getEmailProviderSelectionSummary() {
   const preferred = getConfiguredEmailProviderPreference();
   if (preferred === "brevo") {
@@ -82,21 +106,12 @@ function getEmailDeliveryProvider() {
 }
 
 function getEmailConfigurationDiagnostics(provider = getEmailDeliveryProvider()) {
-  const { authUser, authPass, fromAddress } = getEmailTransportSettings();
-  const { apiKey } = getBrevoSettings();
-  const missing = [];
-
-  if (provider === "brevo") {
-    if (!apiKey) missing.push("BREVO_API_KEY");
-    if (!fromAddress) missing.push("EMAIL_FROM");
-  } else {
-    if (!authUser) missing.push("SMTP_USER");
-    if (!authPass) missing.push("SMTP_PASS");
-    if (!fromAddress) missing.push("EMAIL_FROM");
-  }
+  const requiredEnvVars = getRequiredEmailEnvVars(provider);
+  const missing = requiredEnvVars.filter((name) => !hasConfiguredEnvValue(name));
 
   return {
     provider,
+    requiredEnvVars,
     configured: missing.length === 0,
     missing,
     selection: getEmailProviderSelectionSummary(),
@@ -120,8 +135,8 @@ function assertEmailDeliveryConfigured() {
 
   throw new AppError(
     diagnostics.provider === "brevo"
-      ? `OTP email delivery is set to Brevo, but ${missingText} ${diagnostics.missing.length === 1 ? "is" : "are"} missing. Set EMAIL_DELIVERY_PROVIDER=brevo only when BREVO_API_KEY and EMAIL_FROM are configured.`
-      : `OTP email delivery is set to SMTP, but ${missingText} ${diagnostics.missing.length === 1 ? "is" : "are"} missing. Set EMAIL_DELIVERY_PROVIDER=smtp only when SMTP_USER, SMTP_PASS, and EMAIL_FROM are configured.`,
+      ? `OTP email delivery is set to Brevo, but ${missingText} ${diagnostics.missing.length === 1 ? "is" : "are"} missing. ${getEmailConfigurationFixMessage("brevo")}`
+      : `OTP email delivery is set to SMTP, but ${missingText} ${diagnostics.missing.length === 1 ? "is" : "are"} missing. ${getEmailConfigurationFixMessage("smtp")}`,
     503,
     diagnostics,
   );
@@ -135,7 +150,7 @@ function resetTransporter() {
 function buildEmailSender() {
   const { fromAddress } = getEmailTransportSettings();
   return {
-    name: process.env.EMAIL_FROM_NAME || "Tirth Sutra",
+    name: String(process.env.EMAIL_FROM_NAME || DEFAULT_EMAIL_FROM_NAME).trim() || DEFAULT_EMAIL_FROM_NAME,
     email: fromAddress,
   };
 }
@@ -377,6 +392,9 @@ module.exports = {
   shouldVerifyBeforeSend,
   getEmailDeliveryProvider,
   getEmailConfigurationDiagnostics,
+  getEmailConfigurationFixMessage,
   getEmailTransportSettings,
   getBrevoSettings,
+  getRequiredEmailEnvVars,
+  isBrevoSmtpUnauthorizedIpError,
 };
