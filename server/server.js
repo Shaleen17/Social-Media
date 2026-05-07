@@ -33,6 +33,7 @@ const {
   verifyEmailTransport,
   isEmailDeliveryConfigured,
   getEmailDeliveryProvider,
+  getEffectiveEmailDeliveryProvider,
   getEmailConfigurationDiagnostics,
   getEmailConfigurationFixMessage,
   getEmailTransportSettings,
@@ -262,7 +263,8 @@ app.get("/api/health/metrics", (req, res) => {
 // Email delivery diagnostic endpoint — useful locally and in production to instantly check if OTP email works
 // URL: https://tirth-sutra-backend.onrender.com/api/health/email
 app.get("/api/health/email", async (req, res) => {
-  const provider = getEmailDeliveryProvider();
+  const configuredProvider = getEmailDeliveryProvider();
+  const provider = getEffectiveEmailDeliveryProvider();
   const diagnostics = getEmailConfigurationDiagnostics(provider);
   const { host, port } = getEmailTransportSettings();
 
@@ -278,12 +280,19 @@ app.get("/api/health/email", async (req, res) => {
   }
 
   try {
-    await verifyEmailTransport();
+    const verification = await verifyEmailTransport();
+    const verifiedProvider = verification?.provider || provider;
     return res.json({
       status: "ok",
-      provider,
+      provider: verifiedProvider,
+      configuredProvider,
+      selection: diagnostics.selection,
+      fallback: !!verification?.fallback,
+      failedProvider: verification?.failedProvider || null,
       message:
-        provider === "brevo"
+        verification?.fallback
+          ? "Brevo API failed, but the configured SMTP fallback verified. OTP emails should work through SMTP."
+          : verifiedProvider === "brevo"
           ? "Brevo API verified. OTP emails should work."
           : "SMTP connection verified. OTP emails should work.",
     });
@@ -367,11 +376,15 @@ app.use((err, req, res, next) => {
   recordError(err, req);
   logError(err, req);
 
+  const shouldExposeMessage =
+    err instanceof AppError ||
+    statusCode < 500 ||
+    process.env.NODE_ENV !== "production";
+
   res.status(statusCode).json({
-    error:
-      statusCode >= 500 && process.env.NODE_ENV === "production"
-        ? "Internal server error"
-        : err.message || "Internal server error",
+    error: shouldExposeMessage
+      ? err.message || "Internal server error"
+      : "Internal server error",
     ...(err.details ? { details: err.details } : {}),
   });
 });
@@ -418,11 +431,17 @@ if (!process.env.VERCEL) {
 
   // Verify email delivery on startup only when explicitly enabled in env.
   if (isEmailDeliveryConfigured()) {
-    const emailProvider = getEmailDeliveryProvider();
+    const configuredEmailProvider = getEmailDeliveryProvider();
+    const emailProvider = getEffectiveEmailDeliveryProvider();
     const providerLabel = emailProvider === "brevo" ? "Brevo API" : "SMTP";
 
     if (SHOULD_VERIFY_EMAIL_ON_STARTUP) {
-      console.log(`Active email provider: ${providerLabel}`);
+      console.log(
+        `Active email provider: ${providerLabel}` +
+        (configuredEmailProvider !== emailProvider
+          ? ` (configured provider ${configuredEmailProvider} is falling back to ${emailProvider})`
+          : "")
+      );
       console.log(`📧 ${providerLabel} configured — verifying connection on startup...`);
       verifyEmailTransport()
         .then(() => {

@@ -23,7 +23,7 @@ async function connectDatabase() {
 
   if (!process.env.MONGODB_URI) {
     const error = new Error(
-      "Password reset is not configured on this deployment. Add MONGODB_URI and SMTP environment variables."
+      "Password reset is not configured on this deployment. Add MONGODB_URI and either Brevo API or SMTP email environment variables."
     );
     error.statusCode = 503;
     throw error;

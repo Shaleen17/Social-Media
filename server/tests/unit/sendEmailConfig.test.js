@@ -105,6 +105,29 @@ test("auto mode prefers brevo when a Brevo API key is present", () => {
   );
 });
 
+test("auto mode can use SMTP when Brevo env is incomplete", () => {
+  withEmailEnv(
+    {
+      BREVO_API_KEY: "brevo-key",
+      SMTP_HOST: "smtp.gmail.com",
+      SMTP_PORT: "465",
+      SMTP_SECURE: "true",
+      SMTP_USER: "mailer@example.com",
+      SMTP_PASS: "smtp-pass",
+      EMAIL_FROM: "mailer@example.com",
+    },
+    ({
+      getEmailDeliveryProvider,
+      getEffectiveEmailDeliveryProvider,
+      isEmailDeliveryConfigured,
+    }) => {
+      assert.equal(getEmailDeliveryProvider(), "brevo");
+      assert.equal(getEffectiveEmailDeliveryProvider(), "smtp");
+      assert.equal(isEmailDeliveryConfigured(), true);
+    },
+  );
+});
+
 test("brevo smtp unauthorized ip detection stays specific to Brevo relay errors", () => {
   withEmailEnv({}, ({ isBrevoSmtpUnauthorizedIpError }) => {
     assert.equal(
