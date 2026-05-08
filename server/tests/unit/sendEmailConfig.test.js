@@ -11,6 +11,7 @@ const EMAIL_ENV_KEYS = [
   "SMTP_HOST",
   "SMTP_PORT",
   "SMTP_SECURE",
+  "SMTP_FAMILY",
   "SMTP_USER",
   "SMTP_PASS",
   "EMAIL_USER",
@@ -145,4 +146,35 @@ test("brevo smtp unauthorized ip detection stays specific to Brevo relay errors"
       false,
     );
   });
+});
+
+test("smtp transport defaults to IPv4 and allows explicit family override", () => {
+  withEmailEnv(
+    {
+      SMTP_HOST: "smtp.gmail.com",
+      SMTP_PORT: "465",
+      SMTP_SECURE: "true",
+      SMTP_USER: "mailer@example.com",
+      SMTP_PASS: "smtp-pass",
+      EMAIL_FROM: "mailer@example.com",
+    },
+    ({ getEmailTransportSettings }) => {
+      assert.equal(getEmailTransportSettings().family, 4);
+    },
+  );
+
+  withEmailEnv(
+    {
+      SMTP_HOST: "smtp.gmail.com",
+      SMTP_PORT: "465",
+      SMTP_SECURE: "true",
+      SMTP_FAMILY: "0",
+      SMTP_USER: "mailer@example.com",
+      SMTP_PASS: "smtp-pass",
+      EMAIL_FROM: "mailer@example.com",
+    },
+    ({ getEmailTransportSettings }) => {
+      assert.equal(getEmailTransportSettings().family, 0);
+    },
+  );
 });

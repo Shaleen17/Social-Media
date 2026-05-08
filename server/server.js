@@ -266,7 +266,7 @@ app.get("/api/health/email", async (req, res) => {
   const configuredProvider = getEmailDeliveryProvider();
   const provider = getEffectiveEmailDeliveryProvider();
   const diagnostics = getEmailConfigurationDiagnostics(provider);
-  const { host, port } = getEmailTransportSettings();
+  const { family, host, port } = getEmailTransportSettings();
 
   if (!diagnostics.configured) {
     return res.status(503).json({
@@ -307,6 +307,8 @@ app.get("/api/health/email", async (req, res) => {
         { message: providerMessage || err.message || "" },
         host,
       );
+    const isSmtpNetworkUnreachable =
+      provider === "smtp" && /ENETUNREACH|EHOSTUNREACH/i.test(providerMessage);
 
     return res.status(500).json({
       status: "error",
@@ -317,7 +319,9 @@ app.get("/api/health/email", async (req, res) => {
           : "SMTP verification failed.",
       missingEnvVars: diagnostics.missing,
       ...(provider === "brevo" ? { brevoApiVerified: false } : {}),
-      ...(provider === "smtp" ? { smtpUnauthorizedIp: isBrevoSmtpUnauthorizedIp } : {}),
+      ...(provider === "smtp"
+        ? { smtpFamily: family || "auto", smtpUnauthorizedIp: isBrevoSmtpUnauthorizedIp }
+        : {}),
       rawErrorCode: err.code || "UNKNOWN",
       rawErrorMessage: err.message,
       providerMessage: providerMessage || null,
@@ -338,10 +342,12 @@ app.get("/api/health/email", async (req, res) => {
               : isBrevoSmtpHost
                 ? "Brevo SMTP rejected the login. Check the SMTP login/password, and verify that Brevo has not restricted this IP."
                 : "Gmail rejected the password. The App Password may be wrong or 2-Step Verification may be off."
-            : err.code === "ECONNECTION" || err.code === "ETIMEDOUT" || err.code === "ENOTFOUND"
+          : err.code === "ECONNECTION" || err.code === "ETIMEDOUT" || err.code === "ENOTFOUND"
               ? `Cannot reach ${host} from this server. The hosting provider may be blocking outgoing SMTP on port ${port}.`
               : err.code === "ESOCKET"
-                ? "TLS/SSL handshake failed. Try SMTP_SECURE=true with SMTP_PORT=465."
+                ? isSmtpNetworkUnreachable
+                  ? `Cannot reach ${host} over the selected network family (${family || "auto"}). Try SMTP_FAMILY=4 to force IPv4.`
+                  : "TLS/SSL handshake failed. Try SMTP_SECURE=true with SMTP_PORT=465."
                 : "Unexpected SMTP error. Check rawErrorCode and rawErrorMessage for details.",
       fix:
         provider === "brevo"

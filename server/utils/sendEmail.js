@@ -39,10 +39,13 @@ function getEmailTransportSettings() {
     ? process.env.SMTP_SECURE === "true"
     : parsedPort === 465;
   const port = parsedPort || (secure ? 465 : 587);
+  const parsedFamily = Number(process.env.SMTP_FAMILY || 4);
+  const family = [0, 4, 6].includes(parsedFamily) ? parsedFamily : 4;
 
   return {
     authUser,
     authPass,
+    family,
     fromAddress,
     host: String(process.env.SMTP_HOST || "smtp.gmail.com").trim(),
     port,
@@ -280,15 +283,18 @@ async function verifyBrevoApi() {
 function createTransporter() {
   if (transporter) return transporter;
 
-  const { authUser, authPass, host, port, secure } = getEmailTransportSettings();
+  const { authUser, authPass, family, host, port, secure } = getEmailTransportSettings();
   assertEmailDeliveryConfigured("smtp");
 
-  console.log(`Creating SMTP transporter - host:${host} port:${port} secure:${secure} user:${authUser}`);
+  console.log(
+    `Creating SMTP transporter - host:${host} port:${port} secure:${secure} family:${family || "auto"} user:${authUser}`,
+  );
 
   transporter = nodemailer.createTransport({
     host,
     port,
     secure,
+    ...(family ? { family } : {}),
     requireTLS: !secure,
     auth: {
       user: authUser,
