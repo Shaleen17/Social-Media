@@ -41,6 +41,9 @@ const {
   shouldVerifyBeforeSend,
 } = require("./utils/sendEmail");
 
+const IS_PRODUCTION = process.env.NODE_ENV === "production";
+const CALLING_PROVIDER = String(process.env.CALLING_PROVIDER || "daily").toLowerCase();
+
 // ─── Validate Required Environment Variables ───
 const REQUIRED_ENV = [
   "MONGODB_URI",
@@ -48,6 +51,9 @@ const REQUIRED_ENV = [
   "CLOUDINARY_CLOUD_NAME",
   "CLOUDINARY_API_KEY",
   "CLOUDINARY_API_SECRET",
+  ...(IS_PRODUCTION && CALLING_PROVIDER === "daily"
+    ? ["DAILY_API_KEY", "DAILY_DOMAIN"]
+    : []),
 ];
 
 const missing = REQUIRED_ENV.filter((key) => !process.env[key]);
@@ -86,6 +92,7 @@ const founderRoutes = require("./routes/founder");
 const bootstrapRoutes = require("./routes/bootstrap");
 const feedRoutes = require("./routes/feed");
 const cronRoutes = require("./routes/cron");
+const callRoutes = require("./routes/calls");
 const { startEmailCampaignWorker } = require("./services/emailCampaignService");
 const { startInlineCronScheduler } = require("./cron/scheduler");
 
@@ -104,8 +111,6 @@ const ALLOWED_ORIGINS = [
   process.env.SERVER_URL,
   process.env.RENDER_EXTERNAL_URL,
 ].filter(Boolean);
-const IS_PRODUCTION = process.env.NODE_ENV === "production";
-
 function isOriginAllowed(origin) {
   if (!origin) return true;
   if (ALLOWED_ORIGINS.includes(origin)) return true;
@@ -222,6 +227,7 @@ app.use("/api/founder", founderRoutes);
 app.use("/api/bootstrap", bootstrapRoutes);
 app.use("/api/feed", feedRoutes);
 app.use("/api/cron", cronRoutes);
+app.use("/api/calls", writeLimiter, callRoutes);
 
 // Health check
 app.get("/api/health", (req, res) => {

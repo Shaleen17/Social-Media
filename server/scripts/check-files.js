@@ -24,6 +24,7 @@ const JS_FILES = [
   "utils/contentFeatures.js",
   "utils/validation.js",
   "../public/api.js",
+  "../public/call-client.js",
   "../public/enhancements-bootstrap.js",
   "../public/founder-control.js",
   "../public/noncritical-enhancements.js",

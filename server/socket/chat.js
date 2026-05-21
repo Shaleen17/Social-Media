@@ -303,46 +303,17 @@ module.exports = function setupSocket(io) {
     touchOnlineUser(socket.userId, socket.id).catch(() => {});
   }
 
-  const WEBRTC_EVENTS = {
-    START: "webrtc:call:start",
-    INCOMING: "webrtc:call:incoming",
-    ACCEPT: "webrtc:call:accept",
-    ACCEPTED: "webrtc:call:accepted",
-    REJECT: "webrtc:call:reject",
-    REJECTED: "webrtc:call:rejected",
-    END: "webrtc:call:end",
-    ENDED: "webrtc:call:ended",
-    ICE: "webrtc:ice-candidate",
-    RINGING: "webrtc:call:ringing",
-  };
-
-  const LEGACY_WEBRTC_EVENTS = {
-    START: "callUser",
-    ACCEPT: "answerCall",
-    ACCEPTED: "callAccepted",
-    REJECT: "rejectCall",
-    REJECTED: "callRejected",
-    END: "endCall",
-    ENDED: "callEnded",
-    ICE: "iceCandidate",
-    RINGING: "callRinging",
-  };
-
   function ack(ackFn, payload) {
     if (typeof ackFn === "function") ackFn(payload);
   }
 
-  function emitSignal(
-    targetUserId,
-    canonicalEvent,
-    legacyEvent,
-    canonicalPayload,
-    legacyPayload = canonicalPayload
-  ) {
+  function logCallLifecycle(event, details = {}) {
+    console.log(`[daily-call] ${event}`, details);
+  }
+
+  function emitCallSignal(targetUserId, eventName, payload) {
     if (!targetUserId) return;
-    const room = targetUserId.toString();
-    io.to(room).emit(canonicalEvent, canonicalPayload);
-    io.to(room).emit(legacyEvent, legacyPayload);
+    io.to(targetUserId.toString()).emit(eventName, payload);
   }
 
   io.on("connection", (socket) => {
@@ -474,155 +445,45 @@ module.exports = function setupSocket(io) {
         });
     });
 
-    // WebRTC signaling. New explicit events are used by the current client,
-    // while legacy event names stay registered for cached/older browsers.
-    async function handleCallStart(data, ackFn) {
-      const targetUserId = data?.to || data?.userToCall;
-      const callerId = data?.from || socket.userId;
-      const signal = data?.signal || data?.signalData;
-
-      if (!targetUserId || !callerId || !signal) {
-        ack(ackFn, { ok: false, error: "Invalid call payload" });
-        return;
-      }
-
-      const targetOnline = await isOnline(targetUserId);
-      console.log(
-        `webrtc:call:start ${callerId} -> ${targetUserId} (online: ${targetOnline})`
-      );
-
-      if (!targetOnline) {
-        const rejectedPayload = {
-          callId: data.callId || "",
-          reason: "User is offline",
-        };
-        socket.emit(WEBRTC_EVENTS.REJECTED, rejectedPayload);
-        socket.emit(LEGACY_WEBRTC_EVENTS.REJECTED, rejectedPayload);
-        ack(ackFn, { ok: false, error: "User is offline" });
-        return;
-      }
-
-      const incomingPayload = {
-        callId: data.callId || "",
-        signal,
-        signalData: signal,
-        from: callerId,
-        name: data.name || "Someone",
-        avatar: data.avatar || "",
-        isVideo: !!data.isVideo,
-      };
-
-      emitSignal(
-        targetUserId,
-        WEBRTC_EVENTS.INCOMING,
-        LEGACY_WEBRTC_EVENTS.START,
-        incomingPayload,
-        incomingPayload
-      );
-
-      const ringingPayload = { callId: data.callId || "", to: targetUserId };
-      socket.emit(WEBRTC_EVENTS.RINGING, ringingPayload);
-      socket.emit(LEGACY_WEBRTC_EVENTS.RINGING, ringingPayload);
-      ack(ackFn, { ok: true, ringing: true, to: targetUserId });
-    }
-
-    function handleCallAccept(data, ackFn) {
-      const targetUserId = data?.to || data?.userToCall;
-      const signal = data?.signal || data?.signalData;
-
-      if (!targetUserId || !signal) {
-        ack(ackFn, { ok: false, error: "Invalid answer payload" });
-        return;
-      }
-
-      const acceptedPayload = {
-        callId: data.callId || "",
-        signal,
-      };
-      emitSignal(
-        targetUserId,
-        WEBRTC_EVENTS.ACCEPTED,
-        LEGACY_WEBRTC_EVENTS.ACCEPTED,
-        acceptedPayload,
-        signal
-      );
-      ack(ackFn, { ok: true });
-    }
-
-    function handleIceCandidate(data, ackFn) {
-      const targetUserId = data?.to || data?.userToCall;
-      const candidate = data?.candidate;
-
-      if (!targetUserId || !candidate) {
-        ack(ackFn, { ok: false, error: "Invalid ICE payload" });
-        return;
-      }
-
-      const icePayload = {
-        callId: data.callId || "",
-        candidate,
-      };
-      emitSignal(
-        targetUserId,
-        WEBRTC_EVENTS.ICE,
-        LEGACY_WEBRTC_EVENTS.ICE,
-        icePayload,
-        candidate
-      );
-      ack(ackFn, { ok: true });
-    }
-
-    function handleCallReject(data, ackFn) {
-      const targetUserId = data?.to || data?.userToCall;
-
+    function handleDailyCallReject(data, ackFn) {
+      const targetUserId = data?.to;
       if (!targetUserId) {
         ack(ackFn, { ok: false, error: "Invalid reject payload" });
         return;
       }
 
-      const rejectedPayload = {
+      logCallLifecycle("call rejected", {
+        from: (socket.userId || "").toString(),
+        to: targetUserId.toString(),
         callId: data.callId || "",
-        reason: data.reason || "Call Rejected",
-      };
-      emitSignal(
-        targetUserId,
-        WEBRTC_EVENTS.REJECTED,
-        LEGACY_WEBRTC_EVENTS.REJECTED,
-        rejectedPayload,
-        rejectedPayload
-      );
+      });
+
+      emitCallSignal(targetUserId, "daily:call:rejected", {
+        callId: data.callId || "",
+        reason: data.reason || "Call rejected",
+      });
       ack(ackFn, { ok: true });
     }
 
-    function handleCallEnd(data, ackFn) {
-      const targetUserId = data?.to || data?.userToCall;
-
+    function handleDailyCallEnd(data, ackFn) {
+      const targetUserId = data?.to;
       if (targetUserId) {
-        const endedPayload = {
+        logCallLifecycle("call ended", {
+          from: (socket.userId || "").toString(),
+          to: targetUserId.toString(),
           callId: data.callId || "",
-          reason: data.reason || "Call Ended",
-        };
-        emitSignal(
-          targetUserId,
-          WEBRTC_EVENTS.ENDED,
-          LEGACY_WEBRTC_EVENTS.ENDED,
-          endedPayload,
-          endedPayload
-        );
+        });
+
+        emitCallSignal(targetUserId, "daily:call:ended", {
+          callId: data.callId || "",
+          reason: data.reason || "Call ended",
+        });
       }
       ack(ackFn, { ok: true });
     }
 
-    socket.on(WEBRTC_EVENTS.START, handleCallStart);
-    socket.on(LEGACY_WEBRTC_EVENTS.START, handleCallStart);
-    socket.on(WEBRTC_EVENTS.ACCEPT, handleCallAccept);
-    socket.on(LEGACY_WEBRTC_EVENTS.ACCEPT, handleCallAccept);
-    socket.on(WEBRTC_EVENTS.ICE, handleIceCandidate);
-    socket.on(LEGACY_WEBRTC_EVENTS.ICE, handleIceCandidate);
-    socket.on(WEBRTC_EVENTS.REJECT, handleCallReject);
-    socket.on(LEGACY_WEBRTC_EVENTS.REJECT, handleCallReject);
-    socket.on(WEBRTC_EVENTS.END, handleCallEnd);
-    socket.on(LEGACY_WEBRTC_EVENTS.END, handleCallEnd);
+    socket.on("daily:call:reject", handleDailyCallReject);
+    socket.on("daily:call:end", handleDailyCallEnd);
 
     socket.on("disconnect", async () => {
       stopPresenceHeartbeat(socket.id);
