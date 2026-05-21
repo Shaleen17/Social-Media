@@ -501,7 +501,7 @@
 
   let _chatPushSetupPromise = null;
   let _pendingOpenChatId = consumeOpenChatParam();
-const APP_ASSET_VERSION = "20260521-calls-1";
+const APP_ASSET_VERSION = "20260522-call-ui-1";
   let _appSwPromise = null;
   let _deferredInstallPrompt = null;
   let _installPromptBound = false;
@@ -5257,7 +5257,7 @@ const APP_ASSET_VERSION = "20260521-calls-1";
   };
 
   // =============================================
-  // WebRTC Call Initiation
+  // Real-time Call Initiation
   // =============================================
   function showCallMessage(type, message) {
     if (typeof MC !== "undefined" && MC && typeof MC[type] === "function") {
@@ -5363,8 +5363,6 @@ const APP_ASSET_VERSION = "20260521-calls-1";
   window.startChatVideoCall = function () {
     return window.startChatCall(true);
   };
-
-  window.startWebrtcCall = window.startChatCall;
 
   // =============================================
   // Mobile Keyboard — keep chat input visible
