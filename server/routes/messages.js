@@ -265,6 +265,28 @@ function clearPinnedMessageIfNeeded(conv, messageId) {
   return true;
 }
 
+function isMongooseVersionError(error) {
+  return error?.name === "VersionError";
+}
+
+async function saveConversationBestEffort(conv, context = "conversation save") {
+  try {
+    await conv.save();
+    return true;
+  } catch (error) {
+    if (!isMongooseVersionError(error)) {
+      throw error;
+    }
+
+    console.warn(`${context} skipped stale conversation version`, {
+      convId: toIdString(conv),
+      version: conv?.__v,
+      modifiedPaths: error.modifiedPaths || [],
+    });
+    return false;
+  }
+}
+
 function getMessageLinks(message) {
   const rawText = message?.text || "";
   const matches = rawText.match(MESSAGE_LINK_REGEX) || [];
@@ -420,7 +442,7 @@ async function normalizeConversationForActiveUsers(conv, viewerId) {
     conv.participants = activeParticipants.map(
       (participant) => participant._id || participant.id || participant
     );
-    await conv.save();
+    await saveConversationBestEffort(conv, "Normalize conversation");
   }
 
   conv.$locals.activeParticipants = activeParticipants;
@@ -883,14 +905,19 @@ router.get("/:convId", validateObjectIdParam("convId"), auth, async (req, res) =
     });
 
     if (changedMessageIds.length) {
-      await normalizedConv.save();
-      await emitMessagesRead(
-        req.app.get("io"),
-        normalizedConv._id.toString(),
-        viewerId,
-        Array.from(senderIds),
-        changedMessageIds
+      const saved = await saveConversationBestEffort(
+        normalizedConv,
+        "Mark messages read"
       );
+      if (saved) {
+        await emitMessagesRead(
+          req.app.get("io"),
+          normalizedConv._id.toString(),
+          viewerId,
+          Array.from(senderIds),
+          changedMessageIds
+        );
+      }
     }
 
     const visibleMessages = normalizedConv.messages.filter((message) => !hasId(message.deletedFor, viewerId));
