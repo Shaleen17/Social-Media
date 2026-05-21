@@ -10,6 +10,30 @@ const SocketClient = (() => {
   let reconnectTimer = null; // Added reconnectTimer
   const _socketReadyListeners = new Set();
 
+  function normalizeUserId(value) {
+    return value ? value.toString() : "";
+  }
+
+  function resolveUserId(uid) {
+    const explicit = normalizeUserId(uid);
+    if (explicit) return explicit;
+
+    const currentUser =
+      typeof CU !== "undefined" && CU
+        ? CU
+        : typeof API !== "undefined" && typeof API.getStoredUser === "function"
+          ? API.getStoredUser()
+          : null;
+
+    return normalizeUserId(currentUser?.id || currentUser?._id || userId);
+  }
+
+  function joinOwnRoom() {
+    if (socket && userId) {
+      socket.emit("join", userId);
+    }
+  }
+
   function notifySocketReady(activeSocket) {
     _socketReadyListeners.forEach((listener) => {
       try {
@@ -36,6 +60,14 @@ const SocketClient = (() => {
   }
 
   function connect(uid) {
+    const nextUserId = resolveUserId(uid);
+    if (!nextUserId) {
+      console.warn("SocketClient: No user id available. Cannot connect.");
+      return;
+    }
+
+    userId = nextUserId;
+
     const token = typeof API !== "undefined" ? API.getToken() : null; // Safely get token
     if (!token) {
       console.warn("SocketClient: No authentication token found. Cannot connect.");
@@ -43,7 +75,7 @@ const SocketClient = (() => {
       if (!reconnectTimer) {
         reconnectTimer = setTimeout(() => {
           reconnectTimer = null;
-          connect(uid); // Retry connection
+          connect(nextUserId); // Retry connection
         }, 5000); // Retry after 5 seconds
       }
       return;
@@ -64,13 +96,15 @@ const SocketClient = (() => {
     // If socket already exists and is connected, no need to re-initialize
     if (socket && socket.connected) {
       console.log("Socket already connected.");
-      socket.emit("join", uid);
+      try {
+        socket.auth = { token };
+      } catch {}
+      joinOwnRoom();
       notifySocketReady(socket);
       return;
     }
 
     if (socket && !socket.connected) {
-      userId = uid;
       try {
         socket.auth = { token };
       } catch {}
@@ -79,8 +113,6 @@ const SocketClient = (() => {
         return;
       }
     }
-    
-    userId = uid;
 
     // Clear any existing reconnect timer if we are attempting to connect now
     if (reconnectTimer) {
@@ -99,9 +131,7 @@ const SocketClient = (() => {
 
     socket.on("connect", () => {
       console.log("🔌 Socket connected:", socket.id);
-      if (userId) {
-        socket.emit("join", userId);
-      }
+      joinOwnRoom();
       if (typeof API !== "undefined" && typeof API.flushPendingChatMessages === "function") {
         API.flushPendingChatMessages().catch(() => {});
       }
@@ -205,10 +235,16 @@ const SocketClient = (() => {
 
     socket.on("reconnect", () => {
       console.log("🔌 Socket reconnected");
-      if (userId) socket.emit("join", userId);
+      joinOwnRoom();
       if (typeof API !== "undefined" && typeof API.flushPendingChatMessages === "function") {
         API.flushPendingChatMessages().catch(() => {});
       }
+      notifySocketReady(socket);
+    });
+
+    socket.io?.on("reconnect", () => {
+      console.log("Socket manager reconnected");
+      joinOwnRoom();
       notifySocketReady(socket);
     });
 
@@ -222,6 +258,7 @@ const SocketClient = (() => {
       socket.disconnect();
       socket = null;
     }
+    userId = null;
     _onlineUsers.clear();
   }
 

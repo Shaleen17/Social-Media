@@ -501,7 +501,7 @@
 
   let _chatPushSetupPromise = null;
   let _pendingOpenChatId = consumeOpenChatParam();
-const APP_ASSET_VERSION = "20260501-profile-qr-scan-1";
+const APP_ASSET_VERSION = "20260521-calls-1";
   let _appSwPromise = null;
   let _deferredInstallPrompt = null;
   let _installPromptBound = false;
@@ -5259,49 +5259,112 @@ const APP_ASSET_VERSION = "20260501-profile-qr-scan-1";
   // =============================================
   // WebRTC Call Initiation
   // =============================================
-  window.startWebrtcCall = function (isVideo) {
-    if (!activeChatId) return MC?.error("No active chat.");
+  function showCallMessage(type, message) {
+    if (typeof MC !== "undefined" && MC && typeof MC[type] === "function") {
+      MC[type](message);
+    }
+  }
 
-    if (!window.isSecureContext && !isLocalDevHost()) {
-      return MC?.error("Voice and video calling require HTTPS or localhost.");
+  function getParticipantId(participant) {
+    return (participant?._id || participant?.id || participant || "").toString();
+  }
+
+  function getActiveCallConversation() {
+    return getConversationById(activeChatId);
+  }
+
+  function getDirectCallTarget(conv) {
+    if (!conv || conv.isGroup) return null;
+
+    const selfId = myId();
+    let user = conv.user || conv.otherUser || {};
+    let targetUserId = (conv.uid || user._id || user.id || "").toString();
+
+    if (!targetUserId && Array.isArray(conv.participants)) {
+      const participant = conv.participants.find(
+        (item) => getParticipantId(item) && getParticipantId(item) !== selfId
+      );
+      targetUserId = getParticipantId(participant);
+      if (participant && typeof participant === "object") {
+        user = participant;
+      }
     }
 
-    const conv = _cachedConversations.find(
-      (c) => (c.id || c._id || "").toString() === activeChatId
-    );
+    if (!targetUserId) return null;
 
+    return {
+      id: targetUserId,
+      name: user?.name || conv.name || "User",
+      avatar: user?.avatar || user?.profilePic || conv.avatar || "",
+    };
+  }
+
+  window.startChatCall = function (withVideo) {
+    if (!CU) {
+      showCallMessage("error", "Please sign in to start a call.");
+      openOvl("authOvl");
+      return;
+    }
+
+    if (!activeChatId) {
+      showCallMessage("error", "Open a one-to-one chat to start a call.");
+      return;
+    }
+
+    const conv = getActiveCallConversation();
     if (!conv) {
-      return MC?.error("Could not find this chat.");
+      showCallMessage("error", "Could not find this chat.");
+      return;
     }
 
     if (conv.isGroup) {
-      return MC?.info("Voice and video calling are available in direct chats only.");
+      showCallMessage("info", "Calling is currently available only for one-to-one chats.");
+      return;
     }
 
-    if (!conv.uid) {
-      return MC?.error("Could not find user details to call.");
+    const target = getDirectCallTarget(conv);
+    if (!target?.id) {
+      showCallMessage("error", "Could not find user details to call.");
+      return;
     }
 
-    const uid = conv.uid.toString();
-    const userName = conv.user ? conv.user.name : "User";
-    const avatar = conv.user ? conv.user.avatar : null;
-    const selfId = (CU?.id || CU?._id || "").toString();
-    if (selfId) {
+    const selfId = myId();
+    if (selfId && target.id === selfId) {
+      showCallMessage("error", "You cannot call yourself.");
+      return;
+    }
+
+    if (typeof SocketClient === "undefined" || !SocketClient) {
+      showCallMessage("error", "Real-time connection is not ready. Please wait a moment and try again.");
+      return;
+    }
+
+    if (selfId && typeof SocketClient.connect === "function" && !SocketClient.isConnected()) {
       SocketClient.connect(selfId);
     }
-    const hasPresenceData =
-      typeof SocketClient.getOnlineUsers === "function" &&
-      SocketClient.getOnlineUsers().size > 0;
-    if (SocketClient.isConnected() && hasPresenceData && !SocketClient.isUserOnline(uid)) {
-      MC?.info((userName || "User") + " may be offline. Trying the call anyway...");
+
+    if (!SocketClient.isConnected()) {
+      showCallMessage("error", "Real-time connection is not ready. Please wait a moment and try again.");
+      return;
     }
 
-    if (typeof WebRTCClient !== "undefined") {
-      WebRTCClient.startCall(uid, userName, avatar, isVideo);
-    } else {
-      MC?.error("Calling feature is not initialized.");
+    if (typeof CallClient === "undefined" || !CallClient?.startCall) {
+      showCallMessage("error", "Calling feature is not initialized.");
+      return;
     }
+
+    return CallClient.startCall(target.id, target.name, target.avatar, !!withVideo);
   };
+
+  window.startChatVoiceCall = function () {
+    return window.startChatCall(false);
+  };
+
+  window.startChatVideoCall = function () {
+    return window.startChatCall(true);
+  };
+
+  window.startWebrtcCall = window.startChatCall;
 
   // =============================================
   // Mobile Keyboard — keep chat input visible

@@ -771,6 +771,32 @@ const API = (() => {
       });
     },
 
+    // Real-time calls
+    async startDailyCall(targetUserId, withVideo) {
+      return request("/calls/daily/start", {
+        method: "POST",
+        body: JSON.stringify({ targetUserId, withVideo: !!withVideo }),
+      });
+    },
+
+    async getDailyCallToken(callId) {
+      return request("/calls/daily/token", {
+        method: "POST",
+        body: JSON.stringify({ callId }),
+      });
+    },
+
+    async endDailyCall(callId, reason = "Call ended") {
+      return request("/calls/daily/end", {
+        method: "POST",
+        body: JSON.stringify({ callId, reason }),
+      });
+    },
+
+    async getDailyCallHealth() {
+      return request("/calls/daily/health");
+    },
+
     async deleteMessage(convId, messageId, scope = "me") {
       return request(`/messages/${convId}/${messageId}/delete`, {
         method: "POST",
