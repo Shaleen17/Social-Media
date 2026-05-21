@@ -19,6 +19,7 @@ on:
     - cron: "4,19,34,49 * * * *"
     - cron: "9,19,29,39,49,59 * * * *"
     - cron: "14 * * * *"
+    - cron: "*/5 * * * *"
 
 jobs:
   run-scheduled-job:
@@ -68,6 +69,9 @@ jobs:
               ;;
             "14 * * * *")
               trigger_job "cleanup-auth-and-messages"
+              ;;
+            "*/5 * * * *")
+              trigger_job "process-email-campaign-queue"
               ;;
             *)
               echo "No job mapped for schedule: ${SCHEDULE}"
