@@ -5,6 +5,9 @@
 const CallClient = (() => {
   const OUTGOING_TIMEOUT_MS = 30000;
   const INCOMING_TIMEOUT_MS = 45000;
+  const CALL_PERMISSION_COOKIE = "ts_call_media_permission";
+  const CALL_PERMISSION_STORAGE_KEY = "ts_call_media_permission";
+  const CALL_PERMISSION_MAX_AGE = 60 * 60 * 24 * 45;
 
   let initialized = false;
   let callObject = null;
@@ -21,6 +24,8 @@ const CallClient = (() => {
   let ringInterval = null;
   let ringContext = null;
   let lastMediaErrorAt = 0;
+  let dailyJoinStartedAt = 0;
+  let lastCallNotice = { message: "", at: 0 };
   let selectedOutputDeviceId = "default";
   let els = {};
 
@@ -33,6 +38,7 @@ const CallClient = (() => {
       stage: document.getElementById("callStage"),
       incomingCard: document.getElementById("callIncomingCard"),
       incomingType: document.getElementById("callIncomingType"),
+      permissionNote: document.getElementById("callPermissionNote"),
       statusTxt: document.getElementById("callStatusText"),
       stageStatus: document.getElementById("callStageStatus"),
       statePill: document.getElementById("callStatePill"),
@@ -120,6 +126,57 @@ const CallClient = (() => {
     }
   }
 
+  function notifyCallIssue(type, message) {
+    const safeMessage = message || "Could not access camera or microphone";
+    const now = Date.now();
+    if (
+      lastCallNotice.message === safeMessage &&
+      now - lastCallNotice.at < 3500
+    ) {
+      return;
+    }
+    lastCallNotice = { message: safeMessage, at: now };
+    notifyUser(type, safeMessage);
+  }
+
+  function getCookie(name) {
+    try {
+      const prefix = `${encodeURIComponent(name)}=`;
+      const item = document.cookie
+        .split(";")
+        .map((part) => part.trim())
+        .find((part) => part.startsWith(prefix));
+      return item ? decodeURIComponent(item.slice(prefix.length)) : "";
+    } catch {
+      return "";
+    }
+  }
+
+  function setCookie(name, value, maxAgeSeconds) {
+    try {
+      const secure = window.location.protocol === "https:" ? "; Secure" : "";
+      document.cookie = `${encodeURIComponent(name)}=${encodeURIComponent(
+        value
+      )}; Max-Age=${maxAgeSeconds}; Path=/; SameSite=Lax${secure}`;
+    } catch {}
+  }
+
+  function getStoredMediaPermission() {
+    try {
+      return localStorage.getItem(CALL_PERMISSION_STORAGE_KEY) || getCookie(CALL_PERMISSION_COOKIE);
+    } catch {
+      return getCookie(CALL_PERMISSION_COOKIE);
+    }
+  }
+
+  function rememberMediaPermission(value) {
+    const safeValue = String(value || "asked").slice(0, 40);
+    setCookie(CALL_PERMISSION_COOKIE, safeValue, CALL_PERMISSION_MAX_AGE);
+    try {
+      localStorage.setItem(CALL_PERMISSION_STORAGE_KEY, safeValue);
+    } catch {}
+  }
+
   function isLocalSecureContext() {
     return (
       window.isSecureContext ||
@@ -164,6 +221,38 @@ const CallClient = (() => {
       : "Could not access microphone";
   }
 
+  function isPermissionDeniedError(err) {
+    const rawMessage =
+      typeof err === "string"
+        ? err
+        : err?.message || err?.errorMsg || err?.error || "";
+    return (
+      err?.name === "NotAllowedError" ||
+      err?.name === "PermissionDeniedError" ||
+      /permission|denied|notallowed/i.test(rawMessage)
+    );
+  }
+
+  function showPermissionNote(message, force = false) {
+    if (!els.permissionNote) return;
+    const cached = getStoredMediaPermission();
+    const shouldShow = force || !cached || cached === "denied" || cached === "failed";
+    els.permissionNote.textContent = shouldShow ? message || "" : "";
+    els.permissionNote.classList.toggle("show", !!(shouldShow && message));
+  }
+
+  function getPermissionPromptText(withVideo) {
+    const cached = getStoredMediaPermission();
+    if (cached === "denied" || cached === "failed") {
+      return withVideo
+        ? "Camera or microphone may be blocked. If the browser does not ask, allow both from site settings."
+        : "Microphone may be blocked. If the browser does not ask, allow it from site settings.";
+    }
+    return withVideo
+      ? "Allow camera and microphone when your browser asks. Your browser will remember this for future calls."
+      : "Allow microphone when your browser asks. Your browser will remember this for future calls.";
+  }
+
   async function preflightMedia(withVideo, options = {}) {
     const allowVideoFallback = options.allowVideoFallback !== false;
 
@@ -177,33 +266,57 @@ const CallClient = (() => {
       throw error;
     }
 
-    const audioStream = await navigator.mediaDevices.getUserMedia({
-      audio: {
-        echoCancellation: true,
-        noiseSuppression: true,
-      },
-      video: false,
-    });
-    audioStream.getTracks().forEach((track) => track.stop());
+    const audioConstraints = {
+      echoCancellation: true,
+      noiseSuppression: true,
+    };
 
-    if (!withVideo) {
-      return { startVideoOff: true };
+    if (withVideo) {
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({
+          audio: audioConstraints,
+          video: { facingMode: "user" },
+        });
+        stream.getTracks().forEach((track) => track.stop());
+        rememberMediaPermission("audio-video");
+        showPermissionNote("");
+        return { startVideoOff: false };
+      } catch (videoBundleError) {
+        try {
+          const audioStream = await navigator.mediaDevices.getUserMedia({
+            audio: audioConstraints,
+            video: false,
+          });
+          audioStream.getTracks().forEach((track) => track.stop());
+          rememberMediaPermission("audio");
+          showPermissionNote("");
+          if (!allowVideoFallback) throw videoBundleError;
+          return {
+            startVideoOff: true,
+            videoFallback: true,
+            videoError: videoBundleError,
+          };
+        } catch (audioError) {
+          rememberMediaPermission(
+            isPermissionDeniedError(audioError) ? "denied" : "failed"
+          );
+          throw audioError;
+        }
+      }
     }
 
     try {
-      const videoStream = await navigator.mediaDevices.getUserMedia({
-        audio: false,
-        video: { facingMode: "user" },
+      const audioStream = await navigator.mediaDevices.getUserMedia({
+        audio: audioConstraints,
+        video: false,
       });
-      videoStream.getTracks().forEach((track) => track.stop());
-      return { startVideoOff: false };
+      audioStream.getTracks().forEach((track) => track.stop());
+      rememberMediaPermission("audio");
+      showPermissionNote("");
+      return { startVideoOff: true };
     } catch (err) {
-      if (!allowVideoFallback) throw err;
-      return {
-        startVideoOff: true,
-        videoFallback: true,
-        videoError: err,
-      };
+      rememberMediaPermission(isPermissionDeniedError(err) ? "denied" : "failed");
+      throw err;
     }
   }
 
@@ -257,6 +370,7 @@ const CallClient = (() => {
     els.overlay.setAttribute("aria-hidden", "true");
     if (els.activeControls) els.activeControls.style.display = "none";
     if (els.incomingControls) els.incomingControls.style.display = "none";
+    showPermissionNote("");
   }
 
   function updateCallType(withVideo, incoming = false) {
@@ -322,9 +436,11 @@ const CallClient = (() => {
 
     try {
       ensureDailyReady();
+      showPermissionNote(getPermissionPromptText(!!withVideo));
+      setStatus("Checking permissions...");
       const media = await preflightMedia(!!withVideo);
       if (media.videoFallback) {
-        notifyUser("warn", "Camera is unavailable. Starting with camera off.");
+        notifyCallIssue("warn", "Camera is unavailable. Starting with camera off.");
       }
       setStatus("Calling...");
 
@@ -349,7 +465,7 @@ const CallClient = (() => {
       }, OUTGOING_TIMEOUT_MS);
     } catch (err) {
       console.error("Failed to start Daily call", err);
-      notifyUser("error", getCallErrorMessage(err, !!withVideo));
+      notifyCallIssue("error", getCallErrorMessage(err, !!withVideo));
       await cleanupCall();
     }
   }
@@ -377,6 +493,7 @@ const CallClient = (() => {
     };
     isCaller = false;
     showOverlay("is calling you", incomingCall.peer, "incoming", incomingCall.withVideo);
+    showPermissionNote(getPermissionPromptText(incomingCall.withVideo));
     startRingtone();
 
     clearTimeout(callTimeout);
@@ -409,9 +526,10 @@ const CallClient = (() => {
         "active",
         currentCall.withVideo
       );
+      showPermissionNote(getPermissionPromptText(!!currentCall.withVideo));
       const media = await preflightMedia(!!currentCall.withVideo);
       if (media.videoFallback) {
-        notifyUser("warn", "Camera is unavailable. Joining with camera off.");
+        notifyCallIssue("warn", "Camera is unavailable. Joining with camera off.");
       }
 
       setStatus("Joining...");
@@ -424,7 +542,7 @@ const CallClient = (() => {
       await joinDailyRoom(currentCall);
     } catch (err) {
       console.error("Failed to answer Daily call", err);
-      notifyUser("error", getCallErrorMessage(err, !!currentCall?.withVideo));
+      notifyCallIssue("error", getCallErrorMessage(err, !!currentCall?.withVideo));
       await endCallLocally("Could not join call");
     }
   }
@@ -484,6 +602,7 @@ const CallClient = (() => {
 
     bindDailyEvents(callObject);
     updateDeviceSupport();
+    dailyJoinStartedAt = Date.now();
     await callObject.join({
       url: call.roomUrl,
       token: call.token,
@@ -504,6 +623,7 @@ const CallClient = (() => {
 
     daily.on("joining-meeting", () => setStatus("Connecting..."));
     daily.on("joined-meeting", () => {
+      dailyJoinStartedAt = 0;
       setStatus(isCaller ? "Ringing..." : "Connected");
       setOverlayMode("active");
       rerender();
@@ -531,7 +651,7 @@ const CallClient = (() => {
         ? { ...currentCall, startVideoOff: true }
         : currentCall;
       updateControlButtons();
-      notifyUser(
+      notifyCallIssue(
         "warn",
         getCallErrorMessage(event?.errorMsg || event, !!currentCall?.withVideo)
       );
@@ -539,12 +659,17 @@ const CallClient = (() => {
     daily.on("error", (event) => {
       console.error("Daily call error", event);
       if (Date.now() - lastMediaErrorAt < 1800) return;
-      if (isMediaDailyError(event)) {
+      if (dailyJoinStartedAt && Date.now() - dailyJoinStartedAt < 7000 && !callStartedAt) {
         lastMediaErrorAt = Date.now();
-        notifyUser("warn", getCallErrorMessage(event, !!currentCall?.withVideo));
+        notifyCallIssue("warn", getCallErrorMessage(event, !!currentCall?.withVideo));
         return;
       }
-      notifyUser("error", "Network issue. Please try the call again.");
+      if (isMediaDailyError(event)) {
+        lastMediaErrorAt = Date.now();
+        notifyCallIssue("warn", getCallErrorMessage(event, !!currentCall?.withVideo));
+        return;
+      }
+      notifyCallIssue("error", "Network issue. Please try the call again.");
     });
     daily.on("left-meeting", () => {
       if (!isCleaningUp) cleanupCall();

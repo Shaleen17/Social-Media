@@ -11657,6 +11657,20 @@ video {
   font-size: 14px;
   line-height: 1.45;
 }
+.call-permission-note {
+  display: none;
+  margin: 14px auto 0;
+  max-width: 280px;
+  padding: 10px 12px;
+  border-radius: var(--rs);
+  background: var(--bg2);
+  color: var(--t2);
+  font-size: 13px;
+  line-height: 1.35;
+}
+.call-permission-note.show {
+  display: block;
+}
 .call-remote-status {
   color: rgba(255,255,255,0.78);
 }
