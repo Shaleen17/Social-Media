@@ -161,14 +161,21 @@ router.get("/click/:deliveryId/:token", async (req, res) => {
 });
 
 router.post("/run-due", async (req, res) => {
-  if (!isAuthorizedCronRequest(req)) {
-    return res.status(403).json({ error: "Not authorized" });
-  }
+  try {
+    if (!isAuthorizedCronRequest(req)) {
+      return res.status(403).json({ error: "Not authorized" });
+    }
 
-  const summary = await processDueEmailCampaignDeliveries({
-    limit: Number(req.body?.limit || req.query.limit || 0) || undefined,
-  });
-  res.json(summary);
+    const summary = await processDueEmailCampaignDeliveries({
+      limit: Number(req.body?.limit || req.query.limit || 0) || undefined,
+    });
+    return res.json(summary);
+  } catch (error) {
+    console.error("[EmailCampaign] run-due failed:", error.message);
+    return res.status(error.statusCode || 500).json({
+      error: error.message || "Email campaign processing failed.",
+    });
+  }
 });
 
 router.get("/admin/stats", async (req, res) => {

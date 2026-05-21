@@ -6,13 +6,20 @@ const {
   CAMPAIGN_KEY,
   getEmailJourneyContent,
 } = require("../data/emailJourneyContent");
-const { sendEmail, isEmailDeliveryConfigured } = require("../utils/sendEmail");
+const {
+  sendEmail,
+  isEmailDeliveryConfigured,
+  getEffectiveEmailDeliveryProvider,
+  getEmailConfigurationDiagnostics,
+} = require("../utils/sendEmail");
 const { buildMarketingEmailTemplate } = require("../utils/marketingEmailTemplate");
+const { log } = require("../utils/logger");
 
 const MS_PER_HOUR = 60 * 60 * 1000;
 const MS_PER_DAY = 24 * MS_PER_HOUR;
 const MAX_SEND_ATTEMPTS = 3;
 const RETRY_DELAY_MS = 30 * 60 * 1000;
+const DEFAULT_SENDING_TIMEOUT_MS = 15 * 60 * 1000;
 const TRANSPARENT_GIF = Buffer.from(
   "R0lGODlhAQABAPAAAP///wAAACH5BAAAAAAALAAAAAABAAEAAAICRAEAOw==",
   "base64"
@@ -20,9 +27,23 @@ const TRANSPARENT_GIF = Buffer.from(
 
 let workerTimer = null;
 let workerInFlight = false;
+let immediateProcessingTimer = null;
+let lastEmailConfigWarningAt = 0;
 
 function normalizeEmail(email = "") {
   return String(email).trim().toLowerCase();
+}
+
+function maskEmail(email = "") {
+  const normalized = normalizeEmail(email);
+  const [localPart, domain] = normalized.split("@");
+  if (!localPart || !domain) return normalized ? "[invalid-email]" : "";
+  const visible = localPart.slice(0, 2);
+  return `${visible}${"*".repeat(Math.max(1, localPart.length - 2))}@${domain}`;
+}
+
+function logCampaign(level, message, meta = {}) {
+  log(level, `Email campaign ${message}`, meta);
 }
 
 function normalizeBaseUrl(value, fallback) {
@@ -70,8 +91,21 @@ function isWorkerEnabled() {
 }
 
 function getStartDelayHours() {
-  const parsed = Number(process.env.EMAIL_CAMPAIGN_START_DELAY_HOURS || 24);
-  return Number.isFinite(parsed) && parsed >= 0 ? parsed : 24;
+  const parsed = Number(process.env.EMAIL_CAMPAIGN_START_DELAY_HOURS || 0);
+  return Number.isFinite(parsed) && parsed >= 0 ? parsed : 0;
+}
+
+function isFirstCampaignEmailImmediate() {
+  return String(process.env.EMAIL_CAMPAIGN_FIRST_EMAIL_IMMEDIATE || "true").toLowerCase() !== "false";
+}
+
+function getSendingTimeoutMs() {
+  const parsed = Number(
+    process.env.EMAIL_CAMPAIGN_SENDING_TIMEOUT_MS || DEFAULT_SENDING_TIMEOUT_MS
+  );
+  return Number.isFinite(parsed) && parsed >= 60 * 1000
+    ? parsed
+    : DEFAULT_SENDING_TIMEOUT_MS;
 }
 
 function getSendWindow() {
@@ -138,10 +172,15 @@ function groupContentByWeek(content) {
   }, new Map());
 }
 
-function buildSchedule(startDate = new Date()) {
+function buildSchedule(startDate = new Date(), options = {}) {
   const campaignContent = getEmailJourneyContent();
   const contentByWeek = groupContentByWeek(campaignContent);
   const firstWeekStart = startOfDay(startDate);
+  const firstContentKey = campaignContent
+    .slice()
+    .sort((a, b) => a.contentIndex - b.contentIndex)[0]?.contentKey;
+  const forceFirstEmailAtStart =
+    options.firstEmailImmediate !== false && isFirstCampaignEmailImmediate();
   let previousKey = "";
   const schedule = [];
 
@@ -155,12 +194,16 @@ function buildSchedule(startDate = new Date()) {
 
     weekContent.forEach((contentItem, index) => {
       const candidateDate = createSendDate(weekStart, days[index]);
+      const scheduledFor =
+        forceFirstEmailAtStart && contentItem.contentKey === firstContentKey
+          ? new Date(startDate)
+          : candidateDate.getTime() >= startDate.getTime()
+            ? candidateDate
+            : new Date(startDate.getTime() + randomInt(120) * 60 * 1000);
+
       schedule.push({
         contentItem,
-        scheduledFor:
-          candidateDate.getTime() >= startDate.getTime()
-            ? candidateDate
-            : new Date(startDate.getTime() + randomInt(120) * 60 * 1000),
+        scheduledFor,
       });
     });
   });
@@ -227,11 +270,87 @@ async function createDeliveriesForSubscription(subscription, startDate) {
   })
     .sort({ scheduledFor: -1 })
     .lean();
+  const firstDelivery = await EmailCampaignDelivery.findOne({
+    subscription: subscription._id,
+  })
+    .sort({ scheduledFor: 1 })
+    .lean();
 
   subscription.emailsScheduledCount = emailsScheduledCount;
   subscription.endsAt = lastDelivery ? addDays(lastDelivery.scheduledFor, 7) : null;
   await subscription.save();
+
+  logCampaign("info", "subscription scheduled", {
+    subscriptionId: subscription._id?.toString(),
+    userId: subscription.user?.toString(),
+    email: maskEmail(subscription.email),
+    scheduledCount: emailsScheduledCount,
+    firstScheduledFor: firstDelivery?.scheduledFor || null,
+    startDate,
+  });
+
   return emailsScheduledCount;
+}
+
+async function activateImmediateFirstDelivery(subscriptionId, now = new Date()) {
+  if (!isFirstCampaignEmailImmediate()) return false;
+
+  const firstDelivery = await EmailCampaignDelivery.findOne({
+    subscription: subscriptionId,
+    contentIndex: 1,
+    status: "scheduled",
+    scheduledFor: { $gt: now },
+  });
+
+  if (!firstDelivery) return false;
+
+  firstDelivery.scheduledFor = now;
+  firstDelivery.error = null;
+  await firstDelivery.save({ validateBeforeSave: false });
+
+  logCampaign("info", "first delivery activated immediately", {
+    subscriptionId: subscriptionId?.toString(),
+    deliveryId: firstDelivery._id?.toString(),
+    email: maskEmail(firstDelivery.email),
+    scheduledFor: now,
+  });
+
+  return true;
+}
+
+async function activateDueFirstDeliveries(now = new Date(), limit = 50) {
+  if (!isFirstCampaignEmailImmediate()) return 0;
+
+  const candidates = await EmailCampaignDelivery.find({
+    contentIndex: 1,
+    status: "scheduled",
+    scheduledFor: { $gt: now },
+  })
+    .sort({ scheduledFor: 1 })
+    .limit(limit);
+
+  let activated = 0;
+  for (const delivery of candidates) {
+    const subscription = await EmailCampaignSubscription.findOne({
+      _id: delivery.subscription,
+      status: "active",
+      "consent.given": true,
+      emailsSentCount: 0,
+    }).select("_id");
+
+    if (!subscription) continue;
+
+    delivery.scheduledFor = now;
+    delivery.error = null;
+    await delivery.save({ validateBeforeSave: false });
+    activated += 1;
+  }
+
+  if (activated > 0) {
+    logCampaign("info", "activated delayed first deliveries", { activated });
+  }
+
+  return activated;
 }
 
 async function enrollUserInEmailCampaign(user, options = {}) {
@@ -286,6 +405,8 @@ async function enrollUserInEmailCampaign(user, options = {}) {
   }
 
   await createDeliveriesForSubscription(subscription, subscription.startedAt || startDate);
+  await activateImmediateFirstDelivery(subscription._id, new Date());
+  triggerImmediateCampaignProcessing("enrollment");
 
   return { enrolled: true, subscription };
 }
@@ -393,15 +514,33 @@ async function sendDelivery(delivery) {
   );
 
   await maybeCompleteSubscription(subscription._id);
+  logCampaign("info", "delivery sent", {
+    deliveryId: delivery._id?.toString(),
+    subscriptionId: subscription._id?.toString(),
+    email: maskEmail(delivery.email),
+    messageId: delivery.messageId,
+  });
   return { status: "sent" };
 }
 
 async function processDueEmailCampaignDeliveries(options = {}) {
   if (!isCampaignEnabled()) {
+    logCampaign("info", "processing skipped because campaign is disabled");
     return { processed: 0, sent: 0, skipped: 0, failed: 0, disabled: true };
   }
 
   if (!isEmailDeliveryConfigured()) {
+    const now = Date.now();
+    if (now - lastEmailConfigWarningAt > 5 * 60 * 1000) {
+      lastEmailConfigWarningAt = now;
+      const provider = getEffectiveEmailDeliveryProvider();
+      const diagnostics = getEmailConfigurationDiagnostics(provider);
+      logCampaign("warn", "processing skipped because email delivery is not configured", {
+        provider,
+        missing: diagnostics.missing,
+      });
+    }
+
     return {
       processed: 0,
       sent: 0,
@@ -413,9 +552,20 @@ async function processDueEmailCampaignDeliveries(options = {}) {
 
   const limit = Number(options.limit || getBatchSize());
   const now = new Date();
+  const sendingCutoff = new Date(now.getTime() - getSendingTimeoutMs());
+  const activated = await activateDueFirstDeliveries(now, limit);
   const dueDeliveries = await EmailCampaignDelivery.find({
-    status: "scheduled",
     scheduledFor: { $lte: now },
+    $or: [
+      { status: "scheduled" },
+      {
+        status: "sending",
+        $or: [
+          { lastAttemptAt: { $lte: sendingCutoff } },
+          { lastAttemptAt: null },
+        ],
+      },
+    ],
   })
     .sort({ scheduledFor: 1 })
     .limit(limit);
@@ -426,11 +576,26 @@ async function processDueEmailCampaignDeliveries(options = {}) {
     skipped: 0,
     failed: 0,
     emailConfigured: true,
+    activated,
+    recoveredStaleSending: 0,
   };
 
   for (const dueDelivery of dueDeliveries) {
     const delivery = await EmailCampaignDelivery.findOneAndUpdate(
-      { _id: dueDelivery._id, status: "scheduled" },
+      {
+        _id: dueDelivery._id,
+        scheduledFor: { $lte: now },
+        $or: [
+          { status: "scheduled" },
+          {
+            status: "sending",
+            $or: [
+              { lastAttemptAt: { $lte: sendingCutoff } },
+              { lastAttemptAt: null },
+            ],
+          },
+        ],
+      },
       {
         $set: { status: "sending", lastAttemptAt: new Date() },
         $inc: { attempts: 1 },
@@ -443,6 +608,9 @@ async function processDueEmailCampaignDeliveries(options = {}) {
     }
 
     summary.processed += 1;
+    if (dueDelivery.status === "sending") {
+      summary.recoveredStaleSending += 1;
+    }
 
     try {
       const result = await sendDelivery(delivery);
@@ -457,10 +625,60 @@ async function processDueEmailCampaignDeliveries(options = {}) {
       delivery.error = error.message || "Email delivery failed.";
       await delivery.save({ validateBeforeSave: false });
       summary.failed += 1;
+      logCampaign(shouldRetry ? "warn" : "error", "delivery failed", {
+        deliveryId: delivery._id?.toString(),
+        subscriptionId: delivery.subscription?.toString(),
+        email: maskEmail(delivery.email),
+        attempts,
+        willRetry: shouldRetry,
+        nextRetryAt: shouldRetry ? delivery.scheduledFor : null,
+        error: error.message || "Email delivery failed.",
+      });
     }
   }
 
+  if (summary.processed > 0 || summary.activated > 0) {
+    logCampaign("info", "processing completed", summary);
+  }
+
   return summary;
+}
+
+function triggerImmediateCampaignProcessing(reason = "manual") {
+  if (
+    !isCampaignEnabled() ||
+    !isWorkerEnabled() ||
+    process.env.VERCEL ||
+    immediateProcessingTimer
+  ) {
+    return false;
+  }
+
+  immediateProcessingTimer = setTimeout(async () => {
+    immediateProcessingTimer = null;
+    try {
+      const summary = await processDueEmailCampaignDeliveries({
+        limit: Math.min(getBatchSize(), 10),
+      });
+      if (summary.processed > 0 || summary.activated > 0) {
+        logCampaign("info", "immediate processing finished", {
+          reason,
+          ...summary,
+        });
+      }
+    } catch (error) {
+      logCampaign("error", "immediate processing failed", {
+        reason,
+        error: error.message || "Unknown error",
+      });
+    }
+  }, 1000);
+
+  if (typeof immediateProcessingTimer.unref === "function") {
+    immediateProcessingTimer.unref();
+  }
+
+  return true;
 }
 
 function startEmailCampaignWorker() {
@@ -470,6 +688,12 @@ function startEmailCampaignWorker() {
     process.env.VERCEL ||
     workerTimer
   ) {
+    logCampaign("info", "worker not started", {
+      campaignEnabled: isCampaignEnabled(),
+      workerEnabled: isWorkerEnabled(),
+      vercel: !!process.env.VERCEL,
+      alreadyStarted: !!workerTimer,
+    });
     return false;
   }
 
@@ -479,10 +703,12 @@ function startEmailCampaignWorker() {
     try {
       const summary = await processDueEmailCampaignDeliveries();
       if (summary.processed > 0) {
-        console.log("[EmailCampaign] processed due deliveries:", summary);
+        logCampaign("info", "worker processed due deliveries", summary);
       }
     } catch (error) {
-      console.error("[EmailCampaign] worker failed:", error.message);
+      logCampaign("error", "worker failed", {
+        error: error.message || "Unknown error",
+      });
     } finally {
       workerInFlight = false;
     }
@@ -490,6 +716,11 @@ function startEmailCampaignWorker() {
 
   setTimeout(run, 15000);
   workerTimer = setInterval(run, getWorkerIntervalMs());
+  logCampaign("info", "worker started", {
+    intervalMs: getWorkerIntervalMs(),
+    batchSize: getBatchSize(),
+    firstEmailImmediate: isFirstCampaignEmailImmediate(),
+  });
   return true;
 }
 
@@ -673,6 +904,7 @@ module.exports = {
   processDueEmailCampaignDeliveries,
   startEmailCampaignWorker,
   stopEmailCampaignWorker,
+  triggerImmediateCampaignProcessing,
   unsubscribeByToken,
   unsubscribeByUserId,
   getSubscriptionForToken,
