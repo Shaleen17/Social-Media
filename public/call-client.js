@@ -20,6 +20,7 @@ const CallClient = (() => {
   let timerInterval = null;
   let ringInterval = null;
   let ringContext = null;
+  let lastMediaErrorAt = 0;
   let selectedOutputDeviceId = "default";
   let els = {};
 
@@ -133,8 +134,22 @@ const CallClient = (() => {
         ? "Could not access camera or microphone"
         : "Could not access microphone";
     }
+    const rawMessage =
+      typeof err === "string"
+        ? err
+        : err.message || err.errorMsg || err.error || "";
     if (err.message === "Calling works only on HTTPS or localhost") {
       return err.message;
+    }
+    if (/permission|denied|notallowed/i.test(rawMessage)) {
+      return wantsVideo
+        ? "Allow camera and microphone access to start the video call"
+        : "Allow microphone access to start the voice call";
+    }
+    if (/notfound|not found|device|camera|microphone|audio input|video input/i.test(rawMessage)) {
+      return wantsVideo
+        ? "Camera or microphone not found on this device"
+        : "Microphone not found on this device";
     }
     if (err.name === "NotAllowedError" || err.name === "PermissionDeniedError") {
       return wantsVideo
@@ -149,7 +164,9 @@ const CallClient = (() => {
       : "Could not access microphone";
   }
 
-  async function preflightMedia(withVideo) {
+  async function preflightMedia(withVideo, options = {}) {
+    const allowVideoFallback = options.allowVideoFallback !== false;
+
     if (!isLocalSecureContext()) {
       throw new Error("Calling works only on HTTPS or localhost");
     }
@@ -160,14 +177,34 @@ const CallClient = (() => {
       throw error;
     }
 
-    const stream = await navigator.mediaDevices.getUserMedia({
+    const audioStream = await navigator.mediaDevices.getUserMedia({
       audio: {
         echoCancellation: true,
         noiseSuppression: true,
       },
-      video: withVideo ? { facingMode: "user" } : false,
+      video: false,
     });
-    stream.getTracks().forEach((track) => track.stop());
+    audioStream.getTracks().forEach((track) => track.stop());
+
+    if (!withVideo) {
+      return { startVideoOff: true };
+    }
+
+    try {
+      const videoStream = await navigator.mediaDevices.getUserMedia({
+        audio: false,
+        video: { facingMode: "user" },
+      });
+      videoStream.getTracks().forEach((track) => track.stop());
+      return { startVideoOff: false };
+    } catch (err) {
+      if (!allowVideoFallback) throw err;
+      return {
+        startVideoOff: true,
+        videoFallback: true,
+        videoError: err,
+      };
+    }
   }
 
   function ensureDailyReady() {
@@ -285,7 +322,10 @@ const CallClient = (() => {
 
     try {
       ensureDailyReady();
-      await preflightMedia(!!withVideo);
+      const media = await preflightMedia(!!withVideo);
+      if (media.videoFallback) {
+        notifyUser("warn", "Camera is unavailable. Starting with camera off.");
+      }
       setStatus("Calling...");
 
       const data = await API.startDailyCall(targetUserId, !!withVideo);
@@ -294,6 +334,7 @@ const CallClient = (() => {
         peerId: targetUserId,
         peer: target,
         withVideo: !!withVideo,
+        startVideoOff: !!media.startVideoOff,
       };
 
       await joinDailyRoom(currentCall);
@@ -368,13 +409,17 @@ const CallClient = (() => {
         "active",
         currentCall.withVideo
       );
-      await preflightMedia(!!currentCall.withVideo);
+      const media = await preflightMedia(!!currentCall.withVideo);
+      if (media.videoFallback) {
+        notifyUser("warn", "Camera is unavailable. Joining with camera off.");
+      }
 
       setStatus("Joining...");
       const tokenData = await API.getDailyCallToken(currentCall.callId);
       currentCall = {
         ...currentCall,
         ...tokenData,
+        startVideoOff: !!media.startVideoOff,
       };
       await joinDailyRoom(currentCall);
     } catch (err) {
@@ -443,7 +488,7 @@ const CallClient = (() => {
       url: call.roomUrl,
       token: call.token,
       userName: typeof CU !== "undefined" && CU ? CU.name : "User",
-      startVideoOff: !call.withVideo,
+      startVideoOff: !!call.startVideoOff || !call.withVideo,
       startAudioOff: false,
     });
     setOverlayMode("active");
@@ -481,10 +526,24 @@ const CallClient = (() => {
       if (event?.event === "connected") setStatus("Connected");
     });
     daily.on("camera-error", (event) => {
-      notifyUser("error", getCallErrorMessage(event?.errorMsg || event, !!currentCall?.withVideo));
+      lastMediaErrorAt = Date.now();
+      currentCall = currentCall
+        ? { ...currentCall, startVideoOff: true }
+        : currentCall;
+      updateControlButtons();
+      notifyUser(
+        "warn",
+        getCallErrorMessage(event?.errorMsg || event, !!currentCall?.withVideo)
+      );
     });
     daily.on("error", (event) => {
       console.error("Daily call error", event);
+      if (Date.now() - lastMediaErrorAt < 1800) return;
+      if (isMediaDailyError(event)) {
+        lastMediaErrorAt = Date.now();
+        notifyUser("warn", getCallErrorMessage(event, !!currentCall?.withVideo));
+        return;
+      }
       notifyUser("error", "Network issue. Please try the call again.");
     });
     daily.on("left-meeting", () => {
@@ -836,6 +895,25 @@ const CallClient = (() => {
     }
 
     return getMediaErrorMessage(err, wantsVideo);
+  }
+
+  function isMediaDailyError(event) {
+    const text =
+      typeof event === "string"
+        ? event
+        : [
+            event?.action,
+            event?.error,
+            event?.errorMsg,
+            event?.message,
+            event?.type,
+          ]
+            .filter(Boolean)
+            .join(" ");
+
+    return /camera|microphone|permission|notallowed|notfound|device|getusermedia|media/i.test(
+      text
+    );
   }
 
   function getInitial(name) {
