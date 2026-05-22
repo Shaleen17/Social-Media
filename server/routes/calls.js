@@ -91,9 +91,6 @@ router.post("/daily/start", auth, async (req, res, next) => {
     }
 
     const targetOnline = await isUserOnline(req, targetUserId);
-    if (!targetOnline) {
-      throw new AppError("User is offline.", 409);
-    }
 
     const withVideo = req.body?.withVideo !== false;
     const roomName = `ts-call-${crypto.randomUUID()}`;
@@ -104,7 +101,7 @@ router.post("/daily/start", auth, async (req, res, next) => {
       user: caller,
       withVideo,
     });
-    const session = createCallSession({
+    const session = await createCallSession({
       caller,
       target,
       room: { ...room, name: createdRoomName },
@@ -120,6 +117,7 @@ router.post("/daily/start", auth, async (req, res, next) => {
       token,
       withVideo: session.withVideo,
       expiresAt: session.expiresAt,
+      targetOnline,
       target: {
         id: getParticipantId(target),
         name: getParticipantName(target),
@@ -138,7 +136,7 @@ router.post("/daily/token", auth, async (req, res, next) => {
       max: 80,
       required: true,
     });
-    const session = getCallSession(callId);
+    const session = await getCallSession(callId);
     assertCallParticipant(session, getParticipantId(req.user));
 
     const token = await createDailyMeetingToken({
@@ -147,7 +145,7 @@ router.post("/daily/token", auth, async (req, res, next) => {
       withVideo: session.withVideo,
     });
 
-    markCallAccepted(callId);
+    await markCallAccepted(callId);
     const otherUserId = getOtherParticipantId(session, getParticipantId(req.user));
     emitToUser(req, otherUserId, "daily:call:accepted", {
       callId: session.callId,
@@ -178,10 +176,10 @@ router.post("/daily/end", auth, async (req, res, next) => {
       field: "Reason",
       max: 120,
     });
-    const session = getCallSession(callId);
+    const session = await getCallSession(callId);
     assertCallParticipant(session, getParticipantId(req.user));
 
-    markCallEnded(callId);
+    await markCallEnded(callId);
     const otherUserId = getOtherParticipantId(session, getParticipantId(req.user));
     emitToUser(req, otherUserId, "daily:call:ended", {
       callId: session.callId,

@@ -1,5 +1,8 @@
 const crypto = require("crypto");
+const mongoose = require("mongoose");
+const CallSession = require("../models/CallSession");
 const AppError = require("../utils/appError");
+const { log } = require("../utils/logger");
 
 const DAILY_API_BASE = "https://api.daily.co/v1";
 const CALL_TTL_SECONDS = Math.max(
@@ -34,6 +37,7 @@ function getDailyPublicConfig() {
     configured: isDailyConfigured(),
     domain: config.domain || null,
     provider: "daily",
+    sessionStore: isCallSessionStoreReady() ? "mongodb" : "memory",
   };
 }
 
@@ -81,6 +85,98 @@ function getParticipantAvatar(user) {
   return user?.avatar || user?.profilePic || "";
 }
 
+function isCallSessionStoreReady() {
+  return mongoose.connection.readyState === 1;
+}
+
+function rememberCallSession(session) {
+  if (!session?.callId) return session;
+  activeCallSessions.set(session.callId, session);
+  return session;
+}
+
+function toIsoString(value) {
+  const date = value instanceof Date ? value : new Date(value);
+  return Number.isFinite(date.getTime()) ? date.toISOString() : new Date().toISOString();
+}
+
+function hydrateCallSession(rawSession) {
+  if (!rawSession) return null;
+  const session =
+    typeof rawSession.toObject === "function"
+      ? rawSession.toObject()
+      : rawSession;
+  const expiresAt = session.expiresAt instanceof Date
+    ? session.expiresAt
+    : new Date(session.expiresAt);
+  if (!Number.isFinite(expiresAt.getTime())) return null;
+
+  return {
+    callId: String(session.callId || ""),
+    roomName: String(session.roomName || ""),
+    roomUrl: String(session.roomUrl || ""),
+    callerId: String(session.callerId || ""),
+    targetId: String(session.targetId || ""),
+    withVideo: !!session.withVideo,
+    status: session.status || "ringing",
+    createdAt: toIsoString(session.createdAt || new Date()),
+    expiresAt: expiresAt.toISOString(),
+    expiresAtMs: expiresAt.getTime(),
+  };
+}
+
+function serializeCallSession(session) {
+  return {
+    callId: session.callId,
+    roomName: session.roomName,
+    roomUrl: session.roomUrl,
+    callerId: session.callerId,
+    targetId: session.targetId,
+    withVideo: !!session.withVideo,
+    status: session.status || "ringing",
+    createdAt: new Date(session.createdAt),
+    expiresAt: new Date(session.expiresAt),
+  };
+}
+
+async function persistCallSession(session) {
+  if (!isCallSessionStoreReady()) return false;
+
+  try {
+    await CallSession.findOneAndUpdate(
+      { callId: session.callId },
+      { $set: serializeCallSession(session) },
+      { upsert: true, setDefaultsOnInsert: true }
+    );
+    return true;
+  } catch (error) {
+    log("warn", "Call session persistence failed", {
+      callId: session.callId,
+      error: error.message,
+    });
+    return false;
+  }
+}
+
+async function updatePersistedCallStatus(callId, status) {
+  if (!isCallSessionStoreReady()) return false;
+
+  try {
+    await CallSession.updateOne(
+      { callId: String(callId || "") },
+      { $set: { status } }
+    );
+    return true;
+  } catch (error) {
+    log("warn", "Call session status update failed", {
+      callId: String(callId || ""),
+      status,
+      error: error.message,
+    });
+    return false;
+  }
+}
+
 function pruneExpiredSessions() {
   const now = Date.now();
   for (const [callId, session] of activeCallSessions) {
@@ -93,7 +189,7 @@ function pruneExpiredSessions() {
   }
 }
 
-function createCallSession({ caller, target, room, withVideo }) {
+async function createCallSession({ caller, target, room, withVideo }) {
   pruneExpiredSessions();
 
   const callId = crypto.randomUUID();
@@ -111,17 +207,40 @@ function createCallSession({ caller, target, room, withVideo }) {
     expiresAtMs: expiresAt.getTime(),
   };
 
-  activeCallSessions.set(callId, session);
+  rememberCallSession(session);
+  await persistCallSession(session);
   return session;
 }
 
-function getCallSession(callId) {
+async function getCallSession(callId) {
   pruneExpiredSessions();
-  const session = activeCallSessions.get(String(callId || ""));
-  if (!session || Date.now() > session.expiresAtMs) {
+  const safeCallId = String(callId || "");
+  const session = activeCallSessions.get(safeCallId);
+  if (session && Date.now() <= session.expiresAtMs) {
+    return session;
+  }
+
+  if (!isCallSessionStoreReady()) {
     return null;
   }
-  return session;
+
+  try {
+    const persistedSession = await CallSession.findOne({
+      callId: safeCallId,
+      expiresAt: { $gt: new Date() },
+      status: { $ne: "ended" },
+    }).lean();
+    const hydratedSession = hydrateCallSession(persistedSession);
+    if (!hydratedSession) return null;
+    rememberCallSession(hydratedSession);
+    return hydratedSession;
+  } catch (error) {
+    log("warn", "Call session lookup failed", {
+      callId: safeCallId,
+      error: error.message,
+    });
+    return null;
+  }
 }
 
 function assertCallParticipant(session, userId) {
@@ -172,15 +291,23 @@ async function createDailyMeetingToken({ roomName, user, withVideo }) {
   return token.token;
 }
 
-function markCallAccepted(callId) {
-  const session = getCallSession(callId);
+async function markCallAccepted(callId) {
+  const session = await getCallSession(callId);
   if (session) session.status = "accepted";
+  if (session) {
+    rememberCallSession(session);
+    await updatePersistedCallStatus(callId, "accepted");
+  }
   return session;
 }
 
-function markCallEnded(callId) {
-  const session = getCallSession(callId);
+async function markCallEnded(callId) {
+  const session = await getCallSession(callId);
   if (session) session.status = "ended";
+  if (session) {
+    rememberCallSession(session);
+    await updatePersistedCallStatus(callId, "ended");
+  }
   return session;
 }
 
@@ -197,6 +324,7 @@ module.exports = {
   getParticipantAvatar,
   getParticipantId,
   getParticipantName,
+  isCallSessionStoreReady,
   isDailyConfigured,
   markCallAccepted,
   markCallEnded,
