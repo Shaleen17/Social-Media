@@ -35,7 +35,7 @@
     <link rel="preconnect" href="https://videos-o57d.vercel.app" crossorigin>
     <link rel="dns-prefetch" href="//videos-o57d.vercel.app">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
- <link href="Style.css?v=20260522-call-permission-1" rel="stylesheet" type="text/css" />
+ <link href="Style.css?v=20260522-legal-pages-1" rel="stylesheet" type="text/css" />
     <script src="https://checkout.razorpay.com/v1/checkout.js"></script>
     <!-- Google tag (gtag.js) -->
     <script
@@ -4116,6 +4116,13 @@
           <!-- SETTINGS & PRIVACY PAGE -->
           <div class="page hide" id="pgSettingsPrivacy"></div>
 
+          <!-- LEGAL POLICY PAGES -->
+          <div class="page hide" id="pgPrivacyPolicy"></div>
+          <div class="page hide" id="pgTermsAndConditions"></div>
+          <div class="page hide" id="pgRefundCancellationPolicy"></div>
+          <div class="page hide" id="pgDonationPolicy"></div>
+          <div class="page hide" id="pgShippingDeliveryPolicy"></div>
+
           <!-- FOUNDER CONTROL PAGE -->
           <div class="page hide" id="pgFounderControl"></div>
         </div>
@@ -4159,11 +4166,16 @@
             class="widget"
             style="font-size: 12px; color: var(--t3); line-height: 1.8"
           >
-            <a href="#" onclick="return openPrivacyPolicyModal();" style="color: var(--t3); margin-right: 8px">Privacy</a
-            ><a href="#" onclick="return openPrivacyPolicyModal();" style="color: var(--t3); margin-right: 8px">Terms</a
-            ><a href="#" onclick="gp('about'); return false;" style="color: var(--t3)">About</a>
+            <div class="legal-footer-links" data-privacy-controls="openPrivacyPolicyModal">
+              <a href="/privacy-policy" onclick="return openLegalPage('privacyPolicy', event);">Privacy Policy</a>
+              <a href="/terms-and-conditions" onclick="return openLegalPage('termsAndConditions', event);">Terms</a>
+              <a href="/refund-cancellation-policy" onclick="return openLegalPage('refundCancellationPolicy', event);">Refunds</a>
+              <a href="/donation-policy" onclick="return openLegalPage('donationPolicy', event);">Donation Policy</a>
+              <a href="/shipping-delivery-policy" onclick="return openLegalPage('shippingDeliveryPolicy', event);">Shipping</a>
+              <a href="#" onclick="gp('about'); return false;">About</a>
+            </div>
             <div style="margin-top: 4px">
-              © 2025 Tirth Sutra — Mandir Community 🕉
+              © 2026 Tirth Sutra — Mandir Community 🕉
             </div>
           </div>
         </div>
@@ -4831,7 +4843,7 @@
     </script>
     <script>
       (function () {
-const runtimeVersion = "20260522-call-permission-1";
+const runtimeVersion = "20260522-call-join-diagnostics-1";
         const refreshKey = "ts_frontendRuntimeRefresh_" + runtimeVersion;
         try {
           const storedVersion = localStorage.getItem("ts_frontendRuntimeVersion");
@@ -4885,7 +4897,7 @@ const runtimeVersion = "20260522-call-permission-1";
         } catch {}
       })();
     </script>
- <script src="Script.js?v=20260430-profile-qr-1"></script>
+    <script src="Script.js?v=20260522-legal-pages-1"></script>
     <script src="https://cdn.socket.io/4.7.4/socket.io.min.js"></script>
     <!-- Vercel Config & API Backend Scripts -->
      <script src="config.js?v=20260420-advanced-search-1"></script>
@@ -4896,10 +4908,10 @@ const runtimeVersion = "20260522-call-permission-1";
     <script src="profile.js?v=20260501-profile-qr-scan-1"></script>
     <script src="socket-client.js?v=20260521-calls-1"></script>
     <script src="https://unpkg.com/@daily-co/daily-js"></script>
-    <script src="call-client.js?v=20260522-call-permission-1"></script>
+    <script src="call-client.js?v=20260522-call-join-diagnostics-1"></script>
     <script src="https://cdn.jsdelivr.net/npm/appwrite@19.0.0"></script>
     <script src="appwrite-auth.js?v=20260430-profile-qr-1"></script>
- <script src="backend-adapter.js?v=20260522-call-permission-1"></script>
+ <script src="backend-adapter.js?v=20260522-call-join-diagnostics-1"></script>
  <script src="founder-control.js?v=20260430-profile-qr-1"></script>
  <script src="enhancements-bootstrap.js?v=20260430-profile-qr-1"></script>
     <script src="donation-module.js?v=20260420-advanced-search-1"></script>

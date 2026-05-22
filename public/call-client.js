@@ -542,8 +542,9 @@ const CallClient = (() => {
       await joinDailyRoom(currentCall);
     } catch (err) {
       console.error("Failed to answer Daily call", err);
-      notifyCallIssue("error", getCallErrorMessage(err, !!currentCall?.withVideo));
-      await endCallLocally("Could not join call");
+      const reason = getCallErrorMessage(err, !!currentCall?.withVideo);
+      notifyCallIssue("error", reason);
+      await endCallLocally(getPeerJoinFailureMessage(reason));
     }
   }
 
@@ -1013,13 +1014,24 @@ const CallClient = (() => {
         ? err
         : err?.message || err?.errorMsg || err?.error || "";
 
+    if (/no token|invalid token|session expired|unauthori[sz]ed|forbidden|not logged in|login/i.test(message)) {
+      return "Your login session is not active. Please sign in again and retry the call.";
+    }
+
     if (
-      /offline|not configured|not found|expired|invalid|network|library|provider|server/i.test(message)
+      /offline|not configured|not found|expired|invalid|network|library|provider|server|token|auth|session/i.test(message)
     ) {
       return message;
     }
 
     return getMediaErrorMessage(err, wantsVideo);
+  }
+
+  function getPeerJoinFailureMessage(reason) {
+    const safeReason = String(reason || "").trim();
+    return safeReason
+      ? `Receiver could not join: ${safeReason}`
+      : "Receiver could not join the call.";
   }
 
   function isMediaDailyError(event) {
@@ -1061,6 +1073,10 @@ window.debugCallStatus = function() {
     secureContext: window.isSecureContext,
     hasMediaDevices: !!navigator.mediaDevices?.getUserMedia,
     callingLibraryLoaded: !!window.DailyIframe,
+    dailySupported:
+      typeof window.DailyIframe?.supportedBrowser === "function"
+        ? window.DailyIframe.supportedBrowser()
+        : null,
   };
 };
 

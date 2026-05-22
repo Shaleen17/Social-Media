@@ -43,6 +43,21 @@ const {
 
 const IS_PRODUCTION = process.env.NODE_ENV === "production";
 const CALLING_PROVIDER = String(process.env.CALLING_PROVIDER || "daily").toLowerCase();
+const PUBLIC_DIR = path.join(__dirname, "..", "public");
+const LEGAL_STATIC_PAGES = Object.freeze({
+  "/privacy-policy": "privacy-policy",
+  "/terms-and-conditions": "terms-and-conditions",
+  "/refund-cancellation-policy": "refund-cancellation-policy",
+  "/donation-policy": "donation-policy",
+  "/shipping-delivery-policy": "shipping-delivery-policy",
+});
+
+function setNoStoreHtmlHeaders(res) {
+  res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate, proxy-revalidate");
+  res.setHeader("Pragma", "no-cache");
+  res.setHeader("Expires", "0");
+  res.setHeader("Surrogate-Control", "no-store");
+}
 
 // ─── Validate Required Environment Variables ───
 const REQUIRED_ENV = [
@@ -175,17 +190,21 @@ app.use(express.urlencoded({ extended: true, limit: process.env.URLENCODED_BODY_
 app.use(csrfCookieBootstrap);
 app.use(csrfProtection);
 
+Object.entries(LEGAL_STATIC_PAGES).forEach(([routePath, directoryName]) => {
+  app.get(routePath, (req, res) => {
+    setNoStoreHtmlHeaders(res);
+    res.sendFile(path.join(PUBLIC_DIR, directoryName, "index.html"));
+  });
+});
+
 // Serve static files from public/ directory
 app.use(
-  express.static(path.join(__dirname, "..", "public"), {
+  express.static(PUBLIC_DIR, {
     etag: true,
     lastModified: true,
     setHeaders: (res, filePath) => {
       if (/sw\.js$/i.test(filePath) || /\.html$/i.test(filePath)) {
-        res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate, proxy-revalidate");
-        res.setHeader("Pragma", "no-cache");
-        res.setHeader("Expires", "0");
-        res.setHeader("Surrogate-Control", "no-store");
+        setNoStoreHtmlHeaders(res);
       } else if (
         /\.(js|css|png|jpg|jpeg|gif|webp|avif|svg|ico|woff2?|ttf|mp4|webmanifest)$/i.test(
           filePath
@@ -373,11 +392,8 @@ app.use("/api", (req, res) => {
 
 // Catch-all: serve index.html for SPA
 app.get("*", (req, res) => {
-  res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate, proxy-revalidate");
-  res.setHeader("Pragma", "no-cache");
-  res.setHeader("Expires", "0");
-  res.setHeader("Surrogate-Control", "no-store");
-  res.sendFile(path.join(__dirname, "..", "public", "index.html"));
+  setNoStoreHtmlHeaders(res);
+  res.sendFile(path.join(PUBLIC_DIR, "index.html"));
 });
 
 // Error handling middleware

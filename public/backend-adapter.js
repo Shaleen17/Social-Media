@@ -429,6 +429,13 @@
       language: () => renderLanguagePage(),
       helpSupport: () => renderHelpSupportPage(),
       settingsPrivacy: () => renderSettingsPrivacyPage(),
+      privacyPolicy: () => window.renderLegalPolicyPage?.("privacyPolicy"),
+      termsAndConditions: () => window.renderLegalPolicyPage?.("termsAndConditions"),
+      refundCancellationPolicy: () =>
+        window.renderLegalPolicyPage?.("refundCancellationPolicy"),
+      donationPolicy: () => window.renderLegalPolicyPage?.("donationPolicy"),
+      shippingDeliveryPolicy: () =>
+        window.renderLegalPolicyPage?.("shippingDeliveryPolicy"),
       founderControl: () =>
         typeof window.renderFounderControlPage === "function"
           ? window.renderFounderControlPage()
@@ -501,7 +508,7 @@
 
   let _chatPushSetupPromise = null;
   let _pendingOpenChatId = consumeOpenChatParam();
-const APP_ASSET_VERSION = "20260522-call-permission-1";
+const APP_ASSET_VERSION = "20260522-call-join-diagnostics-1";
   let _appSwPromise = null;
   let _deferredInstallPrompt = null;
   let _installPromptBound = false;

@@ -1,3 +1,36 @@
+function normalizePolicyOrigin(value = "") {
+  const normalized = String(value || "")
+    .trim()
+    .replace(/^https?:\/\//i, "")
+    .replace(/\/+$/, "");
+  return normalized ? `https://${normalized}` : "";
+}
+
+function getFrameSources() {
+  const sources = [
+    "'self'",
+    "https://www.youtube.com",
+    "https://www.youtube-nocookie.com",
+    "https://accounts.google.com",
+    "https://www.google.com",
+  ];
+  const dailyOrigin = normalizePolicyOrigin(process.env.DAILY_DOMAIN || "");
+  if (dailyOrigin) sources.push(dailyOrigin);
+  return sources;
+}
+
+function getPermissionsPolicy() {
+  const dailyOrigin = normalizePolicyOrigin(process.env.DAILY_DOMAIN || "");
+  const mediaAllowList = dailyOrigin ? `self "${dailyOrigin}"` : "self";
+  return [
+    `camera=(${mediaAllowList})`,
+    `microphone=(${mediaAllowList})`,
+    "geolocation=(self)",
+    "payment=(self)",
+    "interest-cohort=()",
+  ].join(", ");
+}
+
 function securityHeaders(req, res, next) {
   const isProduction = process.env.NODE_ENV === "production";
 
@@ -6,10 +39,7 @@ function securityHeaders(req, res, next) {
   res.setHeader("Referrer-Policy", "strict-origin-when-cross-origin");
   res.setHeader("X-DNS-Prefetch-Control", "off");
   res.setHeader("Cross-Origin-Opener-Policy", "same-origin-allow-popups");
-  res.setHeader(
-    "Permissions-Policy",
-    "camera=(self), microphone=(self), geolocation=(self), payment=(self), interest-cohort=()"
-  );
+  res.setHeader("Permissions-Policy", getPermissionsPolicy());
 
   if (isProduction) {
     res.setHeader("Strict-Transport-Security", "max-age=15552000; includeSubDomains");
@@ -28,7 +58,7 @@ function securityHeaders(req, res, next) {
       "media-src 'self' data: blob: https:",
       "font-src 'self' data: https:",
       "connect-src 'self' http: https: ws: wss:",
-      "frame-src 'self' https://www.youtube.com https://www.youtube-nocookie.com https://accounts.google.com https://www.google.com",
+      `frame-src ${getFrameSources().join(" ")}`,
       "form-action 'self'",
       "upgrade-insecure-requests",
     ].join("; ")

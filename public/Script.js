@@ -2421,6 +2421,11 @@ const PAGE_IDS = [
   "authenticBrands",
   "helpSupport",
   "settingsPrivacy",
+  "privacyPolicy",
+  "termsAndConditions",
+  "refundCancellationPolicy",
+  "donationPolicy",
+  "shippingDeliveryPolicy",
   "founderControl",
 ];
 function resetProfileTabs(defaultTab = "posts") {
@@ -2451,9 +2456,405 @@ const MORE_NAV_PAGES = [
   "authenticBrands",
   "helpSupport",
   "settingsPrivacy",
+  "privacyPolicy",
+  "termsAndConditions",
+  "refundCancellationPolicy",
+  "donationPolicy",
+  "shippingDeliveryPolicy",
 ];
 const MORE_SUPPORT_EMAIL = "tirthsutra@gmail.com";
 const MORE_SUPPORT_PHONE = "+91 8707757628";
+const LEGAL_POLICY_UPDATED = "May 22, 2026";
+const LEGAL_POLICY_ROUTES = {
+  privacyPolicy: "/privacy-policy",
+  termsAndConditions: "/terms-and-conditions",
+  refundCancellationPolicy: "/refund-cancellation-policy",
+  donationPolicy: "/donation-policy",
+  shippingDeliveryPolicy: "/shipping-delivery-policy",
+};
+const LEGAL_POLICY_ORDER = [
+  "privacyPolicy",
+  "termsAndConditions",
+  "refundCancellationPolicy",
+  "donationPolicy",
+  "shippingDeliveryPolicy",
+];
+const LEGAL_POLICIES = {
+  privacyPolicy: {
+    label: "Privacy",
+    title: "Privacy Policy",
+    subtitle: "How Tirth Sutra collects, uses, protects, and manages your information.",
+    summary:
+      "We collect only the information needed to run the Tirth Sutra community, process donations safely, protect accounts, and improve the experience.",
+    highlights: [
+      "Razorpay processes payment details securely. We do not store full card, UPI, or bank credentials.",
+      "Account, profile, content, support, and donation receipt details are used only for platform operations.",
+      "You can contact us to request help with account data, privacy questions, or correction of information.",
+    ],
+    sections: [
+      {
+        heading: "Information we collect",
+        body: [
+          "We may collect your name, email address, phone number, profile details, posts, comments, messages, donation amount, receipt references, device/browser information, and support messages.",
+          "When you donate, payment method details are handled by Razorpay or the relevant payment provider. Tirth Sutra receives only limited transaction information needed for confirmation, receipts, support, and records.",
+        ],
+      },
+      {
+        heading: "How we use information",
+        bullets: [
+          "To create and manage your account.",
+          "To process donations, receipts, support requests, and payment confirmations.",
+          "To keep the platform safe from spam, fraud, abuse, and unauthorized access.",
+          "To improve features, reliability, communication, and user experience.",
+        ],
+      },
+      {
+        heading: "Sharing of information",
+        body: [
+          "We may share necessary information with trusted service providers such as payment gateways, hosting providers, analytics tools, email/SMS providers, and support tools. We may also share information when required by law or to protect users and the platform.",
+        ],
+      },
+      {
+        heading: "Cookies and local storage",
+        body: [
+          "We use essential cookies and browser storage for login security, preferences, language/theme choices, offline support, and basic analytics. You can manage cookie preferences from Settings & Privacy.",
+        ],
+      },
+      {
+        heading: "Security and retention",
+        body: [
+          "We use reasonable technical and organizational safeguards to protect information. Records are retained only as long as needed for platform operations, legal compliance, fraud prevention, support, and accounting.",
+        ],
+      },
+      {
+        heading: "Your choices",
+        bullets: [
+          "You can update your profile information from your account.",
+          "You can request support for privacy questions, correction, export, or account deletion.",
+          "Some records may be retained where required for law, payment, security, audit, or dispute purposes.",
+        ],
+      },
+    ],
+  },
+  termsAndConditions: {
+    label: "Terms",
+    title: "Terms and Conditions",
+    subtitle: "Rules for using Tirth Sutra, community features, services, and donation tools.",
+    summary:
+      "By using Tirth Sutra, you agree to use the platform respectfully, lawfully, and in a way that protects devotees, mandirs, creators, donors, and the community.",
+    highlights: [
+      "Use the platform only for lawful, respectful, and community-safe purposes.",
+      "Donations are voluntary and are processed through the payment gateway shown at checkout.",
+      "Tirth Sutra may moderate content or accounts that violate safety, legal, or community standards.",
+    ],
+    sections: [
+      {
+        heading: "Acceptance of terms",
+        body: [
+          "These Terms apply when you access or use the Tirth Sutra website, community features, content, donation tools, support tools, or related services. If you do not agree, please do not use the platform.",
+        ],
+      },
+      {
+        heading: "Account responsibility",
+        bullets: [
+          "Provide accurate information when creating or using an account.",
+          "Keep your login details secure and do not misuse another person's account.",
+          "You are responsible for activity done from your account.",
+        ],
+      },
+      {
+        heading: "Community conduct",
+        bullets: [
+          "Do not post illegal, hateful, abusive, misleading, obscene, spam, or harmful content.",
+          "Do not impersonate others, misuse religious identities, or misrepresent affiliations with mandirs, saints, brands, or organizations.",
+          "Do not attempt to hack, scrape, overload, reverse engineer, or disrupt the platform.",
+        ],
+      },
+      {
+        heading: "Content and intellectual property",
+        body: [
+          "You remain responsible for the content you share. By posting content, you allow Tirth Sutra to display, store, process, and distribute it within the platform for community and service purposes.",
+          "The Tirth Sutra name, logo, design, features, and platform materials belong to Tirth Sutra or its licensors and may not be copied or misused without permission.",
+        ],
+      },
+      {
+        heading: "Donations and payments",
+        body: [
+          "Donation amounts, payment options, and confirmation details are shown before or during checkout. Payments are handled by Razorpay or the active payment provider. A successful payment does not create ownership, equity, employment, partnership, or guaranteed service rights.",
+        ],
+      },
+      {
+        heading: "Changes, suspension, and termination",
+        body: [
+          "We may update features, policies, or these Terms from time to time. We may restrict, suspend, or terminate access where needed for safety, legal compliance, fraud prevention, or policy violations.",
+        ],
+      },
+      {
+        heading: "Limitation of liability",
+        body: [
+          "Tirth Sutra is provided on a best-effort basis. We try to keep the platform reliable and safe, but we do not guarantee uninterrupted access, error-free operation, or outcomes from any content, community interaction, donation, or service.",
+        ],
+      },
+    ],
+  },
+  refundCancellationPolicy: {
+    label: "Refunds",
+    title: "Refund and Cancellation Policy",
+    subtitle: "Clear rules for donation cancellation, refund review, and payment reversal timelines.",
+    summary:
+      "Donations are voluntary. Refunds are reviewed fairly for duplicate payments, wrong amounts, accidental payments, technical errors, or other genuine issues.",
+    highlights: [
+      "Cancellation is possible only before payment is completed.",
+      "Refund requests should be raised within 7 days of payment wherever possible.",
+      "Approved refunds are sent back to the original payment method through Razorpay/payment provider timelines.",
+    ],
+    sections: [
+      {
+        heading: "Cancellation before payment",
+        body: [
+          "You may cancel a donation before completing payment by closing checkout or not authorizing the transaction. Once payment is successful, the request will be handled as a refund request.",
+        ],
+      },
+      {
+        heading: "When refunds may be considered",
+        bullets: [
+          "Duplicate payment for the same donation.",
+          "Incorrect amount entered by mistake.",
+          "Payment deducted but donation confirmation failed because of a technical issue.",
+          "A request that Tirth Sutra, after review, considers fair and genuine.",
+        ],
+      },
+      {
+        heading: "When refunds may be declined",
+        bullets: [
+          "Change of mind after a successful voluntary donation.",
+          "Requests made after donation funds have already been allocated or used for the stated purpose.",
+          "Requests without enough transaction details to verify payment.",
+          "Suspicious, fraudulent, abusive, or repeated refund misuse.",
+        ],
+      },
+      {
+        heading: "How to request a refund",
+        body: [
+          `Email ${MORE_SUPPORT_EMAIL} with your name, registered email or phone, payment date, amount, Razorpay/payment ID if available, and the reason for the request.`,
+        ],
+      },
+      {
+        heading: "Review and timeline",
+        body: [
+          "We aim to review refund requests within 3 to 7 working days. If approved, the refund is initiated to the original payment method. Bank/payment gateway settlement timelines may vary, and Razorpay refunds commonly take several working days after initiation.",
+        ],
+      },
+    ],
+  },
+  donationPolicy: {
+    label: "Donation",
+    title: "Donation Policy",
+    subtitle: "How voluntary donations to Tirth Sutra are collected, confirmed, recorded, and used.",
+    summary:
+      "Donations support the Tirth Sutra mission, platform operations, community features, devotional initiatives, technology, support, and related service costs.",
+    highlights: [
+      "All donations are voluntary.",
+      "A donation confirmation or receipt is provided digitally after successful payment.",
+      "Donations do not create ownership, investment rights, or guaranteed personal benefit.",
+    ],
+    sections: [
+      {
+        heading: "Purpose of donations",
+        body: [
+          "Donations may be used for platform development, hosting, security, maintenance, support, content/community initiatives, mandir community features, outreach, operations, and other mission-aligned expenses.",
+        ],
+      },
+      {
+        heading: "Donor responsibility",
+        bullets: [
+          "Please verify the amount, purpose, and payment details before confirming.",
+          "Use your own lawful payment method.",
+          "Keep your receipt or transaction ID for support and records.",
+        ],
+      },
+      {
+        heading: "Receipts and records",
+        body: [
+          "A successful donation may be confirmed through receipt, email, SMS, payment gateway confirmation, or account dashboard entry. If confirmation is delayed, please contact support with your payment details.",
+        ],
+      },
+      {
+        heading: "Tax and legal note",
+        body: [
+          "Unless clearly stated on a specific donation page or receipt, donations to Tirth Sutra should not be assumed to qualify for tax exemption. Donors are responsible for checking tax treatment with their own advisor.",
+        ],
+      },
+      {
+        heading: "Fraud and misuse checks",
+        body: [
+          "Tirth Sutra may review or hold suspicious transactions, request verification, refuse misuse, or cooperate with payment providers and authorities where required for fraud prevention or legal compliance.",
+        ],
+      },
+    ],
+  },
+  shippingDeliveryPolicy: {
+    label: "Shipping",
+    title: "Shipping and Delivery Policy",
+    subtitle: "Delivery information for donations, digital confirmations, and non-physical services.",
+    summary:
+      "Tirth Sutra currently does not ship physical products for donations or platform services.",
+    highlights: [
+      "No physical product is shipped.",
+      "Donations/services are digitally confirmed through receipt, email, or account dashboard.",
+      "If a future physical product is offered, its delivery terms will be shown separately before payment.",
+    ],
+    sections: [
+      {
+        heading: "No physical shipping",
+        body: [
+          "No physical product is shipped. Donations/services are digitally confirmed through receipt, email, payment confirmation, SMS, or account dashboard where available.",
+        ],
+      },
+      {
+        heading: "Digital confirmation timeline",
+        body: [
+          "Most successful payments are confirmed immediately by the payment gateway. In some cases, bank or gateway updates may take longer. If you do not receive confirmation within 24 hours, contact support with your payment details.",
+        ],
+      },
+      {
+        heading: "Delivery charges",
+        body: [
+          "There are no shipping charges for donations or digital confirmations. Any payment gateway fees, taxes, or charges, if applicable, will be shown as part of the payment flow or receipt.",
+        ],
+      },
+      {
+        heading: "Future products or events",
+        body: [
+          "If Tirth Sutra later offers a physical product, event pass, prasad delivery, merchandise, or any other deliverable item, the specific shipping, delivery, cancellation, and refund details will be clearly shown before payment.",
+        ],
+      },
+    ],
+  },
+};
+
+function getLegalPolicyRoute(page) {
+  return LEGAL_POLICY_ROUTES[page] || "";
+}
+
+function getLegalPageFromPath(pathname = window.location.pathname) {
+  const normalized = String(pathname || "/").replace(/\/+$/, "") || "/";
+  return (
+    Object.keys(LEGAL_POLICY_ROUTES).find(
+      (page) => LEGAL_POLICY_ROUTES[page] === normalized,
+    ) || ""
+  );
+}
+
+function getLegalPageElement(page) {
+  if (!LEGAL_POLICIES[page]) return null;
+  return document.getElementById(
+    "pg" + page.charAt(0).toUpperCase() + page.slice(1),
+  );
+}
+
+function renderLegalPolicyNav(activePage) {
+  return LEGAL_POLICY_ORDER.map((page) => {
+    const policy = LEGAL_POLICIES[page];
+    const active = page === activePage ? " active" : "";
+    return `<a class="legal-nav-link${active}" href="${getLegalPolicyRoute(page)}" onclick="return openLegalPage('${page}', event);">${esc(policy.label)}</a>`;
+  }).join("");
+}
+
+function renderLegalPolicySection(section) {
+  const body = Array.isArray(section.body)
+    ? section.body.map((text) => `<p>${esc(text)}</p>`).join("")
+    : "";
+  const bullets = Array.isArray(section.bullets) && section.bullets.length
+    ? `<ul class="legal-list">${section.bullets
+      .map((item) => `<li>${esc(item)}</li>`)
+      .join("")}</ul>`
+    : "";
+  return `
+    <section class="legal-section">
+      <h2>${esc(section.heading)}</h2>
+      ${body}
+      ${bullets}
+    </section>
+  `;
+}
+
+function renderLegalPolicyPage(page) {
+  const policy = LEGAL_POLICIES[page];
+  const host = getLegalPageElement(page);
+  if (!policy || !host) return;
+
+  host.innerHTML = `
+    <div class="fhdr about-page-header">
+      <div class="fhdr-row">
+        <div class="about-page-heading">
+          <button class="sb about-back-btn" type="button" onclick="gp('home')" aria-label="Back to home">
+            <svg viewBox="0 0 24 24">
+              <polyline points="15 18 9 12 15 6" />
+            </svg>
+          </button>
+          <div>
+            <span class="fhdr-title">${esc(policy.title)}</span>
+            <div class="about-page-subtitle">${esc(policy.subtitle)}</div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="legal-page-shell">
+      <section class="legal-hero">
+        <div>
+          <span class="about-card-label">Tirth Sutra Policy</span>
+          <h1>${esc(policy.title)}</h1>
+          <p>${esc(policy.summary)}</p>
+          <div class="legal-meta">Effective and last updated: ${esc(LEGAL_POLICY_UPDATED)}</div>
+        </div>
+        <nav class="legal-nav" aria-label="Legal pages">
+          ${renderLegalPolicyNav(page)}
+        </nav>
+      </section>
+      <div class="legal-layout">
+        <main class="legal-card">
+          <div class="legal-highlight-grid">
+            ${policy.highlights
+      .map((item) => `<div class="legal-highlight">${esc(item)}</div>`)
+      .join("")}
+          </div>
+          ${policy.sections.map(renderLegalPolicySection).join("")}
+          <section class="legal-section legal-contact">
+            <h2>Contact</h2>
+            <p>For questions about this policy, payments, donation records, or support, contact Tirth Sutra at <a href="mailto:${MORE_SUPPORT_EMAIL}">${MORE_SUPPORT_EMAIL}</a> or call <a href="tel:${MORE_SUPPORT_PHONE.replace(/\s+/g, "")}">${MORE_SUPPORT_PHONE}</a>.</p>
+          </section>
+        </main>
+      </div>
+    </div>
+  `;
+}
+
+function openLegalPage(page, event) {
+  if (event && typeof event.preventDefault === "function") {
+    event.preventDefault();
+  }
+  if (!LEGAL_POLICIES[page]) return false;
+  closeMoreMenu?.();
+  closeDrawer?.();
+  gp(page);
+  const route = getLegalPolicyRoute(page);
+  if (route && window.history?.replaceState) {
+    window.history.replaceState({ page }, "", route);
+  }
+  return false;
+}
+
+function routeInitialLegalPage() {
+  const page = getLegalPageFromPath();
+  if (!page) return;
+  window.setTimeout(() => openLegalPage(page), 0);
+}
+
+window.renderLegalPolicyPage = renderLegalPolicyPage;
+window.openLegalPage = openLegalPage;
+window.addEventListener("load", routeInitialLegalPage);
+
 const MORE_LANGUAGE_OPTIONS = [
   {
     id: "english",
@@ -5941,6 +6342,11 @@ const ANALYTICS_PAGE_TITLES = {
   authenticBrands: "Authentic Brands",
   helpSupport: "Help & Support",
   settingsPrivacy: "Settings & Privacy",
+  privacyPolicy: "Privacy Policy",
+  termsAndConditions: "Terms and Conditions",
+  refundCancellationPolicy: "Refund and Cancellation Policy",
+  donationPolicy: "Donation Policy",
+  shippingDeliveryPolicy: "Shipping and Delivery Policy",
   founderControl: "Founder Control",
 };
 
@@ -5950,7 +6356,8 @@ function trackVirtualPageView(page) {
   if (!page || typeof window.gtag !== "function") return;
   if (window.__tsLastTrackedPage === page) return;
 
-  const pagePath = page === "home" ? "/" : `/${page}`;
+  const pagePath =
+    page === "home" ? "/" : getLegalPolicyRoute(page) || `/${page}`;
   const pageTitle =
     "Tirth Sutra - " + (ANALYTICS_PAGE_TITLES[page] || page);
 
@@ -6042,6 +6449,11 @@ function gp(page) {
       authenticBrands: () => renderAuthenticBrandsPage(),
       helpSupport: () => renderHelpSupportPage(),
       settingsPrivacy: () => renderSettingsPrivacyPage(),
+      privacyPolicy: () => renderLegalPolicyPage("privacyPolicy"),
+      termsAndConditions: () => renderLegalPolicyPage("termsAndConditions"),
+      refundCancellationPolicy: () => renderLegalPolicyPage("refundCancellationPolicy"),
+      donationPolicy: () => renderLegalPolicyPage("donationPolicy"),
+      shippingDeliveryPolicy: () => renderLegalPolicyPage("shippingDeliveryPolicy"),
       founderControl: () =>
         typeof renderFounderControlPage === "function"
           ? renderFounderControlPage()
@@ -6056,6 +6468,11 @@ function gp(page) {
         "inviteFriends",
         "helpSupport",
         "settingsPrivacy",
+        "privacyPolicy",
+        "termsAndConditions",
+        "refundCancellationPolicy",
+        "donationPolicy",
+        "shippingDeliveryPolicy",
         "founderControl",
       ].includes(page);
     document.body.classList.toggle("reels-mode", isReelsPage);

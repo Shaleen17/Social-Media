@@ -1,4 +1,4 @@
-self.__TS_SW_VERSION__ = "20260522-call-permission-1";
+self.__TS_SW_VERSION__ = "20260522-call-join-diagnostics-1";
 const TS_STATIC_CACHE = `ts-static-${self.__TS_SW_VERSION__}`;
 const TS_API_CACHE = `ts-api-${self.__TS_SW_VERSION__}`;
 
@@ -12,14 +12,16 @@ const CORE_ASSETS = [
   "/pwa-512.png",
   "/Brand_Logo.jpg",
   "/Style.css",
-  "/Style.css?v=20260522-call-permission-1",
-  "/Script.js?v=20260430-profile-qr-1",
+  "/Style.css?v=20260522-legal-pages-1",
+  "/legal-static.css?v=20260522-legal-pages-1",
+  "/Script.js?v=20260522-legal-pages-1",
   "/auth.js?v=20260430-profile-qr-1",
   "/api.js?v=20260521-daily-calls-1",
   "/feed.js?v=20260430-profile-qr-1",
   "/search.js?v=20260430-profile-qr-1",
   "/profile.js?v=20260501-profile-qr-scan-1",
-  "/backend-adapter.js?v=20260522-call-permission-1",
+  "/call-client.js?v=20260522-call-join-diagnostics-1",
+  "/backend-adapter.js?v=20260522-call-join-diagnostics-1",
   "/founder-control.js?v=20260430-profile-qr-1",
   "/appwrite-auth.js?v=20260430-profile-qr-1",
   "/config.js?v=20260420-advanced-search-1",
