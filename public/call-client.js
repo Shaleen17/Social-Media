@@ -161,18 +161,51 @@ const CallClient = (() => {
     } catch {}
   }
 
+  function getCurrentUserId() {
+    const socketUserId =
+      typeof SocketClient !== "undefined" && SocketClient
+        ? SocketClient.getUserId?.()
+        : "";
+    const currentUser =
+      typeof CU !== "undefined" && CU
+        ? CU
+        : typeof API !== "undefined" && API?.getStoredUser
+          ? API.getStoredUser()
+          : null;
+    return String(socketUserId || currentUser?.id || currentUser?._id || "guest")
+      .replace(/[^a-zA-Z0-9_-]/g, "")
+      .slice(0, 80) || "guest";
+  }
+
+  function getPermissionStoreKeys() {
+    const suffix = getCurrentUserId();
+    return {
+      cookie: `${CALL_PERMISSION_COOKIE}_${suffix}`,
+      storage: `${CALL_PERMISSION_STORAGE_KEY}_${suffix}`,
+    };
+  }
+
   function getStoredMediaPermission() {
+    const keys = getPermissionStoreKeys();
     try {
-      return localStorage.getItem(CALL_PERMISSION_STORAGE_KEY) || getCookie(CALL_PERMISSION_COOKIE);
+      return (
+        localStorage.getItem(keys.storage) ||
+        getCookie(keys.cookie) ||
+        localStorage.getItem(CALL_PERMISSION_STORAGE_KEY) ||
+        getCookie(CALL_PERMISSION_COOKIE)
+      );
     } catch {
-      return getCookie(CALL_PERMISSION_COOKIE);
+      return getCookie(keys.cookie) || getCookie(CALL_PERMISSION_COOKIE);
     }
   }
 
   function rememberMediaPermission(value) {
+    const keys = getPermissionStoreKeys();
     const safeValue = String(value || "asked").slice(0, 40);
+    setCookie(keys.cookie, safeValue, CALL_PERMISSION_MAX_AGE);
     setCookie(CALL_PERMISSION_COOKIE, safeValue, CALL_PERMISSION_MAX_AGE);
     try {
+      localStorage.setItem(keys.storage, safeValue);
       localStorage.setItem(CALL_PERMISSION_STORAGE_KEY, safeValue);
     } catch {}
   }
@@ -241,20 +274,53 @@ const CallClient = (() => {
     els.permissionNote.classList.toggle("show", !!(shouldShow && message));
   }
 
-  function getPermissionPromptText(withVideo) {
+  function getPermissionPromptText(withVideo, action = "start") {
     const cached = getStoredMediaPermission();
     if (cached === "denied" || cached === "failed") {
       return withVideo
         ? "Camera or microphone may be blocked. If the browser does not ask, allow both from site settings."
         : "Microphone may be blocked. If the browser does not ask, allow it from site settings.";
     }
+    const actionText = action === "answer" ? "answer the call" : "start the call";
     return withVideo
-      ? "Allow camera and microphone when your browser asks. Your browser will remember this for future calls."
-      : "Allow microphone when your browser asks. Your browser will remember this for future calls.";
+      ? `Allow camera and microphone when your browser asks to ${actionText}. Your browser will remember this for future calls.`
+      : `Allow microphone when your browser asks to ${actionText}. Your browser will remember this for future calls.`;
+  }
+
+  function getPermissionStatusText(withVideo, action = "start") {
+    const actionText = action === "answer" ? "answer the call" : "start the call";
+    return withVideo
+      ? `Allow camera and microphone to ${actionText}...`
+      : `Allow microphone to ${actionText}...`;
+  }
+
+  function createPermissionBlockedError(message) {
+    const error = new Error(message || "Camera or microphone is blocked");
+    error.name = "NotAllowedError";
+    return error;
+  }
+
+  async function queryBrowserMediaPermission(name) {
+    if (!navigator.permissions?.query) return "unknown";
+    try {
+      const status = await navigator.permissions.query({ name });
+      return status?.state || "unknown";
+    } catch {
+      return "unknown";
+    }
+  }
+
+  async function getBrowserMediaPermissionSnapshot(withVideo) {
+    const [microphone, camera] = await Promise.all([
+      queryBrowserMediaPermission("microphone"),
+      withVideo ? queryBrowserMediaPermission("camera") : Promise.resolve("unused"),
+    ]);
+    return { microphone, camera };
   }
 
   async function preflightMedia(withVideo, options = {}) {
     const allowVideoFallback = options.allowVideoFallback !== false;
+    const purpose = options.purpose || "start";
 
     if (!isLocalSecureContext()) {
       throw new Error("Calling works only on HTTPS or localhost");
@@ -266,12 +332,26 @@ const CallClient = (() => {
       throw error;
     }
 
+    showPermissionNote(getPermissionPromptText(withVideo, purpose), true);
+    setStatus(getPermissionStatusText(withVideo, purpose));
+
+    const permissionState = await getBrowserMediaPermissionSnapshot(withVideo);
+    if (permissionState.microphone === "denied") {
+      rememberMediaPermission("denied");
+      throw createPermissionBlockedError(
+        "Microphone is blocked. Allow microphone access from browser site settings and try again."
+      );
+    }
+
     const audioConstraints = {
       echoCancellation: true,
       noiseSuppression: true,
     };
 
     if (withVideo) {
+      if (permissionState.camera === "denied") {
+        notifyCallIssue("warn", "Camera is blocked. Continuing with microphone only.");
+      }
       try {
         const stream = await navigator.mediaDevices.getUserMedia({
           audio: audioConstraints,
@@ -436,9 +516,9 @@ const CallClient = (() => {
 
     try {
       ensureDailyReady();
-      showPermissionNote(getPermissionPromptText(!!withVideo));
+      showPermissionNote(getPermissionPromptText(!!withVideo, "start"));
       setStatus("Checking permissions...");
-      const media = await preflightMedia(!!withVideo);
+      const media = await preflightMedia(!!withVideo, { purpose: "start" });
       if (media.videoFallback) {
         notifyCallIssue("warn", "Camera is unavailable. Starting with camera off.");
       }
@@ -493,7 +573,7 @@ const CallClient = (() => {
     };
     isCaller = false;
     showOverlay("is calling you", incomingCall.peer, "incoming", incomingCall.withVideo);
-    showPermissionNote(getPermissionPromptText(incomingCall.withVideo));
+    showPermissionNote(getPermissionPromptText(incomingCall.withVideo, "answer"));
     startRingtone();
 
     clearTimeout(callTimeout);
@@ -526,8 +606,8 @@ const CallClient = (() => {
         "active",
         currentCall.withVideo
       );
-      showPermissionNote(getPermissionPromptText(!!currentCall.withVideo));
-      const media = await preflightMedia(!!currentCall.withVideo);
+      showPermissionNote(getPermissionPromptText(!!currentCall.withVideo, "answer"), true);
+      const media = await preflightMedia(!!currentCall.withVideo, { purpose: "answer" });
       if (media.videoFallback) {
         notifyCallIssue("warn", "Camera is unavailable. Joining with camera off.");
       }
@@ -1061,6 +1141,7 @@ const CallClient = (() => {
     init,
     startCall,
     endCall: endCallLocally,
+    getStoredMediaPermission,
   };
 })();
 
@@ -1073,6 +1154,7 @@ window.debugCallStatus = function() {
     secureContext: window.isSecureContext,
     hasMediaDevices: !!navigator.mediaDevices?.getUserMedia,
     callingLibraryLoaded: !!window.DailyIframe,
+    storedMediaPermission: CallClient.getStoredMediaPermission?.(),
     dailySupported:
       typeof window.DailyIframe?.supportedBrowser === "function"
         ? window.DailyIframe.supportedBrowser()
