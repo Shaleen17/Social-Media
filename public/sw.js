@@ -26,7 +26,6 @@ const CORE_ASSETS = [
   "/appwrite-auth.js?v=20260430-profile-qr-1",
   "/config.js?v=20260420-advanced-search-1",
   "/socket-client.js?v=20260521-calls-1",
-  "/call-client.js?v=20260522-call-permission-1",
   "/enhancements-bootstrap.js?v=20260430-profile-qr-1",
   "/noncritical-enhancements.js?v=20260428-tirth-tube-detail-live-2",
 ];
