@@ -776,6 +776,8 @@ const API = (() => {
       return request("/calls/daily/start", {
         method: "POST",
         body: JSON.stringify({ targetUserId, withVideo: !!withVideo }),
+        retry: 1,
+        retryDelayMs: 1000,
       });
     },
 
