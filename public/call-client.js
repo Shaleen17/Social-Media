@@ -1145,6 +1145,8 @@ const CallClient = (() => {
   };
 })();
 
+window.CallClient = CallClient;
+
 window.debugCallStatus = function() {
   return {
     backend: typeof getBackendBaseUrl === "function" ? getBackendBaseUrl() : null,

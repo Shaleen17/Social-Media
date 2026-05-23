@@ -508,7 +508,7 @@
 
   let _chatPushSetupPromise = null;
   let _pendingOpenChatId = consumeOpenChatParam();
-const APP_ASSET_VERSION = "20260522-call-permission-flow-1";
+const APP_ASSET_VERSION = "20260523-call-runtime-1";
   let _appSwPromise = null;
   let _deferredInstallPrompt = null;
   let _installPromptBound = false;
@@ -5266,10 +5266,66 @@ const APP_ASSET_VERSION = "20260522-call-permission-flow-1";
   // =============================================
   // Real-time Call Initiation
   // =============================================
+  const CALL_SOCKET_READY_TIMEOUT_MS = 6500;
+
   function showCallMessage(type, message) {
     if (typeof MC !== "undefined" && MC && typeof MC[type] === "function") {
       MC[type](message);
     }
+  }
+
+  function getCallClient() {
+    if (window.CallClient?.startCall) return window.CallClient;
+    if (typeof CallClient !== "undefined" && CallClient?.startCall) {
+      return CallClient;
+    }
+    return null;
+  }
+
+  function waitForSocketReady(timeoutMs = CALL_SOCKET_READY_TIMEOUT_MS) {
+    if (typeof SocketClient === "undefined" || !SocketClient) {
+      return Promise.resolve(false);
+    }
+
+    if (SocketClient.isConnected?.()) {
+      return Promise.resolve(true);
+    }
+
+    return new Promise((resolve) => {
+      let settled = false;
+      let removeReadyListener = () => {};
+      const watchedSockets = new Set();
+
+      const finish = (ready) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        removeReadyListener();
+        watchedSockets.forEach((socket) => {
+          socket.off?.("connect", handleConnect);
+        });
+        resolve(!!ready || !!SocketClient.isConnected?.());
+      };
+
+      const handleConnect = () => finish(true);
+
+      const watchSocket = (socket) => {
+        if (!socket || watchedSockets.has(socket)) return;
+        watchedSockets.add(socket);
+        if (socket.connected) {
+          finish(true);
+          return;
+        }
+        socket.on?.("connect", handleConnect);
+      };
+
+      const timer = setTimeout(() => finish(false), timeoutMs);
+
+      if (typeof SocketClient.onSocketReady === "function") {
+        removeReadyListener = SocketClient.onSocketReady(watchSocket);
+      }
+      watchSocket(SocketClient.getSocket?.());
+    });
   }
 
   function getParticipantId(participant) {
@@ -5306,7 +5362,7 @@ const APP_ASSET_VERSION = "20260522-call-permission-flow-1";
     };
   }
 
-  window.startChatCall = function (withVideo) {
+  window.startChatCall = async function (withVideo) {
     if (!CU) {
       showCallMessage("error", "Please sign in to start a call.");
       openOvl("authOvl");
@@ -5351,16 +5407,24 @@ const APP_ASSET_VERSION = "20260522-call-permission-flow-1";
     }
 
     if (!SocketClient.isConnected()) {
+      const connected = await waitForSocketReady();
+      if (connected) {
+        SocketClient.getSocket?.()?.emit?.("join", selfId);
+      }
+    }
+
+    if (!SocketClient.isConnected()) {
       showCallMessage("error", "Real-time connection is not ready. Please wait a moment and try again.");
       return;
     }
 
-    if (typeof CallClient === "undefined" || !CallClient?.startCall) {
+    const callClient = getCallClient();
+    if (!callClient) {
       showCallMessage("error", "Calling feature is not initialized.");
       return;
     }
 
-    return CallClient.startCall(target.id, target.name, target.avatar, !!withVideo);
+    return callClient.startCall(target.id, target.name, target.avatar, !!withVideo);
   };
 
   window.startChatVoiceCall = function () {
@@ -5370,6 +5434,8 @@ const APP_ASSET_VERSION = "20260522-call-permission-flow-1";
   window.startChatVideoCall = function () {
     return window.startChatCall(true);
   };
+
+  window.startWebrtcCall = window.startChatCall;
 
   // =============================================
   // Mobile Keyboard — keep chat input visible

@@ -1,4 +1,4 @@
-self.__TS_SW_VERSION__ = "20260522-call-permission-flow-1";
+self.__TS_SW_VERSION__ = "20260523-call-runtime-1";
 const TS_STATIC_CACHE = `ts-static-${self.__TS_SW_VERSION__}`;
 const TS_API_CACHE = `ts-api-${self.__TS_SW_VERSION__}`;
 
@@ -20,8 +20,8 @@ const CORE_ASSETS = [
   "/feed.js?v=20260430-profile-qr-1",
   "/search.js?v=20260430-profile-qr-1",
   "/profile.js?v=20260501-profile-qr-scan-1",
-  "/call-client.js?v=20260522-call-permission-flow-1",
-  "/backend-adapter.js?v=20260522-call-permission-flow-1",
+  "/call-client.js?v=20260523-call-runtime-1",
+  "/backend-adapter.js?v=20260523-call-runtime-1",
   "/founder-control.js?v=20260430-profile-qr-1",
   "/appwrite-auth.js?v=20260430-profile-qr-1",
   "/config.js?v=20260420-advanced-search-1",
