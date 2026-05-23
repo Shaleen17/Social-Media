@@ -508,7 +508,7 @@
 
   let _chatPushSetupPromise = null;
   let _pendingOpenChatId = consumeOpenChatParam();
-const APP_ASSET_VERSION = "20260523-call-media-fallback-1";
+  const APP_ASSET_VERSION = "20260523-call-permission-preflight-1";
   let _appSwPromise = null;
   let _deferredInstallPrompt = null;
   let _installPromptBound = false;
