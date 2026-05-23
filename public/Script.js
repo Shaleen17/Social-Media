@@ -13799,7 +13799,7 @@ function renderChatMessages(chatId) {
 
   c.innerHTML =
     html ||
-    `<div class="chat-empty-state"><div style="font-size:36px;margin-bottom:8px">👋</div><div style="font-size:14px;color:var(--t3)">Say hello!</div></div>`;
+    `<div class="chat-empty-state"><div style="width:56px;height:56px;border-radius:18px;background:rgba(201,149,90,.16);border:1px solid var(--bd);display:flex;align-items:center;justify-content:center;margin-bottom:12px"><img src="Brand_Logo.jpg" alt="" style="width:42px;height:42px;border-radius:14px;object-fit:cover"></div><div style="font-size:16px;font-weight:700;color:var(--p);margin-bottom:6px">Begin with Pranam</div><div style="font-size:13px;color:var(--t3)">Share a peaceful message with your Tirth Sutra community.</div></div>`;
   c.scrollTop = c.scrollHeight;
 }
 
