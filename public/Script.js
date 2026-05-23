@@ -1621,6 +1621,7 @@ function auth(fn) {
 function openOvl(id) {
   const el = document.getElementById(id);
   if (el) el.classList.add("show");
+  if (id === "videoDetailOvl") document.body.classList.add("video-detail-open");
   if (id === "moreOvl") {
     syncMoreMenu();
     syncMoreNavState(true);
@@ -1710,11 +1711,24 @@ function closeOvl(id) {
   if (id === "partnerReelsOvl") pausePartnerReels({ reset: true });
   const el = document.getElementById(id);
   if (el) el.classList.remove("show");
+  if (id === "videoDetailOvl") document.body.classList.remove("video-detail-open");
   if (id === "moreOvl") syncMoreNavState();
   if (id === "videoDetailOvl") resetVideoDetailState();
   if (id === "pdOvl") {
     const host = document.getElementById("pdContent");
     if (host) host.innerHTML = "";
+  }
+}
+function closeVideoDetailForNavigation() {
+  const videoDetail = document.getElementById("videoDetailOvl");
+  if (videoDetail?.classList.contains("show")) {
+    closeOvl("videoDetailOvl");
+  }
+  const drawer = document.getElementById("mobileDrawer");
+  const overlay = document.getElementById("drawerOverlay");
+  if (drawer?.classList.contains("open")) {
+    drawer.style.zIndex = "";
+    if (overlay) overlay.style.zIndex = "";
   }
 }
 document.addEventListener("click", (e) => {
@@ -6292,6 +6306,7 @@ function openMoreMenu(trigger) {
     closeMoreMenu();
     return;
   }
+  closeVideoDetailForNavigation();
   rememberMoreOrigin();
   setMoreMenuAnchor(trigger || document.getElementById("snAbout"));
   const fromDrawer =
@@ -6387,6 +6402,7 @@ function gp(page) {
   const wasReelsPage = document.body.classList.contains("reels-mode");
   const isReelsPage = page === "reels";
   try {
+    closeVideoDetailForNavigation();
     if (wasReelsPage !== isReelsPage) disableNavThemeTransitionsForSwitch();
     PAGE_IDS.forEach((p) => {
       const el = document.getElementById(
@@ -6619,6 +6635,7 @@ function updateNavAuthButtons() {
 }
 
 function handleSidebarAuth() {
+  closeVideoDetailForNavigation();
   if (CU) {
     logout();
   } else {
@@ -6633,6 +6650,7 @@ function handleBottomNavAuth() {
   openProfilePage();
 }
 function handleDrawerAuth() {
+  closeVideoDetailForNavigation();
   closeDrawer();
   if (CU) {
     logout();

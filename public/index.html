@@ -1626,24 +1626,7 @@
          <img src="images/logo.png" alt="Mandir Community Logo" style="width:40px;height:40px;border-radius:10px;object-fit:cover">
          ========================================================= -->
         <div class="drawer-logo-box">
-          <!-- DEFAULT LOGO ICON — replace with your image -->
-          <svg
-            style="
-              width: 22px;
-              height: 22px;
-              stroke: #fff;
-              fill: none;
-              stroke-width: 2.2;
-              stroke-linecap: round;
-              stroke-linejoin: round;
-            "
-            viewBox="0 0 24 24"
-          >
-            <path
-              d="M12 2C8 2 4 5.5 4 9.5c0 5.5 6 10.5 8 12 2-1.5 8-6.5 8-12C20 5.5 16 2 12 2z"
-            />
-            <circle cx="12" cy="9.5" r="2.5" fill="white" stroke="none" />
-          </svg>
+          <img src="Brand_Logo.jpg" alt="Tirth Sutra Logo" />
         </div>
         <div class="drawer-logo-info">
           <strong>Tirth Sutra</strong>
@@ -1767,6 +1750,7 @@
         <button
           class="drawer-item"
           onclick="
+            closeVideoDetailForNavigation();
             auth(() => openOvl('compOvl'));
             closeDrawer();
           "
@@ -1926,7 +1910,7 @@
         <div style="padding: 8px 0">
           <button
             class="sb"
-            onclick="auth(() => openOvl('compOvl'))"
+            onclick="closeVideoDetailForNavigation(); auth(() => openOvl('compOvl'))"
             style="
               background: var(--p);
               color: #fff;

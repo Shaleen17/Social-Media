@@ -5676,8 +5676,8 @@ video {
   .modal.video-detail-modal {
     width: 100vw;
     max-width: 100vw;
-    height: 100dvh;
-    max-height: 100dvh;
+    height: calc(100dvh - var(--bottomnav-h) - env(safe-area-inset-bottom, 0px));
+    max-height: calc(100dvh - var(--bottomnav-h) - env(safe-area-inset-bottom, 0px));
     border-radius: 0;
   }
   .video-detail-modal .mhdr {
@@ -5711,7 +5711,7 @@ video {
     width: 48px;
   }
   .video-detail-body {
-    max-height: calc(100dvh - 56px);
+    max-height: calc(100dvh - var(--bottomnav-h) - env(safe-area-inset-bottom, 0px) - 56px);
     padding: 0 0 20px;
   }
   .video-watch-player {
@@ -9499,7 +9499,7 @@ video {
 /* Mobile: hide sidebar, show topbar + drawer + bottom nav */
 @media (max-width: 640px) {
   #videoDetailOvl {
-    inset: 0;
+    inset: 0 0 calc(var(--bottomnav-h) + env(safe-area-inset-bottom, 0px)) 0;
   }
   #sidebar {
     display: none;
@@ -9518,6 +9518,9 @@ video {
     display: flex;
   }
   #bottomNav {
+    display: block;
+  }
+  body.video-detail-open #bottomNav {
     display: block;
   }
   /* Push only #app down by topbar height — avoids double-shifting body */
