@@ -50,14 +50,26 @@ function assertDailyConfigured() {
 async function dailyRequest(path, body) {
   assertDailyConfigured();
   const { apiKey } = getDailyConfig();
-  const response = await fetch(`${DAILY_API_BASE}${path}`, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify(body || {}),
-  });
+
+  let response;
+  try {
+    response = await fetch(`${DAILY_API_BASE}${path}`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(body || {}),
+    });
+  } catch (networkErr) {
+    log("error", "Daily API network error", {
+      path,
+      error: networkErr.message,
+    });
+    throw new AppError("Calling provider is unreachable.", 502, {
+      providerError: networkErr.message,
+    });
+  }
 
   let data = {};
   try {
@@ -65,8 +77,14 @@ async function dailyRequest(path, body) {
   } catch {}
 
   if (!response.ok) {
+    log("error", "Daily API error response", {
+      path,
+      providerStatus: response.status,
+      providerError: data?.error || data?.info || JSON.stringify(data),
+    });
     throw new AppError("Calling provider request failed.", 502, {
       providerStatus: response.status,
+      providerError: data?.error || data?.info || null,
     });
   }
 
