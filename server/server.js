@@ -8,6 +8,7 @@ const cloudinary = require("cloudinary").v2;
 const mongoose = require("mongoose");
 const connectDB = require("./config/db");
 const setupSocket = require("./socket/chat");
+const { isDailyConfigured, getDailyPublicConfig } = require("./services/dailyCallService");
 const {
   getRedisCacheState,
   initializeRedisCache,
@@ -433,6 +434,7 @@ const SHOULD_VERIFY_EMAIL_ON_STARTUP =
 // Only start the server listening if NOT running on Vercel
 if (!process.env.VERCEL) {
   server.listen(PORT, () => {
+    const dailyReady = isDailyConfigured();
     console.log(`
 🕉  Tirth Sutra Server Running
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -440,8 +442,16 @@ if (!process.env.VERCEL) {
    Mode:     ${process.env.NODE_ENV || "development"}
    API:      http://localhost:${PORT}/api
    App:      http://localhost:${PORT}
+   Calls:    ${dailyReady ? "✅ Daily.co configured" : "❌ NOT configured — calls will fail"}
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
     `);
+    if (!dailyReady) {
+      console.error(
+        "❌ Voice/video calling is NOT configured.\n" +
+        "   Missing: DAILY_API_KEY and/or DAILY_DOMAIN in .env\n" +
+        "   Fix: Add DAILY_API_KEY and DAILY_DOMAIN from https://dashboard.daily.co/developers"
+      );
+    }
 
     // KEEP-ALIVE PING: Prevent Render free tier from sleeping
     // Render sleeps after 15 mins of inactivity. Ping it every 14 mins.

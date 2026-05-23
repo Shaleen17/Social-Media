@@ -1169,13 +1169,22 @@ const CallClient = (() => {
       typeof err === "string"
         ? err
         : err?.message || err?.errorMsg || err?.error || "";
+    const statusCode = err?.status || err?.statusCode || 0;
 
     if (/no token|invalid token|session expired|unauthori[sz]ed|forbidden|not logged in|login/i.test(message)) {
       return "Your login session is not active. Please sign in again and retry the call.";
     }
 
+    if (statusCode === 503 || /not configured/i.test(message)) {
+      return "Calling is not available right now. Please try again later.";
+    }
+
+    if (statusCode === 502 || /provider.*fail/i.test(message)) {
+      return "Call service is temporarily unavailable. Please try again in a moment.";
+    }
+
     if (
-      /offline|not configured|not found|expired|invalid|network|library|provider|server|token|auth|session/i.test(message)
+      /offline|not found|expired|invalid|network|library|provider|server|token|auth|session/i.test(message)
     ) {
       return message;
     }
