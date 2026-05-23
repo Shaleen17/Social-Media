@@ -300,6 +300,22 @@ const CallClient = (() => {
     return error;
   }
 
+  function createMutedMediaFallback(withVideo, err, message) {
+    const issue =
+      message ||
+      getMediaErrorMessage(err, withVideo) ||
+      (withVideo
+        ? "Camera or microphone is unavailable. Joining with camera and microphone off."
+        : "Microphone is unavailable. Joining muted.");
+    return {
+      startVideoOff: true,
+      startAudioOff: true,
+      audioFallback: true,
+      mediaIssue: issue,
+      mediaError: err || null,
+    };
+  }
+
   async function queryBrowserMediaPermission(name) {
     if (!navigator.permissions?.query) return "unknown";
     try {
@@ -323,13 +339,18 @@ const CallClient = (() => {
     const purpose = options.purpose || "start";
 
     if (!isLocalSecureContext()) {
-      throw new Error("Calling works only on HTTPS or localhost");
+      return createMutedMediaFallback(
+        withVideo,
+        null,
+        "Camera and microphone need HTTPS or localhost. Joining with media off."
+      );
     }
 
     if (!navigator.mediaDevices?.getUserMedia) {
       const error = new Error("Camera or microphone not found on this device");
       error.name = "NotFoundError";
-      throw error;
+      rememberMediaPermission("failed");
+      return createMutedMediaFallback(withVideo, error);
     }
 
     showPermissionNote(getPermissionPromptText(withVideo, purpose), true);
@@ -338,7 +359,11 @@ const CallClient = (() => {
     const permissionState = await getBrowserMediaPermissionSnapshot(withVideo);
     if (permissionState.microphone === "denied") {
       rememberMediaPermission("denied");
-      throw createPermissionBlockedError(
+      return createMutedMediaFallback(
+        withVideo,
+        createPermissionBlockedError(
+          "Microphone is blocked. Allow microphone access from browser site settings and try again."
+        ),
         "Microphone is blocked. Allow microphone access from browser site settings and try again."
       );
     }
@@ -380,7 +405,7 @@ const CallClient = (() => {
           rememberMediaPermission(
             isPermissionDeniedError(audioError) ? "denied" : "failed"
           );
-          throw audioError;
+          return createMutedMediaFallback(!!withVideo, audioError);
         }
       }
     }
@@ -396,7 +421,7 @@ const CallClient = (() => {
       return { startVideoOff: true };
     } catch (err) {
       rememberMediaPermission(isPermissionDeniedError(err) ? "denied" : "failed");
-      throw err;
+      return createMutedMediaFallback(false, err);
     }
   }
 
@@ -522,6 +547,13 @@ const CallClient = (() => {
       if (media.videoFallback) {
         notifyCallIssue("warn", "Camera is unavailable. Starting with camera off.");
       }
+      if (media.audioFallback) {
+        notifyCallIssue(
+          "warn",
+          media.mediaIssue ||
+            "Microphone is unavailable. Starting the call muted."
+        );
+      }
       setStatus("Calling...");
 
       const data = await API.startDailyCall(targetUserId, !!withVideo);
@@ -531,6 +563,7 @@ const CallClient = (() => {
         peer: target,
         withVideo: !!withVideo,
         startVideoOff: !!media.startVideoOff,
+        startAudioOff: !!media.startAudioOff,
       };
 
       await joinDailyRoom(currentCall);
@@ -611,6 +644,13 @@ const CallClient = (() => {
       if (media.videoFallback) {
         notifyCallIssue("warn", "Camera is unavailable. Joining with camera off.");
       }
+      if (media.audioFallback) {
+        notifyCallIssue(
+          "warn",
+          media.mediaIssue ||
+            "Microphone is unavailable. Joining the call muted."
+        );
+      }
 
       setStatus("Joining...");
       const tokenData = await API.getDailyCallToken(currentCall.callId);
@@ -618,6 +658,7 @@ const CallClient = (() => {
         ...currentCall,
         ...tokenData,
         startVideoOff: !!media.startVideoOff,
+        startAudioOff: !!media.startAudioOff,
       };
       await joinDailyRoom(currentCall);
     } catch (err) {
@@ -689,7 +730,7 @@ const CallClient = (() => {
       token: call.token,
       userName: typeof CU !== "undefined" && CU ? CU.name : "User",
       startVideoOff: !!call.startVideoOff || !call.withVideo,
-      startAudioOff: false,
+      startAudioOff: !!call.startAudioOff,
     });
     setOverlayMode("active");
     updateControlButtons();
@@ -830,8 +871,16 @@ const CallClient = (() => {
 
   function toggleMute() {
     if (!callObject) return;
-    callObject.setLocalAudio(!callObject.localAudio());
-    updateControlButtons();
+    const nextAudioOn = !callObject.localAudio();
+    Promise.resolve(callObject.setLocalAudio(nextAudioOn))
+      .catch((err) => {
+        rememberMediaPermission(
+          isPermissionDeniedError(err) ? "denied" : "failed"
+        );
+        showPermissionNote(getPermissionPromptText(!!currentCall?.withVideo), true);
+        notifyCallIssue("error", getMediaErrorMessage(err, false));
+      })
+      .finally(updateControlButtons);
   }
 
   function toggleCamera() {
